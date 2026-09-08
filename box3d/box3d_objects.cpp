@@ -195,7 +195,6 @@ static b3ShapeId b3_create_godot_shape(b3BodyId p_id, const b3ShapeDef &p_def, B
 	// the same order: point, then scale, then rotate, then translate. It also
 	// reverses hull winding for a reflected scale, so mirrors come out solid.
 	const Vector3 basis_scale = p_xform.basis.get_scale();
-	const b3Vec3 b3_scale = b3_vec(basis_scale);
 	// Spheres and capsules take no scale argument, so theirs is baked into the
 	// geometry. Only a uniform factor makes sense there; take the largest.
 	const float uniform_scale = MAX(Math::abs(basis_scale.x), MAX(Math::abs(basis_scale.y), Math::abs(basis_scale.z)));
@@ -203,10 +202,14 @@ static b3ShapeId b3_create_godot_shape(b3BodyId p_id, const b3ShapeDef &p_def, B
 	switch (p_shape->type) {
 		case PhysicsServer::SHAPE_BOX: {
 			Vector3 he = p_shape->data;
-			b3BoxHull hull = b3MakeBoxHull(MAX((float)he.x, B3_LINEAR_SLOP), MAX((float)he.y, B3_LINEAR_SLOP), MAX((float)he.z, B3_LINEAR_SLOP));
+			// Pre-scale the half extents (b3SafeScale would clamp sub-0.01
+			// import scales), then let the transformed hull bake the rotation
+			// and translation. Mirrored scales flip the winding on the way in;
+			// the hull builder rebuilds outward winding from the point set.
+			b3BoxHull hull = b3MakeBoxHull(MAX((float)he.x * (float)Math::abs(basis_scale.x), B3_LINEAR_SLOP), MAX((float)he.y * (float)Math::abs(basis_scale.y), B3_LINEAR_SLOP), MAX((float)he.z * (float)Math::abs(basis_scale.z), B3_LINEAR_SLOP));
 			// Box3D bakes the local transform into a world-owned clone of the hull,
 			// so the stack copy above does not need to outlive this call.
-			return b3CreateTransformedHullShape(p_id, &p_def, &hull.base, b3_transform(p_xform), b3_scale);
+			return b3CreateTransformedHullShape(p_id, &p_def, &hull.base, b3_transform(Transform(Basis(p_xform.basis.get_rotation_quat()), p_xform.origin)), b3Vec3_one);
 		}
 		case PhysicsServer::SHAPE_SPHERE: {
 			b3Sphere sphere = { b3_vec(p_xform.origin), (float)p_shape->data * uniform_scale };
@@ -238,11 +241,16 @@ static b3ShapeId b3_create_godot_shape(b3BodyId p_id, const b3ShapeDef &p_def, B
 			// Box3D builds its tessellated cylinder around +y from the offset;
 			// shift down so the hull is centered like Godot's. The world clones
 			// the hull, so the temporary does not need to outlive this call.
-			b3HullData *hull = b3CreateCylinder(height, MAX(radius, B3_LINEAR_SLOP), -height * 0.5, 24);
+			// Pre-scale like the convex path: b3SafeScale clamps sub-0.01
+			// import scales, so build the hull in the scaled frame directly.
+			// Box3D's cylinder is Y-aligned and Godot's is too; a non-uniform
+			// scale maps onto radius/height by the basis axes.
+			b3HullData *hull = b3CreateCylinder(height * MAX(Math::abs(basis_scale.y), 0.001), MAX(radius * MAX(Math::abs(basis_scale.x), Math::abs(basis_scale.z)), B3_LINEAR_SLOP), -height * 0.5, 24);
 			if (!hull) {
 				return b3_nullShapeId;
 			}
-			b3ShapeId sid = b3CreateTransformedHullShape(p_id, &p_def, hull, b3_transform(p_xform), b3_scale);
+			Basis rot_basis = Basis(p_xform.basis.get_rotation_quat());
+			b3ShapeId sid = b3CreateTransformedHullShape(p_id, &p_def, hull, b3_transform(Transform(rot_basis, p_xform.origin)), b3Vec3_one);
 			b3DestroyHull(hull);
 			return sid;
 		}
@@ -257,7 +265,12 @@ static b3ShapeId b3_create_godot_shape(b3BodyId p_id, const b3ShapeDef &p_def, B
 			LocalVector<b3Vec3> b3points;
 			b3points.resize(count);
 			for (int i = 0; i < count; i++) {
-				b3points[i] = b3_vec(r[i]);
+				// Pre-scale here: b3SafeScale clamps scale components to
+				// B3_MIN_SCALE (0.01), which would inflate Collada-style
+				// import scales of 1/320 back up to 1/100. Baking the scale
+				// into the points keeps the real size, and passes b3SafeScale
+				// a neutral one so it has nothing to clamp.
+				b3points[i] = b3_vec(r[i] * basis_scale);
 			}
 			b3HullData *hull = b3CreateHull(b3points.ptr(), count, count);
 			if (!hull) {
@@ -273,7 +286,8 @@ static b3ShapeId b3_create_godot_shape(b3BodyId p_id, const b3ShapeDef &p_def, B
 				ERR_PRINT("Box3D: failed to build a convex hull from the given points, ignoring it.");
 				return b3_nullShapeId;
 			}
-			b3ShapeId sid = b3CreateTransformedHullShape(p_id, &p_def, hull, b3_transform(p_xform), b3_scale);
+			// Points are pre-scaled; the transform carries rotation only.
+			b3ShapeId sid = b3CreateTransformedHullShape(p_id, &p_def, hull, b3_transform(Transform(Basis(p_xform.basis.get_rotation_quat()), p_xform.origin)), b3Vec3_one);
 			b3DestroyHull(hull); // Cloned into the world hull database.
 			return sid;
 		}

@@ -24,6 +24,7 @@ scenes=(
 	res://tests/m15_shape_scale.tscn
 	res://tests/m16_area_reshape.tscn
 	res://tests/m17_cryopod.tscn
+	res://tests/m18_scaled_hull.tscn
 )
 
 status=0
