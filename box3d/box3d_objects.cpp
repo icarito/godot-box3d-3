@@ -345,32 +345,11 @@ void Box3DBody::_create_shape(int p_idx) {
 			int vertex_count = faces.size();
 			LocalVector<b3Vec3> verts;
 			verts.resize(vertex_count);
-			// Every triangle is emitted twice, once with each winding. Box3D
-			// treats a mesh triangle as one-sided -- b3World_CastShape and the
-			// mover cast both skip back faces -- while Godot's own backend
-			// (Bullet) collides a ConcavePolygonShape from both sides, so level
-			// geometry authored for Godot carries whatever winding the modeller
-			// happened to use. One-sided here means the sweep silently stops
-			// seeing those faces: the body is then held up by depenetration
-			// alone, sinking a whole step into a wall and being expelled again
-			// every frame, which reads as a buzz.
-			//
-			// ponytail: 2x triangles in the BVH (~11% physics CPU on Odisea's
-			// replay). Sweeping the triangles ourselves with b3ShapeCast, which
-			// is facing-agnostic, would keep one copy -- worth it only if mesh
-			// memory or broadphase cost starts to matter.
 			LocalVector<int> indices;
-			indices.resize(vertex_count * 2);
+			indices.resize(vertex_count);
 			for (int i = 0; i < vertex_count; i++) {
 				verts[i] = b3_vec(r[i]);
-			}
-			for (int t = 0; t < triangles; t++) {
-				indices[t * 3 + 0] = t * 3 + 0;
-				indices[t * 3 + 1] = t * 3 + 1;
-				indices[t * 3 + 2] = t * 3 + 2;
-				indices[vertex_count + t * 3 + 0] = t * 3 + 0;
-				indices[vertex_count + t * 3 + 1] = t * 3 + 2;
-				indices[vertex_count + t * 3 + 2] = t * 3 + 1;
+				indices[i] = i;
 			}
 			// Bake the local transform into the vertices before building, so the
 			// BVH is built once instead of built, thrown away and rebuilt.
@@ -383,7 +362,7 @@ void Box3DBody::_create_shape(int p_idx) {
 			mdef.vertices = verts.ptr();
 			mdef.indices = indices.ptr();
 			mdef.vertexCount = vertex_count;
-			mdef.triangleCount = triangles * 2;
+			mdef.triangleCount = triangles;
 			mdef.weldVertices = true;
 			mdef.weldTolerance = B3_LINEAR_SLOP;
 			mdef.identifyEdges = true;
