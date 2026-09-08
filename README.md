@@ -42,6 +42,15 @@ godot-box3d-3/
 
 ## Building
 
+This repo vendors Box3D as a git submodule, so clone it with the submodule or
+the build fails on missing headers:
+
+```bash
+git clone --recurse-submodules https://github.com/icarito/godot-box3d-3.git
+# already cloned without it:
+git submodule update --init --recursive
+```
+
 Clone Godot next to this repo and checkout the 3.6 branch:
 
 ```bash
@@ -123,9 +132,51 @@ GODOT=../godot/bin/godot.x11.tools.64 scripts/test.sh
      generate contact response, which is Godot's own semantics.
    - Generic 6DOF joints degrade to welds; pin/hinge/slider/cone-twist map
      1:1.
+   - Convex polygon shapes whose point cloud Box3D's hull builder rejects are
+     **dropped**: the collider silently stops existing while the rest of the
+     scene keeps working. See *Troubleshooting* — this is the failure mode
+     most likely to make a ported project look broken.
    - Optional tuning: `physics/3d/box3d_substeps` (default 4, range 1–8).
      More sub-steps cost time and buy accuracy; 1 is closest to what Godot's
      Bullet backend does per frame.
+
+## Troubleshooting
+
+**Run from a terminal.** Every backend problem reports through `ERR_PRINT`, so
+it lands on stdout and in the editor's Output dock. A project that "starts but
+nothing collides" is almost always printing the reason:
+
+```bash
+../godot/bin/godot.x11.tools.64 --path /path/to/project 2>&1 | grep Box3D
+```
+
+To test a project without editing its `project.godot`, drop an `override.cfg`
+next to it and delete it afterwards:
+
+```ini
+[physics]
+
+3d/physics_engine="Box3D"
+```
+
+**Only the binary built with this module has the backend.** Selecting `"Box3D"`
+in a stock Godot build silently falls back to Bullet.
+
+**Known issue — rejected convex hulls.**
+
+```
+ERROR: Box3D: failed to build a convex hull from the given points, ignoring it.
+ERROR: Box3D: failed to create shape type 6, ignoring it.
+```
+
+Box3D builds convex shapes with QuickHull, which refuses point sets it cannot
+turn into a closed volume. Every rejected shape is skipped, so a level built
+out of `ConvexPolygonShape` colliders loads with no collision at all and the
+player falls through the world. Seen on a Qodot/TrenchBroom project, where the
+per-brush collision shapes were all rejected; the exact property of the input
+that trips the builder has not been identified yet. Workarounds until it is
+fixed: use `ConcavePolygonShape` (trimesh) for static level geometry, or
+primitive shapes for movers.
 
 ## Benchmarks
 
