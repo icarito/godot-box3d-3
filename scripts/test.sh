@@ -19,6 +19,7 @@ scenes=(
 	res://tests/m10_game_repro.tscn
 	res://tests/m11_unstick.tscn
 	res://tests/m12_penetrated.tscn
+	res://tests/m13_trigger_layers.tscn
 )
 
 status=0

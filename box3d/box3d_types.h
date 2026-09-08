@@ -20,6 +20,16 @@
 // ever carries it as a category, so body-vs-body filtering is untouched.
 #define BOX3D_QUERY_BIT (((uint64_t)1) << 63)
 
+// Areas have the same mismatch. Godot fires body_entered when area.mask &
+// body.layer; the body's own mask has no say, and a trigger normally sits on a
+// layer the player deliberately does not collide with. Area shapes claim this
+// bit as a category and body shapes carry it in their mask, so Box3D's first
+// term is always satisfied for a sensor against a body and the second term is
+// left holding exactly Godot's rule.
+// Area against area stays bidirectional: one symmetric AND cannot express
+// Godot's one-way rule in both directions at once.
+#define BOX3D_SENSOR_BIT (((uint64_t)1) << 62)
+
 // Box3D keeps world positions in b3Pos, which widens to double only in large-world
 // builds, and everything else in float.
 
