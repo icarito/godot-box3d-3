@@ -17,6 +17,8 @@ scenes=(
 	res://tests/m8_rays.tscn
 	res://tests/m9_trimesh_walk.tscn
 	res://tests/m10_game_repro.tscn
+	res://tests/m11_unstick.tscn
+	res://tests/m12_penetrated.tscn
 )
 
 status=0

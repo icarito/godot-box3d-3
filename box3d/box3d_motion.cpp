@@ -88,6 +88,90 @@ struct Contact {
 };
 
 
+
+// GJK reports zero distance and no direction once two shapes interpenetrate, so
+// a body that ends up inside geometry could never be pushed out: the recovery
+// found nothing, the sweep saw initial overlap and clamped the motion to zero,
+// and the body froze in every direction at once. Shrinking our own cloud toward
+// its centroid separates the pair again and hands back the axis; the real
+// penetration is then the shrink minus whatever separation is left.
+bool proxy_contact(const Box3DWorldProxy &p_ours, const b3ShapeProxy &p_theirs, real_t p_margin,
+		Vector3 &r_normal, Vector3 &r_point, real_t &r_depth) {
+	b3DistanceInput input = { 0 };
+	input.proxyA = p_ours.proxy;
+	input.proxyB = p_theirs;
+	input.transform = b3Transform_identity;
+	input.useRadii = true;
+
+	b3SimplexCache cache = { 0 };
+	b3DistanceOutput out = b3ShapeDistance(&input, &cache, nullptr, 0);
+
+	if (out.distance > 0.0f) {
+		if (out.distance >= p_margin) {
+			return false;
+		}
+		r_normal = -g_vec(out.normal); // A to B, so pushing us out runs the other way
+		r_point = g_vec(out.pointB);
+		r_depth = p_margin - out.distance;
+		return true;
+	}
+
+	// Interpenetrating. Scaling our cloud toward its centroid separates the pair
+	// again, which is enough to name the axis. Scale rather than a fixed inset:
+	// an inset shrinks each axis only in proportion to its share of the diagonal,
+	// which barely dents a flat box.
+	Vector3 centroid;
+	for (int i = 0; i < p_ours.proxy.count; i++) {
+		centroid += g_vec(p_ours.points[i]);
+	}
+	centroid /= MAX(p_ours.proxy.count, 1);
+
+	const real_t factors[3] = { 0.5, 0.25, 0.08 };
+	for (int step = 0; step < 3; step++) {
+		Box3DWorldProxy small = p_ours;
+		small.proxy.radius = p_ours.proxy.radius * (float)factors[step];
+		for (int i = 0; i < small.proxy.count; i++) {
+			Vector3 pt = g_vec(p_ours.points[i]);
+			small.points[i] = b3_vec(centroid + (pt - centroid) * factors[step]);
+		}
+		small.proxy.points = small.points;
+
+		input.proxyA = small.proxy;
+		b3SimplexCache retry_cache = { 0 };
+		out = b3ShapeDistance(&input, &retry_cache, nullptr, 0);
+		if (out.distance <= 0.0f) {
+			continue; // still buried, shrink harder
+		}
+
+		// The shrunken query only gives the direction. Measure the real overlap
+		// by projecting both full clouds onto it.
+		Vector3 normal = -g_vec(out.normal);
+		real_t ours_min = 1e30;
+		for (int i = 0; i < p_ours.proxy.count; i++) {
+			ours_min = MIN(ours_min, normal.dot(g_vec(p_ours.points[i])));
+		}
+		ours_min -= p_ours.proxy.radius;
+
+		real_t theirs_max = -1e30;
+		for (int i = 0; i < p_theirs.count; i++) {
+			theirs_max = MAX(theirs_max, normal.dot(g_vec(p_theirs.points[i])));
+		}
+		theirs_max += p_theirs.radius;
+
+		const real_t penetration = theirs_max - ours_min;
+		if (penetration <= 0.0) {
+			continue; // the axis does not actually separate them
+		}
+
+		r_normal = normal;
+		r_point = g_vec(out.pointB);
+		r_depth = penetration + p_margin;
+		return true;
+	}
+
+	return false; // buried past any shrink we are willing to try
+}
+
 // Meshes and height fields have no point-cloud form, so the contact phase used to
 // skip them entirely: the body then rested on level geometry the sweep could see
 // but the recovery could not, every cast started already touching, and the motion
@@ -116,20 +200,12 @@ bool triangle_callback(b3Vec3 p_a, b3Vec3 p_b, b3Vec3 p_c, int, void *p_context)
 	tri.proxy.count = 3;
 	tri.proxy.radius = 0.0f;
 
-	b3DistanceInput input = { 0 };
-	input.proxyA = ctx->ours->proxy;
-	input.proxyB = tri.proxy;
-	input.transform = b3Transform_identity;
-	input.useRadii = true;
-
-	b3SimplexCache cache = { 0 };
-	b3DistanceOutput out = b3ShapeDistance(&input, &cache, nullptr, 0);
-	if (out.distance <= 0.0f || out.distance >= ctx->margin) {
+	Vector3 normal;
+	Vector3 point;
+	real_t depth = 0.0;
+	if (!proxy_contact(*ctx->ours, tri.proxy, ctx->margin, normal, point, depth)) {
 		return true; // keep walking the mesh
 	}
-
-	Vector3 normal = -g_vec(out.normal);
-	real_t depth = ctx->margin - out.distance;
 	ctx->any = true;
 
 	if (ctx->recover) {
@@ -137,7 +213,7 @@ bool triangle_callback(b3Vec3 p_a, b3Vec3 p_b, b3Vec3 p_c, int, void *p_context)
 	}
 	if (ctx->deepest && depth > ctx->deepest->depth) {
 		ctx->deepest->normal = normal;
-		ctx->deepest->point = g_vec(out.pointB);
+		ctx->deepest->point = point;
 		ctx->deepest->depth = depth;
 		ctx->deepest->shape = ctx->shape;
 		ctx->deepest->local_shape = ctx->local_shape;
@@ -342,24 +418,12 @@ bool query_contacts(Box3DBody *p_body, const Transform &p_xform, real_t p_margin
 			}
 
 			// Both clouds are already in world space, so B's pose in A's frame is identity.
-			b3DistanceInput input = { 0 };
-			input.proxyA = ours.proxy;
-			input.proxyB = theirs.proxy;
-			input.transform = b3Transform_identity;
-			input.useRadii = true;
-
-			b3SimplexCache cache = { 0 };
-			b3DistanceOutput out = b3ShapeDistance(&input, &cache, nullptr, 0);
-
-			// GJK cannot name a direction once the shapes interpenetrate.
-			// ponytail: deep overlap is left to the caller to avoid; add EPA only
-			// if spawning inside geometry turns out to matter.
-			if (out.distance <= 0.0f || out.distance >= p_margin) {
+			Vector3 normal;
+			Vector3 point;
+			real_t depth = 0.0;
+			if (!proxy_contact(ours, theirs.proxy, p_margin, normal, point, depth)) {
 				continue;
 			}
-
-			Vector3 normal = -g_vec(out.normal); // A to B, so pushing us out runs the other way.
-			real_t depth = p_margin - out.distance;
 			any = true;
 
 			if (r_recover) {
@@ -367,7 +431,7 @@ bool query_contacts(Box3DBody *p_body, const Transform &p_xform, real_t p_margin
 			}
 			if (r_deepest && depth > r_deepest->depth) {
 				r_deepest->normal = normal;
-				r_deepest->point = g_vec(out.pointB);
+				r_deepest->point = point;
 				r_deepest->depth = depth;
 				r_deepest->shape = candidates.shapes[c];
 				r_deepest->local_shape = i;
