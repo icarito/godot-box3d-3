@@ -1,10 +1,19 @@
 #ifndef BOX3D_PHYSICS_SERVER_H
 #define BOX3D_PHYSICS_SERVER_H
 
+#include "box3d_objects.h"
+
 #include "servers/physics_server.h"
 
 class Box3DPhysicsServer : public PhysicsServer {
 	GDCLASS(Box3DPhysicsServer, PhysicsServer);
+
+	mutable RID_Owner<Box3DShape> shape_owner;
+	mutable RID_Owner<Box3DSpace> space_owner;
+	mutable RID_Owner<Box3DArea> area_owner;
+	mutable RID_Owner<Box3DBody> body_owner;
+	Vector<Box3DSpace *> active_spaces;
+	bool active = true;
 
 public:
 	virtual RID shape_create(ShapeType p_shape);

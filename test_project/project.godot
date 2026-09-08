@@ -1,0 +1,14 @@
+config_version=4
+
+[application]
+
+config/name="godot-box3d-3 tests"
+run/main_scene="res://tests/m2_falling_box.tscn"
+
+[physics]
+
+3d/physics_engine="Box3D"
+
+[rendering]
+
+quality/driver/driver_name="GLES2"
