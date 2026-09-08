@@ -29,7 +29,8 @@ set_engine() {
 set_substeps() {
 	# Empty argument removes the line so the module default applies.
 	if grep -q "^$substeps_key=" "$project/project.godot"; then
-		sed -i "/^$substeps_key=/d" "$project/project.godot"
+		# The key contains slashes, so the address needs a different delimiter.
+	sed -i "\|^$substeps_key=|d" "$project/project.godot"
 	fi
 	if [ -n "$1" ]; then
 		sed -i "s|^\[physics\]$|[physics]\n$substeps_key=$1|" "$project/project.godot"

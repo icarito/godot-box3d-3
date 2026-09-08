@@ -179,20 +179,34 @@ collision". Check the shape's points before blaming the backend.
 
 `scripts/bench.sh` runs the same 264-rigid-box stress scene headlessly under
 each backend compiled into the engine, reporting the average
-`Performance.TIME_PHYSICS_PROCESS` per frame (server step + scene physics)
-over 300 frames after a 120-frame warmup. Two runs on the reference machine
-(i7-ish laptop CPU, single thread, release-adjacent tools build):
+`Performance.TIME_PHYSICS_PROCESS` per frame over 300 frames after a
+120-frame warmup.
+
+Three runs on the reference machine, a debug (unoptimised) build:
 
 | Backend | avg physics ms/frame |
 |---------|---------------------|
-| Box3D, 1 sub-step | ~7.3–7.6 |
-| Box3D, 4 sub-steps (default) | ~8.5–9.0 |
-| Bullet (Godot's default 3D backend) | ~10.0–11.2 |
+| Box3D, 1 sub-step | 5.4 – 8.3 |
+| Box3D, 4 sub-steps (default) | 10.0 – 11.9 |
+| Bullet (Godot's default 3D backend) | 7.1 – 12.4 |
 
-Box3D carries the default quality (4 sub-steps ≈ 240 Hz internal rate) and
-still beats Bullet's single-step pass on this scene. `INFO_ACTIVE_OBJECTS`
-and `INFO_COLLISION_PAIRS` report real values on Box3D; the Bullet module
-returns zeroes for them.
+Read that carefully before drawing conclusions:
+
+- **Sub-steps dominate.** The default of 4 costs roughly twice what 1 does.
+  If physics time matters more than solver quality, set
+  `physics/3d/box3d_substeps = 1`.
+- **Box3D against Bullet is not resolved here.** The three ranges overlap and
+  the run-to-run spread on Bullet alone is 7.1 to 12.4, so this scene on this
+  machine cannot rank them. An earlier version of this table claimed Box3D
+  won; it was measured with a `sed` bug in bench.sh that silently never
+  applied the sub-step setting, so those numbers meant nothing. Ranking the
+  two backends needs an optimised build on a quiet machine.
+- **A debug build is not a performance measurement.** `target=debug` is
+  unoptimised and Box3D's own asserts are live. Build `target=release_debug`
+  before judging how a game runs.
+
+`INFO_ACTIVE_OBJECTS` and `INFO_COLLISION_PAIRS` report real values on Box3D;
+the Bullet module returns zeroes for them, which is why its rows read 0.
 
 ## Status
 
