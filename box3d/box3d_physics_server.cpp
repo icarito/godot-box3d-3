@@ -797,13 +797,16 @@ bool Box3DPhysicsServer::body_test_motion(RID p_body, const Transform &p_from, c
 		r_result->motion = p_motion;
 		r_result->remainder = Vector3();
 	}
-	return body->space->test_motion(body, p_from, p_motion, body->kinematic_safe_margin, r_result, p_exclude);
+	return body->space->test_motion(body, p_from, p_motion, body->kinematic_safe_margin, r_result, p_exclude_raycast_shapes, p_exclude);
 }
 
 int Box3DPhysicsServer::body_test_ray_separation(RID p_body, const Transform &p_transform, bool p_infinite_inertia, Vector3 &r_recover_motion, SeparationResult *r_results, int p_result_max, float p_margin) {
-	// M3.
-	r_recover_motion = Vector3();
-	return 0;
+	GET_OR_FAIL_V(Box3DBody, body, body_owner, p_body, 0);
+	if (!body->space) {
+		r_recover_motion = Vector3();
+		return 0;
+	}
+	return body->space->test_ray_separation(body, p_transform, p_infinite_inertia, r_recover_motion, r_results, p_result_max, p_margin);
 }
 
 RID Box3DPhysicsServer::soft_body_create(bool p_init_sleeping) {

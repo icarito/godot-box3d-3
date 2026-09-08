@@ -14,6 +14,7 @@ scenes=(
 	res://tests/m6_contacts.tscn
 	res://tests/m6_areas.tscn
 	res://tests/m7_joints.tscn
+	res://tests/m8_rays.tscn
 )
 
 status=0

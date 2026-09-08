@@ -17,8 +17,9 @@ struct Box3DWorldProxy {
 	b3ShapeProxy proxy;
 };
 
-// A Godot shape definition, as a world space point cloud. Meshes, height fields
-// and rays have no point cloud form and are rejected.
+// A Godot shape definition, as a world space point cloud. Rays become
+// one-segment proxies (origin, origin + local Z * length); meshes, height
+// fields and planes have no point cloud form and are rejected.
 inline bool box3d_build_godot_proxy(const Box3DShape *p_shape, const Transform &p_xform, Box3DWorldProxy &r_proxy) {
 	switch (p_shape->type) {
 		case PhysicsServer::SHAPE_BOX: {
@@ -71,6 +72,14 @@ inline bool box3d_build_godot_proxy(const Box3DShape *p_shape, const Transform &
 				r_proxy.points[i] = b3_vec(p_xform.xform(r[i]));
 			}
 			r_proxy.proxy.count = count;
+			r_proxy.proxy.radius = 0.0f;
+		} break;
+		case PhysicsServer::SHAPE_RAY: {
+			Dictionary d = p_shape->data;
+			float length = d.has("length") ? (float)(real_t)d["length"] : 1.0;
+			r_proxy.points[0] = b3_vec(p_xform.xform(Vector3()));
+			r_proxy.points[1] = b3_vec(p_xform.xform(Vector3(0, 0, length)));
+			r_proxy.proxy.count = 2;
 			r_proxy.proxy.radius = 0.0f;
 		} break;
 		default:

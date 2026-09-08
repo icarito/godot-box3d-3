@@ -5,6 +5,8 @@
 
 #include "box3d_objects.h"
 
+#include "box3d_proxies.h"
+
 // Three phases, the same shape as the Bullet backend's:
 //   1. push the body out of anything it already overlaps,
 //   2. sweep its shapes along the motion and clamp to the first hit,
@@ -23,11 +25,6 @@ const float MIN_MARGIN = 2.0f * B3_LINEAR_SLOP;
 const int RECOVER_CYCLES = 4;
 const float RECOVER_SCALE = 0.4f;
 
-struct WorldProxy {
-	b3Vec3 points[B3_MAX_SHAPE_CAST_POINTS];
-	b3ShapeProxy proxy;
-};
-
 Box3DBody *body_of(b3ShapeId p_shape) {
 	Box3DEntity *entity = (Box3DEntity *)b3Body_GetUserData(b3Shape_GetBody(p_shape));
 	return (entity && !entity->is_area) ? (Box3DBody *)entity : nullptr;
@@ -37,83 +34,14 @@ int shape_index_of(b3ShapeId p_shape) {
 	return (int)(intptr_t)b3Shape_GetUserData(p_shape);
 }
 
-// A Godot shape definition, as a world space point cloud.
-bool build_godot_proxy(const Box3DShape *p_shape, const Transform &p_xform, WorldProxy &r_proxy) {
-	switch (p_shape->type) {
-		case PhysicsServer::SHAPE_BOX: {
-			Vector3 he = p_shape->data;
-			for (int i = 0; i < 8; i++) {
-				Vector3 corner((i & 1) ? he.x : -he.x, (i & 2) ? he.y : -he.y, (i & 4) ? he.z : -he.z);
-				r_proxy.points[i] = b3_vec(p_xform.xform(corner));
-			}
-			r_proxy.proxy.points = r_proxy.points;
-			r_proxy.proxy.count = 8;
-			r_proxy.proxy.radius = 0.0f;
-			return true;
-		}
-		default:
-			return false;
-	}
+// A ray shape takes part in sweeps only (and only when not excluded), never
+// in the contact phases: it has no surface to rest on.
+bool sweep_shape(const Box3DShape *p_shape) {
+	return p_shape->type != PhysicsServer::SHAPE_RAY;
 }
 
-// A live Box3D shape, as a world space point cloud. Meshes and height fields
-// have no point cloud form; they arrive with M4.
-bool build_b3_proxy(b3ShapeId p_shape, WorldProxy &r_proxy) {
-	b3WorldTransform wt = b3Body_GetTransform(b3Shape_GetBody(p_shape));
-	Transform xform = g_transform(wt.p, wt.q);
-
-	switch (b3Shape_GetType(p_shape)) {
-		case b3_sphereShape: {
-			b3Sphere sphere = b3Shape_GetSphere(p_shape);
-			r_proxy.points[0] = b3_vec(xform.xform(g_vec(sphere.center)));
-			r_proxy.proxy.count = 1;
-			r_proxy.proxy.radius = sphere.radius;
-		} break;
-		case b3_capsuleShape: {
-			b3Capsule capsule = b3Shape_GetCapsule(p_shape);
-			r_proxy.points[0] = b3_vec(xform.xform(g_vec(capsule.center1)));
-			r_proxy.points[1] = b3_vec(xform.xform(g_vec(capsule.center2)));
-			r_proxy.proxy.count = 2;
-			r_proxy.proxy.radius = capsule.radius;
-		} break;
-		case b3_hullShape: {
-			const b3HullData *hull = b3Shape_GetHull(p_shape);
-			const b3Vec3 *points = hull ? b3GetHullPoints(hull) : nullptr;
-			if (!points) {
-				return false;
-			}
-			int count = MIN(hull->vertexCount, (int)B3_MAX_SHAPE_CAST_POINTS);
-			for (int i = 0; i < count; i++) {
-				r_proxy.points[i] = b3_vec(xform.xform(g_vec(points[i])));
-			}
-			r_proxy.proxy.count = count;
-			r_proxy.proxy.radius = 0.0f;
-		} break;
-		default:
-			return false;
-	}
-
-	r_proxy.proxy.points = r_proxy.points;
-	return true;
-}
-
-b3AABB proxy_aabb(const WorldProxy &p_proxy, float p_inflate) {
-	Vector3 lower = g_vec(p_proxy.points[0]);
-	Vector3 upper = lower;
-	for (int i = 1; i < p_proxy.proxy.count; i++) {
-		Vector3 p = g_vec(p_proxy.points[i]);
-		lower.x = MIN(lower.x, p.x);
-		lower.y = MIN(lower.y, p.y);
-		lower.z = MIN(lower.z, p.z);
-		upper.x = MAX(upper.x, p.x);
-		upper.y = MAX(upper.y, p.y);
-		upper.z = MAX(upper.z, p.z);
-	}
-	float pad = p_proxy.proxy.radius + p_inflate;
-	b3AABB aabb;
-	aabb.lowerBound = b3_vec(lower - Vector3(pad, pad, pad));
-	aabb.upperBound = b3_vec(upper + Vector3(pad, pad, pad));
-	return aabb;
+bool ray_shape(const Box3DShape *p_shape) {
+	return p_shape->type == PhysicsServer::SHAPE_RAY;
 }
 
 struct Candidates {
@@ -161,8 +89,9 @@ struct Contact {
 
 // Closest contact between one of our shapes and everything within p_margin.
 // Returns the deepest one, which is what Godot reports as "the" collision.
+// Ray shapes are skipped: they have no contact surface to rest on.
 bool query_contacts(Box3DBody *p_body, const Transform &p_xform, real_t p_margin, const Set<RID> &p_exclude,
-		Contact *r_deepest, Vector3 *r_recover) {
+		Contact *r_deepest, Vector3 *r_recover, bool p_include_rays) {
 	bool any = false;
 	if (r_recover) {
 		*r_recover = Vector3();
@@ -177,20 +106,23 @@ bool query_contacts(Box3DBody *p_body, const Transform &p_xform, real_t p_margin
 		if (si.disabled || !si.shape) {
 			continue;
 		}
+		if (!p_include_rays && ray_shape(si.shape)) {
+			continue;
+		}
 
-		WorldProxy ours;
-		if (!build_godot_proxy(si.shape, p_xform * si.xform, ours)) {
+		Box3DWorldProxy ours;
+		if (!box3d_build_godot_proxy(si.shape, p_xform * si.xform, ours)) {
 			continue;
 		}
 
 		Candidates candidates;
 		candidates.skip = p_body->id;
 		candidates.exclude = &p_exclude;
-		b3World_OverlapAABB(p_body->space->world, proxy_aabb(ours, p_margin), filter, collect_candidate, &candidates);
+		b3World_OverlapAABB(p_body->space->world, box3d_proxy_aabb(ours, p_margin), filter, collect_candidate, &candidates);
 
 		for (int c = 0; c < candidates.shapes.size(); c++) {
-			WorldProxy theirs;
-			if (!build_b3_proxy(candidates.shapes[c], theirs)) {
+			Box3DWorldProxy theirs;
+			if (!box3d_build_b3_proxy(candidates.shapes[c], theirs)) {
 				continue;
 			}
 
@@ -235,6 +167,10 @@ bool query_contacts(Box3DBody *p_body, const Transform &p_xform, real_t p_margin
 struct CastHit {
 	float fraction = 1.0f;
 	bool hit = false;
+	b3Pos point;
+	b3Vec3 normal;
+	b3ShapeId shape = b3_nullShapeId;
+	int local_shape = 0;
 	b3BodyId skip;
 	const Set<RID> *exclude;
 };
@@ -249,17 +185,63 @@ float cast_callback(b3ShapeId p_shape, b3Pos p_point, b3Vec3 p_normal, float p_f
 		return -1.0f; // ignore this shape and keep going
 	}
 
-	if (p_fraction < ctx->fraction) {
+		if (p_fraction < ctx->fraction) {
 		ctx->fraction = p_fraction;
+		ctx->point = p_point;
+		ctx->normal = p_normal;
+		ctx->shape = p_shape;
 		ctx->hit = true;
 	}
 	return p_fraction; // clip the sweep here
 }
 
+// Ray separation narrows down to a single closest surface crossing per ray.
+struct RaySepContext {
+	b3BodyId skip;
+	const Set<RID> *exclude;
+	bool infinite_inertia;
+	bool hit = false;
+	float fraction = 1.0f;
+	b3Pos point;
+	b3Vec3 normal;
+	b3ShapeId shape = b3_nullShapeId;
+};
+
+float ray_sep_callback(b3ShapeId p_shape, b3Pos p_point, b3Vec3 p_normal, float p_fraction, uint64_t, int, int, void *p_context) {
+	RaySepContext *ctx = (RaySepContext *)p_context;
+
+	b3BodyId owner = b3Shape_GetBody(p_shape);
+	if (B3_ID_EQUALS(owner, ctx->skip)) {
+		return -1.0f;
+	}
+	Box3DEntity *entity = (Box3DEntity *)b3Body_GetUserData(owner);
+	if (!entity || entity->is_area) {
+		return -1.0f;
+	}
+	Box3DBody *other = (Box3DBody *)entity;
+	if (ctx->infinite_inertia && other->mode != PhysicsServer::BODY_MODE_STATIC &&
+			other->mode != PhysicsServer::BODY_MODE_KINEMATIC) {
+		// Infinite inertia: the character shoves dynamics instead of resting.
+		return -1.0f;
+	}
+	if (ctx->exclude && !ctx->exclude->empty() && ctx->exclude->has(other->self)) {
+		return -1.0f;
+	}
+
+	if (p_fraction < ctx->fraction) {
+		ctx->fraction = p_fraction;
+		ctx->point = p_point;
+		ctx->normal = p_normal;
+		ctx->shape = p_shape;
+		ctx->hit = true;
+	}
+	return p_fraction;
+}
+
 } // namespace
 
 bool Box3DSpace::test_motion(Box3DBody *p_body, const Transform &p_from, const Vector3 &p_motion, real_t p_margin,
-		PhysicsServer::MotionResult *r_result, const Set<RID> &p_exclude) {
+		PhysicsServer::MotionResult *r_result, bool p_exclude_raycast_shapes, const Set<RID> &p_exclude) {
 	ERR_FAIL_COND_V(!p_body || !p_body->in_world(), false);
 
 	const real_t margin = MAX(p_margin, (real_t)MIN_MARGIN);
@@ -268,11 +250,11 @@ bool Box3DSpace::test_motion(Box3DBody *p_body, const Transform &p_from, const V
 	Transform xform = p_from;
 	xform.basis.orthonormalize();
 
-	// Phase 1: depenetrate.
+	// Phase 1: depenetrate real shapes; ray shapes have no contact surface.
 	Vector3 recovered;
 	for (int i = 0; i < RECOVER_CYCLES; i++) {
 		Vector3 step;
-		if (!query_contacts(p_body, xform, margin, p_exclude, nullptr, &step)) {
+		if (!query_contacts(p_body, xform, margin, p_exclude, nullptr, &step, false)) {
 			break;
 		}
 		xform.origin += step;
@@ -280,10 +262,13 @@ bool Box3DSpace::test_motion(Box3DBody *p_body, const Transform &p_from, const V
 	}
 
 	// Phase 2: sweep, clamping the motion at the first thing each shape hits.
+	// Ray shapes sweep too unless the caller excludes them (move_and_slide
+	// excludes, floor snapping does not).
 	Vector3 motion = p_motion;
 	const real_t total_length = p_motion.length();
 	real_t safe_fraction = 1.0;
 	real_t unsafe_fraction = 1.0;
+	CastHit sweep;
 
 	if (total_length > CMP_EPSILON) {
 		b3QueryFilter filter = b3DefaultQueryFilter();
@@ -295,12 +280,15 @@ bool Box3DSpace::test_motion(Box3DBody *p_body, const Transform &p_from, const V
 			if (si.disabled || !si.shape) {
 				continue;
 			}
+			if (p_exclude_raycast_shapes && ray_shape(si.shape)) {
+				continue;
+			}
 			if (motion.length_squared() <= CMP_EPSILON * CMP_EPSILON) {
 				break;
 			}
 
-			WorldProxy ours;
-			if (!build_godot_proxy(si.shape, xform * si.xform, ours)) {
+			Box3DWorldProxy ours;
+			if (!box3d_build_godot_proxy(si.shape, xform * si.xform, ours)) {
 				continue;
 			}
 
@@ -319,6 +307,8 @@ bool Box3DSpace::test_motion(Box3DBody *p_body, const Transform &p_from, const V
 			if (hit_fraction < unsafe_fraction) {
 				unsafe_fraction = hit_fraction;
 				safe_fraction = MAX(hit_fraction - margin / total_length, (real_t)0.0);
+				sweep = hit;
+				sweep.local_shape = i;
 			}
 			motion *= hit.fraction;
 		}
@@ -326,9 +316,19 @@ bool Box3DSpace::test_motion(Box3DBody *p_body, const Transform &p_from, const V
 
 	xform.origin += motion;
 
-	// Phase 3: what are we resting against now?
+	// Phase 3: what are we resting against now? Ray shapes never rest; with
+	// them included the deepest sweep hit carries the collision instead.
 	Contact contact;
-	const bool colliding = query_contacts(p_body, xform, margin, p_exclude, &contact, nullptr) && contact.valid;
+	bool colliding = query_contacts(p_body, xform, margin, p_exclude, &contact, nullptr, false) && contact.valid;
+	if (!colliding && !p_exclude_raycast_shapes && sweep.hit && B3_IS_NON_NULL(sweep.shape)) {
+		contact.normal = g_vec(sweep.normal);
+		contact.point = g_pos(sweep.point);
+		contact.depth = margin; // touching within the sweep margin
+		contact.shape = sweep.shape;
+		contact.local_shape = sweep.local_shape;
+		contact.valid = true;
+		colliding = true;
+	}
 
 	if (!r_result) {
 		return colliding;
@@ -358,4 +358,113 @@ bool Box3DSpace::test_motion(Box3DBody *p_body, const Transform &p_from, const V
 	}
 
 	return true;
+}
+
+int Box3DSpace::test_ray_separation(Box3DBody *p_body, const Transform &p_transform, bool p_infinite_inertia,
+		Vector3 &r_recover_motion, PhysicsServer::SeparationResult *r_results, int p_result_max, float p_margin) {
+	r_recover_motion = Vector3();
+	ERR_FAIL_COND_V(!p_body || !p_body->in_world(), 0);
+	if (p_result_max <= 0) {
+		return 0;
+	}
+
+	// The Bullet backend recovers ray shapes from penetration through a custom
+	// one-sided contact pair. Box3D has no such pair, so each ray shape is a
+	// segment cast from its tip back toward the origin: a hit means the
+	// surface crosses the ray, and the body recovers along the hit normal by
+	// the penetration depth. That covers the kinematic ray-feet pattern.
+	Transform xform = p_transform;
+	xform.basis.orthonormalize();
+
+	const float margin = MAX(p_margin, MIN_MARGIN);
+	Vector3 recover;
+	int total = 0;
+
+	for (int cycle = 0; cycle < RECOVER_CYCLES && total < p_result_max; cycle++) {
+		int found_this_round = 0;
+
+		for (int i = 0; i < p_body->shapes.size() && total < p_result_max; i++) {
+			const Box3DBody::ShapeInstance &si = p_body->shapes[i];
+			if (si.disabled || !si.shape || !ray_shape(si.shape)) {
+				continue;
+			}
+
+			Dictionary d = si.shape->data;
+			float length = d.has("length") ? (float)(real_t)d["length"] : 1.0f;
+
+			Transform shape_xform = xform * si.xform;
+			shape_xform.origin += recover;
+
+			Vector3 origin = shape_xform.origin;
+			Vector3 tip = shape_xform.xform(Vector3(0, 0, length));
+			Vector3 down = tip - origin;
+			float ray_length = down.length();
+			if (ray_length < CMP_EPSILON) {
+				continue;
+			}
+			down /= ray_length;
+
+			b3QueryFilter filter = b3DefaultQueryFilter();
+			filter.categoryBits = p_body->collision_layer;
+			filter.maskBits = p_body->collision_mask;
+
+			// Cast from the origin down to the tip (the origin stays outside
+			// the floor in equilibrium): a hit means the surface crosses the
+			// ray, and the tip is penetration-deep past it.
+			RaySepContext ctx;
+			ctx.skip = p_body->id;
+			ctx.exclude = &p_body->exceptions;
+			ctx.infinite_inertia = p_infinite_inertia;
+
+			b3World_CastRay(world, b3_pos(origin), b3_vec(down * ray_length), filter, ray_sep_callback, &ctx);
+
+			if (!ctx.hit) {
+				continue;
+			}
+
+			// The surface crossing sits at fraction * length from the origin,
+			// so the tip is that much past it.
+			float penetration = ray_length * (1.0f - ctx.fraction);
+			if (penetration <= margin) {
+				continue;
+			}
+
+			Vector3 normal = g_vec(ctx.normal);
+			if (normal.length_squared() < 0.5f) {
+				// Initial-overlap hits carry no normal (the ray started inside
+				// the surface); recover straight back up the ray.
+				normal = -down;
+			}
+			if (normal.dot(-down) < 0.0f) {
+				// Only recover against surfaces facing back up the ray.
+				continue;
+			}
+
+			recover += normal * penetration * RECOVER_SCALE;
+			found_this_round++;
+
+			if (r_results && total < p_result_max) {
+				PhysicsServer::SeparationResult &result = r_results[total];
+				Box3DBody *other = body_of(ctx.shape);
+				result.collision_depth = penetration;
+				result.collision_point = g_pos(ctx.point);
+				result.collision_normal = normal;
+				result.collision_local_shape = i;
+				result.collider_shape = shape_index_of(ctx.shape);
+				if (other) {
+					result.collider = other->self;
+					result.collider_id = other->instance_id;
+					result.collider_velocity = g_vec(b3Body_GetWorldPointVelocity(b3Shape_GetBody(ctx.shape), ctx.point));
+				}
+				total++;
+			}
+		}
+
+		if (found_this_round == 0) {
+			break;
+		}
+	}
+
+	r_recover_motion = recover;
+	return total;
 }

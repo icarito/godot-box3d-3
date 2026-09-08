@@ -91,6 +91,7 @@ GODOT=../godot/bin/godot.x11.tools.64 scripts/test.sh
 | `m6_contacts` | contact monitoring, `body_entered`, direct state contact data |
 | `m6_areas` | area monitoring, `body_entered/exited`, zero gravity space override |
 | `m7_joints` | pin, hinge and slider joints through the stock node API |
+| `m8_rays` | ray shapes: sweeps in `move_and_collide`, ray-feet `move_and_slide`, `is_on_floor` |
 
 ## Documentation
 
@@ -117,7 +118,9 @@ GODOT=../godot/bin/godot.x11.tools.64 scripts/test.sh
    the setting; watch these caveats:
    - Trimesh (concave polygon) shapes only collide on static bodies and only
      on their front faces — same as Godot's own backface-collision-off.
-   - Plane (WorldBoundary), ray and soft body shapes are unsupported.
+   - Plane (WorldBoundary) and soft body shapes are unsupported. Ray shapes
+     work as sensors for kinematic characters (sweeps + separation) but never
+     generate contact response, which is Godot's own semantics.
    - Generic 6DOF joints degrade to welds; pin/hinge/slider/cone-twist map
      1:1.
    - Optional tuning: `physics/3d/box3d_substeps` (default 4, range 1–8).
@@ -149,15 +152,20 @@ Feature complete for the Godot 3 gameplay layer:
 
 - **Shapes**: box, sphere, capsule, cylinder, convex polygon, concave polygon
   (trimesh, static only, front faces only like Godot), height map (static
-  only; created off-origin it loses the centering offset). Plane, ray and
-  soft body shapes stay unsupported and report an error, matching what Box3D
-  can simulate.
+  only; created off-origin it loses the centering offset) and ray shapes.
+  Ray shapes have no contact surface (never rest, never push), matching
+  Godot: they sweep in `move_and_collide` when ray shapes are not excluded,
+  drive floor snapping, and drive `move_and_slide`'s ray separation
+  (`is_on_floor` works for ray-feet characters). Plane and soft body shapes
+  stay unsupported and report an error, matching what Box3D can simulate.
 - **Bodies**: static, rigid, kinematic, character; mass, damping, gravity
   scale, CCD, axis locks, forces/impulses, sleeping, collision layers/masks,
   collision exceptions (realized as Box3D filter joints), ray pickable, force
   integration callback (`_integrate_forces`).
 - **Kinematic**: `body_test_motion` with depenetration, sweep and resting
-  contact; `move_and_slide`/`move_and_collide`/`is_on_floor` all pass.
+  contact; `move_and_slide`/`move_and_collide`/`is_on_floor` all pass, and
+  ray shapes participate in sweeps and the ray separation phase like the
+  Bullet backend's custom ray pairs.
 - **Queries**: `intersect_ray`, `intersect_point`, `intersect_shape`,
   `cast_motion`, `collide_shape`, `rest_info`, `get_closest_point_to_object_volume`,
   with `collide_with_bodies`/`collide_with_areas` handling.

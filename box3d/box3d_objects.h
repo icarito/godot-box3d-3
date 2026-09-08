@@ -239,7 +239,9 @@ public:
 
 	// Kinematic queries, see box3d_motion.cpp.
 	bool test_motion(Box3DBody *p_body, const Transform &p_from, const Vector3 &p_motion, real_t p_margin,
-			PhysicsServer::MotionResult *r_result, const Set<RID> &p_exclude);
+			PhysicsServer::MotionResult *r_result, bool p_exclude_raycast_shapes, const Set<RID> &p_exclude);
+	int test_ray_separation(Box3DBody *p_body, const Transform &p_transform, bool p_infinite_inertia,
+			Vector3 &r_recover_motion, PhysicsServer::SeparationResult *r_results, int p_result_max, float p_margin);
 
 	Box3DSpace();
 	~Box3DSpace();
