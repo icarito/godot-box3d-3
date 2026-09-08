@@ -14,6 +14,7 @@
 
 class Box3DSpace;
 class Box3DBody;
+class Box3DEntity;
 class Box3DJoint;
 
 /// A Godot shape RID is a geometry definition, not a Box3D shape: the same RID
@@ -27,8 +28,8 @@ public:
 	real_t margin = 0.04;
 	real_t custom_bias = 0.0;
 
-	// Bodies to rebuild when the geometry changes under them.
-	Set<Box3DBody *> owners;
+	// Everything holding this definition, to rebuild when it changes.
+	Set<Box3DEntity *> owners;
 
 };
 
@@ -39,6 +40,10 @@ public:
 class Box3DEntity {
 public:
 	bool is_area = false;
+	// A shape resource is shared, and editing it has to reach every holder.
+	// Zone components resize their BoxShape once the area is live, so areas
+	// need this as much as bodies do.
+	virtual void rebuild_shapes() {}
 	virtual ~Box3DEntity() {}
 };
 

@@ -22,6 +22,8 @@ scenes=(
 	res://tests/m13_trigger_layers.tscn
 	res://tests/m14_shared_trimesh.tscn
 	res://tests/m15_shape_scale.tscn
+	res://tests/m16_area_reshape.tscn
+	res://tests/m17_cryopod.tscn
 )
 
 status=0

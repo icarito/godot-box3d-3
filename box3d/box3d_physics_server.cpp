@@ -25,7 +25,7 @@ RID Box3DPhysicsServer::shape_create(PhysicsServer::ShapeType p_shape) {
 void Box3DPhysicsServer::shape_set_data(RID p_shape, const Variant &p_data) {
 	GET_OR_FAIL(Box3DShape, shape, shape_owner, p_shape);
 	shape->data = p_data;
-	for (Set<Box3DBody *>::Element *E = shape->owners.front(); E; E = E->next()) {
+	for (Set<Box3DEntity *>::Element *E = shape->owners.front(); E; E = E->next()) {
 		E->get()->rebuild_shapes();
 	}
 }
@@ -152,6 +152,7 @@ PhysicsServer::AreaSpaceOverrideMode Box3DPhysicsServer::area_get_space_override
 void Box3DPhysicsServer::area_add_shape(RID p_area, RID p_shape, const Transform &p_transform, bool p_disabled) {
 	GET_OR_FAIL(Box3DArea, area, area_owner, p_area);
 	GET_OR_FAIL(Box3DShape, shape, shape_owner, p_shape);
+	shape->owners.insert(area);
 
 	Box3DArea::ShapeInstance si;
 	si.shape = shape;
@@ -165,7 +166,11 @@ void Box3DPhysicsServer::area_set_shape(RID p_area, int p_shape_idx, RID p_shape
 	GET_OR_FAIL(Box3DArea, area, area_owner, p_area);
 	ERR_FAIL_INDEX(p_shape_idx, area->shapes.size());
 	GET_OR_FAIL(Box3DShape, shape, shape_owner, p_shape);
+	if (area->shapes[p_shape_idx].shape) {
+		area->shapes.write[p_shape_idx].shape->owners.erase(area);
+	}
 	area->shapes.write[p_shape_idx].shape = shape;
+	shape->owners.insert(area);
 	area->rebuild_shapes();
 }
 
@@ -197,12 +202,27 @@ Transform Box3DPhysicsServer::area_get_shape_transform(RID p_area, int p_shape_i
 void Box3DPhysicsServer::area_remove_shape(RID p_area, int p_shape_idx) {
 	GET_OR_FAIL(Box3DArea, area, area_owner, p_area);
 	ERR_FAIL_INDEX(p_shape_idx, area->shapes.size());
+	Box3DShape *dropped = area->shapes[p_shape_idx].shape;
 	area->shapes.remove(p_shape_idx);
+	if (dropped) {
+		bool still_used = false;
+		for (int i = 0; i < area->shapes.size(); i++) {
+			still_used = still_used || area->shapes[i].shape == dropped;
+		}
+		if (!still_used) {
+			dropped->owners.erase(area);
+		}
+	}
 	area->rebuild_shapes();
 }
 
 void Box3DPhysicsServer::area_clear_shapes(RID p_area) {
 	GET_OR_FAIL(Box3DArea, area, area_owner, p_area);
+	for (int i = 0; i < area->shapes.size(); i++) {
+		if (area->shapes[i].shape) {
+			area->shapes[i].shape->owners.erase(area);
+		}
+	}
 	area->shapes.clear();
 	area->rebuild_shapes();
 }
@@ -1293,8 +1313,20 @@ void Box3DPhysicsServer::free(RID p_rid) {
 	// wrongly typed pointer for a RID owned by another owner. owns() is the test.
 	if (shape_owner.owns(p_rid)) {
 		Box3DShape *shape = shape_owner.get(p_rid);
-		while (Set<Box3DBody *>::Element *E = shape->owners.front()) {
-			Box3DBody *body = E->get();
+		while (Set<Box3DEntity *>::Element *E = shape->owners.front()) {
+			Box3DEntity *entity = E->get();
+			if (entity->is_area) {
+				Box3DArea *area = (Box3DArea *)entity;
+				for (int i = area->shapes.size() - 1; i >= 0; i--) {
+					if (area->shapes[i].shape == shape) {
+						area->shapes.remove(i);
+					}
+				}
+				shape->owners.erase(entity);
+				area->rebuild_shapes();
+				continue;
+			}
+			Box3DBody *body = (Box3DBody *)entity;
 			for (int i = body->shapes.size() - 1; i >= 0; i--) {
 				if (body->shapes[i].shape == shape) {
 					body->free_shape_geometry(i);
@@ -1332,6 +1364,11 @@ void Box3DPhysicsServer::free(RID p_rid) {
 	if (area_owner.owns(p_rid)) {
 		Box3DArea *area = area_owner.get(p_rid);
 		area->set_space(nullptr);
+		for (int i = 0; i < area->shapes.size(); i++) {
+			if (area->shapes[i].shape) {
+				area->shapes[i].shape->owners.erase(area);
+			}
+		}
 		area_owner.free(p_rid);
 		memdelete(area);
 		return;
