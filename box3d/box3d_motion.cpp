@@ -87,6 +87,85 @@ struct Contact {
 	bool valid = false;
 };
 
+
+// Meshes and height fields have no point-cloud form, so the contact phase used to
+// skip them entirely: the body then rested on level geometry the sweep could see
+// but the recovery could not, every cast started already touching, and the motion
+// was clamped to zero in every direction. Their triangles ARE point clouds, so
+// query the ones near the body and treat each as one more candidate shape.
+struct TriangleContacts {
+	const Box3DWorldProxy *ours = nullptr;
+	Transform to_world;
+	real_t margin = 0.0;
+	b3ShapeId shape = b3_nullShapeId;
+	int local_shape = 0;
+
+	Vector3 *recover = nullptr;
+	Contact *deepest = nullptr;
+	bool any = false;
+};
+
+bool triangle_callback(b3Vec3 p_a, b3Vec3 p_b, b3Vec3 p_c, int, void *p_context) {
+	TriangleContacts *ctx = (TriangleContacts *)p_context;
+
+	Box3DWorldProxy tri;
+	tri.points[0] = b3_vec(ctx->to_world.xform(g_vec(p_a)));
+	tri.points[1] = b3_vec(ctx->to_world.xform(g_vec(p_b)));
+	tri.points[2] = b3_vec(ctx->to_world.xform(g_vec(p_c)));
+	tri.proxy.points = tri.points;
+	tri.proxy.count = 3;
+	tri.proxy.radius = 0.0f;
+
+	b3DistanceInput input = { 0 };
+	input.proxyA = ctx->ours->proxy;
+	input.proxyB = tri.proxy;
+	input.transform = b3Transform_identity;
+	input.useRadii = true;
+
+	b3SimplexCache cache = { 0 };
+	b3DistanceOutput out = b3ShapeDistance(&input, &cache, nullptr, 0);
+	if (out.distance <= 0.0f || out.distance >= ctx->margin) {
+		return true; // keep walking the mesh
+	}
+
+	Vector3 normal = -g_vec(out.normal);
+	real_t depth = ctx->margin - out.distance;
+	ctx->any = true;
+
+	if (ctx->recover) {
+		*ctx->recover += normal * depth * RECOVER_SCALE;
+	}
+	if (ctx->deepest && depth > ctx->deepest->depth) {
+		ctx->deepest->normal = normal;
+		ctx->deepest->point = g_vec(out.pointB);
+		ctx->deepest->depth = depth;
+		ctx->deepest->shape = ctx->shape;
+		ctx->deepest->local_shape = ctx->local_shape;
+		ctx->deepest->valid = true;
+	}
+	return true;
+}
+
+// The world-space proxy, expressed as bounds in the queried shape's own frame.
+b3AABB local_bounds(const Box3DWorldProxy &p_proxy, const Transform &p_to_local, float p_inflate) {
+	Vector3 lower = p_to_local.xform(g_vec(p_proxy.points[0]));
+	Vector3 upper = lower;
+	for (int i = 1; i < p_proxy.proxy.count; i++) {
+		Vector3 v = p_to_local.xform(g_vec(p_proxy.points[i]));
+		lower.x = MIN(lower.x, v.x);
+		lower.y = MIN(lower.y, v.y);
+		lower.z = MIN(lower.z, v.z);
+		upper.x = MAX(upper.x, v.x);
+		upper.y = MAX(upper.y, v.y);
+		upper.z = MAX(upper.z, v.z);
+	}
+	float pad = p_proxy.proxy.radius + p_inflate;
+	b3AABB bounds;
+	bounds.lowerBound = b3_vec(lower - Vector3(pad, pad, pad));
+	bounds.upperBound = b3_vec(upper + Vector3(pad, pad, pad));
+	return bounds;
+}
+
 // Closest contact between one of our shapes and everything within p_margin.
 // Returns the deepest one, which is what Godot reports as "the" collision.
 // Ray shapes are skipped: they have no contact surface to rest on.
@@ -121,6 +200,31 @@ bool query_contacts(Box3DBody *p_body, const Transform &p_xform, real_t p_margin
 		b3World_OverlapAABB(p_body->space->world, box3d_proxy_aabb(ours, p_margin), filter, collect_candidate, &candidates);
 
 		for (int c = 0; c < candidates.shapes.size(); c++) {
+			const b3ShapeType type = b3Shape_GetType(candidates.shapes[c]);
+			if (type == b3_meshShape || type == b3_heightShape) {
+				b3WorldTransform wt = b3Body_GetTransform(b3Shape_GetBody(candidates.shapes[c]));
+				Transform to_world = g_transform(wt.p, wt.q);
+
+				TriangleContacts tri_ctx;
+				tri_ctx.ours = &ours;
+				tri_ctx.to_world = to_world;
+				tri_ctx.margin = p_margin;
+				tri_ctx.shape = candidates.shapes[c];
+				tri_ctx.local_shape = i;
+				tri_ctx.recover = r_recover;
+				tri_ctx.deepest = r_deepest;
+
+				b3AABB bounds = local_bounds(ours, to_world.affine_inverse(), p_margin);
+				if (type == b3_meshShape) {
+					b3Mesh mesh = b3Shape_GetMesh(candidates.shapes[c]);
+					b3QueryMesh(&mesh, bounds, triangle_callback, &tri_ctx);
+				} else {
+					b3QueryHeightField(b3Shape_GetHeightField(candidates.shapes[c]), bounds, triangle_callback, &tri_ctx);
+				}
+				any = any || tri_ctx.any;
+				continue;
+			}
+
 			Box3DWorldProxy theirs;
 			if (!box3d_build_b3_proxy(candidates.shapes[c], theirs)) {
 				continue;
@@ -316,18 +420,29 @@ bool Box3DSpace::test_motion(Box3DBody *p_body, const Transform &p_from, const V
 
 	xform.origin += motion;
 
-	// Phase 3: what are we resting against now? Ray shapes never rest; with
-	// them included the deepest sweep hit carries the collision instead.
+	// Phase 3: what are we resting against now?
 	Contact contact;
 	bool colliding = query_contacts(p_body, xform, margin, p_exclude, &contact, nullptr, false) && contact.valid;
-	if (!colliding && !p_exclude_raycast_shapes && sweep.hit && B3_IS_NON_NULL(sweep.shape)) {
-		contact.normal = g_vec(sweep.normal);
+
+	// The contact phase compares point clouds, so it cannot see meshes or height
+	// fields, and ray shapes have no surface to rest on. The sweep sees all of
+	// them. Whenever it stopped the motion, that hit IS the collision: reporting
+	// "nothing hit" while having clamped the motion to zero freezes the body in
+	// place and never grounds it.
+	if (!colliding && sweep.hit && B3_IS_NON_NULL(sweep.shape)) {
+		Vector3 normal = g_vec(sweep.normal);
+		if (normal.length_squared() < CMP_EPSILON) {
+			// b3ShapeCast leaves the normal at zero when the cast starts already
+			// touching. Facing back down the motion is the honest answer there.
+			normal = -p_motion.normalized();
+		}
+		contact.normal = normal;
 		contact.point = g_pos(sweep.point);
 		contact.depth = margin; // touching within the sweep margin
 		contact.shape = sweep.shape;
 		contact.local_shape = sweep.local_shape;
-		contact.valid = true;
-		colliding = true;
+		contact.valid = normal.length_squared() > CMP_EPSILON;
+		colliding = contact.valid;
 	}
 
 	if (!r_result) {
