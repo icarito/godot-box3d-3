@@ -182,31 +182,37 @@ each backend compiled into the engine, reporting the average
 `Performance.TIME_PHYSICS_PROCESS` per frame over 300 frames after a
 120-frame warmup.
 
-Three runs on the reference machine, a debug (unoptimised) build:
+Three runs on the reference machine, `target=release_debug`:
 
 | Backend | avg physics ms/frame |
 |---------|---------------------|
-| Box3D, 1 sub-step | 5.4 – 8.3 |
-| Box3D, 4 sub-steps | 10.0 – 11.9 |
-| Bullet (Godot's default 3D backend) | 7.1 – 12.4 |
+| Box3D, 1 sub-step | 0.93 – 1.56 |
+| Box3D, 2 sub-steps (default) | 0.97 – 1.12 |
+| Box3D, 4 sub-steps | 1.09 – 2.26 |
+| Bullet (Godot's default 3D backend) | 1.18 – 1.75 |
 
-Read that carefully before drawing conclusions:
-
-- **Sub-steps dominate.** The default of 4 costs roughly twice what 1 does.
-  If physics time matters more than solver quality, set
-  `physics/3d/box3d_substeps = 1`.
-- **Box3D against Bullet is not resolved here.** The three ranges overlap and
-  the run-to-run spread on Bullet alone is 7.1 to 12.4, so this scene on this
-  machine cannot rank them. An earlier version of this table claimed Box3D
-  won; it was measured with a `sed` bug in bench.sh that silently never
-  applied the sub-step setting, so those numbers meant nothing. Ranking the
-  two backends needs an optimised build on a quiet machine.
-- **A debug build is not a performance measurement.** `target=debug` is
-  unoptimised and Box3D's own asserts are live. Build `target=release_debug`
-  before judging how a game runs.
+- **Build optimised before judging anything.** The same scene costs 5 – 12 ms
+  under `target=debug`, six to ten times more, because nothing is optimised
+  and Box3D's own asserts are live. A debug build is for debugging.
+- **Sub-steps are close to free at this scale.** 1, 2 and 4 all land near a
+  millisecond. An earlier version of this file claimed 4 sub-steps cost twice
+  what 1 does; that came from debug-build numbers, where the unoptimised
+  solver exaggerates the difference. Sub-steps still buy solver quality, so
+  raise `physics/3d/box3d_substeps` if stacks feel soft.
+- **Box3D holds a small edge here**, with its default band under Bullet's
+  across three runs. One scene on one machine is not a general claim about
+  the two engines.
 
 `INFO_ACTIVE_OBJECTS` and `INFO_COLLISION_PAIRS` report real values on Box3D;
 the Bullet module returns zeroes for them, which is why its rows read 0.
+
+## Building an optimised binary
+
+```bash
+cd godot
+scons platform=x11 target=release_debug custom_modules=../godot-box3d-3
+# -> bin/godot.x11.opt.tools.64, alongside the debug binary
+```
 
 ## Status
 

@@ -37,7 +37,7 @@ set_substeps() {
 	fi
 }
 
-for config in "Box3D 1" "Box3D 4" "Bullet"; do
+for config in "Box3D 1" "Box3D 2" "Box3D 4" "Bullet"; do
 	read -r engine substeps <<< "$config"
 	set_engine "$engine"
 	if [ -n "$substeps" ]; then
