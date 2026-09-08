@@ -598,9 +598,13 @@ void Box3DPhysicsServer::body_set_state(RID p_body, PhysicsServer::BodyState p_s
 	GET_OR_FAIL(Box3DBody, body, body_owner, p_body);
 	switch (p_state) {
 		case BODY_STATE_TRANSFORM: {
+			const Vector3 old_scale = body->transform.basis.get_scale();
 			body->transform = p_variant;
 			if (body->in_world()) {
 				b3Body_SetTransform(body->id, b3_pos(body->transform.origin), b3_quat(body->transform.basis));
+				if (!old_scale.is_equal_approx(body->transform.basis.get_scale())) {
+					body->rebuild_shapes();
+				}
 			}
 		} break;
 		case BODY_STATE_LINEAR_VELOCITY: {

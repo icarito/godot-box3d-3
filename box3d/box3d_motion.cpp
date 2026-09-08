@@ -34,12 +34,6 @@ int shape_index_of(b3ShapeId p_shape) {
 	return (int)(intptr_t)b3Shape_GetUserData(p_shape);
 }
 
-// A ray shape takes part in sweeps only (and only when not excluded), never
-// in the contact phases: it has no surface to rest on.
-bool sweep_shape(const Box3DShape *p_shape) {
-	return p_shape->type != PhysicsServer::SHAPE_RAY;
-}
-
 bool ray_shape(const Box3DShape *p_shape) {
 	return p_shape->type == PhysicsServer::SHAPE_RAY;
 }
@@ -86,6 +80,77 @@ struct Contact {
 	int local_shape = 0;
 	bool valid = false;
 };
+
+struct CapsuleContacts {
+	Candidates candidates;
+	Vector<b3CollisionPlane> planes;
+	Vector3 origin;
+	Contact *deepest = nullptr;
+	bool any = false;
+};
+
+bool capsule_contact_callback(b3ShapeId p_shape, const b3PlaneResult *p_results, int p_count, void *p_context) {
+	CapsuleContacts *ctx = (CapsuleContacts *)p_context;
+	if (!accept(ctx->candidates, p_shape)) {
+		return true;
+	}
+	const b3ShapeType type = b3Shape_GetType(p_shape);
+	if (type == b3_meshShape || type == b3_heightShape) {
+		return true;
+	}
+	for (int i = 0; i < p_count; i++) {
+		const Vector3 normal = g_vec(p_results[i].plane.normal);
+		if (normal.length_squared() < 0.5f) {
+			continue;
+		}
+		ctx->any = true;
+		b3CollisionPlane plane = { p_results[i].plane, FLT_MAX, 0.0f, true };
+		ctx->planes.push_back(plane);
+
+		const real_t depth = MAX((real_t)p_results[i].plane.offset, (real_t)0.0);
+		if (ctx->deepest && (!ctx->deepest->valid || depth > ctx->deepest->depth)) {
+			ctx->deepest->normal = normal;
+			ctx->deepest->point = ctx->origin + g_vec(p_results[i].point);
+			ctx->deepest->depth = depth;
+			ctx->deepest->shape = p_shape;
+			ctx->deepest->valid = true;
+		}
+	}
+	return true;
+}
+
+bool query_capsule_contacts(Box3DBody *p_body, const Box3DBody::ShapeInstance &p_instance,
+		const Transform &p_xform, real_t p_margin, const Set<RID> &p_exclude, Contact *r_deepest, Vector3 *r_recover) {
+	Dictionary data = p_instance.shape->data;
+	const float radius = data.has("radius") ? (float)(real_t)data["radius"] : 0.5f;
+	const float height = data.has("height") ? (float)(real_t)data["height"] : 1.0f;
+	const Transform shape_xform = p_xform * p_instance.xform;
+	const Vector3 scale = shape_xform.basis.get_scale_abs();
+	const float radius_scale = MAX(scale.x, MAX(scale.y, scale.z));
+	const Vector3 origin = p_xform.origin;
+
+	b3Capsule mover = {
+		b3_vec(shape_xform.xform(Vector3(0, 0, -height * 0.5f)) - origin),
+		b3_vec(shape_xform.xform(Vector3(0, 0, height * 0.5f)) - origin),
+		MAX(radius * radius_scale + (float)p_margin, B3_LINEAR_SLOP)
+	};
+	b3QueryFilter filter = b3DefaultQueryFilter();
+	filter.categoryBits = BOX3D_QUERY_BIT;
+	filter.maskBits = p_body->collision_mask;
+
+	CapsuleContacts contacts;
+	contacts.candidates.skip = p_body->id;
+	contacts.candidates.exclude = &p_exclude;
+	contacts.origin = origin;
+	contacts.deepest = r_deepest;
+	b3World_CollideMover(p_body->space->world, b3_pos(origin), &mover, filter, capsule_contact_callback, &contacts);
+
+	if (r_recover && !contacts.planes.empty()) {
+		b3PlaneSolverResult solved = b3SolvePlanes(b3Vec3_zero, contacts.planes.ptrw(), contacts.planes.size());
+		*r_recover += g_vec(solved.delta) * RECOVER_SCALE;
+	}
+	return contacts.any;
+}
 
 
 
@@ -200,6 +265,8 @@ struct TriangleContacts {
 	int local_shape = 0;
 
 	Vector3 *recover = nullptr;
+	Vector3 recovery;
+	real_t recovery_depth = 0.0;
 	Contact *deepest = nullptr;
 	bool any = false;
 };
@@ -224,7 +291,12 @@ bool triangle_callback(b3Vec3 p_a, b3Vec3 p_b, b3Vec3 p_c, int, void *p_context)
 	ctx->any = true;
 
 	if (ctx->recover) {
-		*ctx->recover += normal * depth * RECOVER_SCALE;
+		// Adjacent coplanar triangles describe one surface. Summing every
+		// duplicate contact multiplies the push and throws movers off meshes.
+		if (depth > ctx->recovery_depth) {
+			ctx->recovery = normal * depth * RECOVER_SCALE;
+			ctx->recovery_depth = depth;
+		}
 	}
 	if (ctx->deepest && depth > ctx->deepest->depth) {
 		ctx->deepest->normal = normal;
@@ -325,6 +397,10 @@ bool query_contacts(Box3DBody *p_body, const Transform &p_xform, real_t p_margin
 		if (!p_include_rays && ray_shape(si.shape)) {
 			continue;
 		}
+		const bool capsule = si.shape->type == PhysicsServer::SHAPE_CAPSULE;
+		if (si.shape->type == PhysicsServer::SHAPE_CAPSULE) {
+			any = query_capsule_contacts(p_body, si, p_xform, p_margin, p_exclude, r_deepest, r_recover) || any;
+		}
 
 		Box3DWorldProxy ours;
 		if (!box3d_build_godot_proxy(si.shape, p_xform * si.xform, ours)) {
@@ -359,6 +435,9 @@ bool query_contacts(Box3DBody *p_body, const Transform &p_xform, real_t p_margin
 					b3QueryHeightField(b3Shape_GetHeightField(candidates.shapes[c]), bounds, triangle_callback, &tri_ctx);
 				}
 				any = any || tri_ctx.any;
+				if (r_recover) {
+					*r_recover += tri_ctx.recovery;
+				}
 
 				// GJK cannot measure a shape that already overlaps the triangle
 				// (distance collapses to zero with no direction), which is exactly
@@ -425,6 +504,9 @@ bool query_contacts(Box3DBody *p_body, const Transform &p_xform, real_t p_margin
 					any = true;
 				}
 				continue;
+			}
+			if (capsule) {
+				continue; // convex neighbours were handled by the native mover planes
 			}
 
 			Box3DWorldProxy theirs;
@@ -540,9 +622,7 @@ bool Box3DSpace::test_motion(Box3DBody *p_body, const Transform &p_from, const V
 
 	const real_t margin = MAX(p_margin, (real_t)MIN_MARGIN);
 
-	// Box3D has no body scale, so the query runs on the rotation only.
 	Transform xform = p_from;
-	xform.basis.orthonormalize();
 
 	// Phase 1: depenetrate real shapes; ray shapes have no contact surface.
 	Vector3 recovered;
@@ -562,7 +642,7 @@ bool Box3DSpace::test_motion(Box3DBody *p_body, const Transform &p_from, const V
 	const real_t total_length = p_motion.length();
 	real_t safe_fraction = 1.0;
 	real_t unsafe_fraction = 1.0;
-	CastHit sweep;
+	CastHit sweep = {};
 
 	if (total_length > CMP_EPSILON) {
 		// Query group = BOX3D_QUERY_BIT: see the note in query_contacts().
@@ -591,9 +671,6 @@ bool Box3DSpace::test_motion(Box3DBody *p_body, const Transform &p_from, const V
 			hit.skip = p_body->id;
 			hit.exclude = &p_exclude;
 			b3World_CastShape(world, b3_pos(Vector3()), &ours.proxy, b3_vec(motion), filter, cast_callback, &hit);
-
-			b3TreeStats stats = b3World_CastShape(world, b3_pos(Vector3()), &ours.proxy, b3_vec(motion), filter, cast_callback, &hit);
-
 
 			if (!hit.hit) {
 				continue;
@@ -683,7 +760,6 @@ int Box3DSpace::test_ray_separation(Box3DBody *p_body, const Transform &p_transf
 	// surface crosses the ray, and the body recovers along the hit normal by
 	// the penetration depth. That covers the kinematic ray-feet pattern.
 	Transform xform = p_transform;
-	xform.basis.orthonormalize();
 
 	const float margin = MAX(p_margin, MIN_MARGIN);
 	Vector3 recover;

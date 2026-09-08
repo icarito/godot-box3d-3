@@ -33,6 +33,10 @@ static b3Matrix3 b3_scale_matrix(const b3Matrix3 &p_m, float p_s) {
 	return m;
 }
 
+static Transform b3_shape_transform(const Transform &p_body, const Transform &p_shape) {
+	return Transform(Basis().scaled(p_body.basis.get_scale()), Vector3()) * p_shape;
+}
+
 /* Box3DShape */
 
 /* Box3DBody */
@@ -317,6 +321,7 @@ void Box3DBody::_create_shape(int p_idx) {
 
 	b3ShapeDef def;
 	b3_fill_shape_def(def, this, p_idx, false);
+	const Transform shape_xform = b3_shape_transform(transform, si.xform);
 
 	switch (si.shape->type) {
 		case PhysicsServer::SHAPE_CONCAVE_POLYGON: {
@@ -348,9 +353,9 @@ void Box3DBody::_create_shape(int p_idx) {
 			}
 			// Bake the local transform into the vertices before building, so the
 			// BVH is built once instead of built, thrown away and rebuilt.
-			if (si.xform != Transform()) {
+			if (shape_xform != Transform()) {
 				for (int i = 0; i < vertex_count; i++) {
-					verts[i] = b3_vec(si.xform.xform(g_vec(verts[i])));
+					verts[i] = b3_vec(shape_xform.xform(g_vec(verts[i])));
 				}
 			}
 			b3MeshDef mdef = { 0 };
@@ -359,6 +364,8 @@ void Box3DBody::_create_shape(int p_idx) {
 			mdef.vertexCount = vertex_count;
 			mdef.triangleCount = triangles;
 			mdef.weldVertices = true;
+			mdef.weldTolerance = B3_LINEAR_SLOP;
+			mdef.identifyEdges = true;
 			free_shape_geometry(p_idx);
 			si.mesh_data = b3CreateMesh(&mdef, nullptr, 0);
 			ERR_FAIL_NULL(si.mesh_data);
@@ -401,7 +408,7 @@ void Box3DBody::_create_shape(int p_idx) {
 			// contact solving, so a ray shape on a body is a no-op here.
 		} break;
 		default: {
-			si.id = b3_create_godot_shape(id, def, si.shape, si.xform);
+			si.id = b3_create_godot_shape(id, def, si.shape, shape_xform);
 			if (B3_IS_NULL(si.id)) {
 				ERR_PRINT("Box3D: failed to create shape type " + itos(si.shape->type) + ", ignoring it.");
 			}
@@ -549,7 +556,9 @@ Transform Box3DBody::get_transform() const {
 	if (!in_world()) {
 		return transform;
 	}
-	return g_transform(b3Body_GetPosition(id), b3Body_GetRotation(id));
+	Transform result = g_transform(b3Body_GetPosition(id), b3Body_GetRotation(id));
+	result.basis.scale_local(transform.basis.get_scale());
+	return result;
 }
 
 Vector3 Box3DBody::get_linear_velocity() const {
@@ -682,9 +691,13 @@ void Box3DArea::set_space(Box3DSpace *p_space) {
 }
 
 void Box3DArea::set_transform(const Transform &p_transform) {
+	const Vector3 old_scale = transform.basis.get_scale();
 	transform = p_transform;
 	if (in_world()) {
 		b3Body_SetTransform(id, b3_pos(p_transform.origin), b3_quat(p_transform.basis));
+		if (!old_scale.is_equal_approx(transform.basis.get_scale())) {
+			rebuild_shapes();
+		}
 	}
 }
 
@@ -739,7 +752,7 @@ void Box3DArea::_create_shape(int p_idx) {
 	// Areas used to duplicate the body path and had drifted from it: no scale,
 	// no cylinders, a sphere that ignored its local offset, and no thickening
 	// for flat convex plates. One builder, one behaviour.
-	si.id = b3_create_godot_shape(id, def, si.shape, si.xform);
+	si.id = b3_create_godot_shape(id, def, si.shape, b3_shape_transform(transform, si.xform));
 	if (B3_IS_NULL(si.id)) {
 		ERR_PRINT("Box3D: shape type " + itos(si.shape->type) + " is not supported on areas, ignoring it.");
 	}
