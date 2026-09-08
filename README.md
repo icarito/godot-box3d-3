@@ -40,6 +40,50 @@ godot-box3d-3/
   `libxinerama-dev`, `libxcursor-dev`, `libxrandr-dev`, `mesa-dev`,
   `libasound2-dev`, `pkg-config`)
 
+## Releases
+
+Each tag publishes prebuilt binaries, so a project's CI does not have to
+compile Godot:
+
+| Artifact | What it is |
+|----------|------------|
+| `godot.box3d.linux.x86_64.headless` | `platform=server` build, links no X11 — the one a CI runner should call as `GODOT_BIN` |
+| `godot.box3d.linux.x86_64.editor` | X11 editor binary, for working locally |
+| `Godot-Box3D-export-templates-*.tpz` | Export templates, Linux and Windows x86_64, release and debug |
+
+Consuming them:
+
+```bash
+# Test / import binary: whatever your CI calls as GODOT_BIN.
+curl -sSLo godot-box3d -H "Accept: application/octet-stream"   "https://github.com/icarito/godot-box3d-3/releases/latest/download/godot.box3d.linux.x86_64.tools"
+chmod +x godot-box3d
+
+# Export templates, unpacked where the editor looks for them.
+curl -sSLo templates.tpz   "https://github.com/icarito/godot-box3d-3/releases/latest/download/Godot-Box3D-export-templates-3.6.4.rc.custom_build.tpz"
+mkdir -p ~/.local/share/godot/templates
+unzip -q templates.tpz -d /tmp/tpl
+mv /tmp/tpl/templates ~/.local/share/godot/templates/3.6.4.rc.custom_build
+```
+
+The template directory name must match the engine version string exactly or the
+editor reports templates as missing. `scripts/build.sh` pins the Godot commit,
+so that string is stable across builds of the same tag.
+
+Exporting with the stock templates produces a game running Bullet, whatever the
+project setting says: the backend only exists in binaries built with this
+module. That is the whole reason the templates are published.
+
+**Not yet published**: macOS, iOS, Android and HTML5 templates. Each needs a
+toolchain the release workflow does not set up yet (SDK/NDK, Emscripten, an
+Apple runner); the build recipe itself is platform-agnostic.
+
+## Engine patches
+
+The published binaries carry two fixes to Godot itself, applied by
+`scripts/build.sh` before compiling — a std140 layout fix for the GLES3
+directional light UBO, and an idempotent `make_dir_recursive()` on Android.
+Neither touches this module. See [`patches/README.md`](patches/README.md).
+
 ## Building
 
 This repo vendors Box3D as a git submodule, so clone it with the submodule or
@@ -62,6 +106,17 @@ Build passing this repo as a custom module:
 ```bash
 cd godot
 scons platform=x11 custom_modules=../godot-box3d-3
+```
+
+Or let `scripts/build.sh` do it, which is what CI runs: it pins the Godot
+commit, applies the engine patches and builds the same artifacts the release
+publishes.
+
+```bash
+scripts/build.sh editor                    # X11 editor, for scripts/test.sh locally
+scripts/build.sh headless                  # server build, what CI runs
+scripts/build.sh linux-templates           # export templates, release and debug
+scripts/build.sh windows-templates         # cross-compiled, needs mingw-w64
 ```
 
 The resulting editor binary includes both the builtin `Bullet` server and the
@@ -101,6 +156,19 @@ GODOT=../godot/bin/godot.x11.tools.64 scripts/test.sh
 | `m6_areas` | area monitoring, `body_entered/exited`, zero gravity space override |
 | `m7_joints` | pin, hinge and slider joints through the stock node API |
 | `m8_rays` | ray shapes: sweeps in `move_and_collide`, ray-feet `move_and_slide`, `is_on_floor` |
+| `m9_trimesh_walk` | walking on a trimesh floor: grounded, rests at the surface, keeps moving |
+| `m10_game_repro` | a real level's shape mix: kinematic walk, shadow rays, floor tracking |
+| `m11_unstick` | leaving a prop the body already overlaps, and the surface past it |
+| `m12_penetrated` | a body spawned inside geometry recovers and then walks away |
+| `m13_trigger_layers` | area layer/mask filtering through `body_entered/exited` |
+| `m14_shared_trimesh` | one trimesh resource shared by bodies at different origins |
+| `m15_shape_scale` | scaled and mirrored shape transforms |
+| `m16_area_reshape` | editing a shape resource reaches areas, not just bodies |
+| `m17_cryopod` | a multi-shape prop blocks a walker |
+| `m18_scaled_hull` | scaled convex hulls, and ray queries with body exclusions |
+| `m20_body_scale` | body scale reaches the shapes at their visual position |
+| `m21_character_mover` | a capsule character stays steady on props and slides along railings |
+| `m22_trimesh_jitter` | a capsule on mesh geometry does not buzz, at either triangle winding |
 
 ## Documentation
 
@@ -125,8 +193,11 @@ GODOT=../godot/bin/godot.x11.tools.64 scripts/test.sh
 3. That is all: the module implements Godot's `PhysicsServer`, so scenes use
    the stock nodes and there is no API to learn. Projects port by switching
    the setting; watch these caveats:
-   - Trimesh (concave polygon) shapes only collide on static bodies and only
-     on their front faces — same as Godot's own backface-collision-off.
+   - Trimesh (concave polygon) shapes only collide on static bodies. They do
+     collide from both faces, like Godot's Bullet backend: Box3D itself treats
+     a mesh triangle as one-sided, so sweeps against meshes are done triangle
+     by triangle to stay facing-agnostic. Level geometry keeps whatever winding
+     the modeller used.
    - Plane (WorldBoundary) and soft body shapes are unsupported. Ray shapes
      work as sensors for kinematic characters (sweeps + separation) but never
      generate contact response, which is Godot's own semantics.
@@ -219,7 +290,7 @@ scons platform=x11 target=release_debug custom_modules=../godot-box3d-3
 Feature complete for the Godot 3 gameplay layer:
 
 - **Shapes**: box, sphere, capsule, cylinder, convex polygon, concave polygon
-  (trimesh, static only, front faces only like Godot), height map (static
+  (trimesh, static only, both faces like Godot's Bullet backend), height map (static
   only; created off-origin it loses the centering offset) and ray shapes.
   Ray shapes have no contact surface (never rest, never push), matching
   Godot: they sweep in `move_and_collide` when ray shapes are not excluded,

@@ -1,0 +1,125 @@
+name: Release
+
+# Publishes the binaries a project needs to actually run on this backend: the
+# editor/headless binary and matching export templates. A custom module is
+# useless to a CI that cannot compile Godot itself, which is most of them.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to publish the binaries under"
+        required: true
+
+env:
+  # Keep in step with GODOT_REF in scripts/build.sh.
+  GODOT_VERSION: "3.6.4.rc.custom_build"
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: editor
+            name: linux-editor
+            packages: ""
+          - target: headless
+            name: linux-headless
+            packages: ""
+          - target: linux-templates
+            name: linux-templates
+            packages: ""
+          - target: windows-templates
+            name: windows-templates
+            packages: "mingw-w64"
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential scons pkg-config libx11-dev libxcursor-dev \
+            libxinerama-dev libgl1-mesa-dev libglu1-mesa-dev libasound2-dev \
+            libpulse-dev libudev-dev libxi-dev libxrandr-dev ${{ matrix.packages }}
+
+      # Godot is rebuilt from scratch on a cold cache, which is most of the job.
+      - name: Cache SCons objects
+        uses: actions/cache@v4
+        with:
+          path: ~/.scons_cache
+          key: ${{ matrix.name }}-${{ hashFiles('box3d/**', 'patches/**', 'scripts/build.sh') }}
+          restore-keys: ${{ matrix.name }}-
+
+      - name: Build
+        env:
+          SCONS_CACHE: ~/.scons_cache
+          GODOT_DIR: ${{ github.workspace }}/../godot
+        run: scripts/build.sh ${{ matrix.target }}
+
+      # Templates are renamed to what Godot looks for; the editor binary keeps a
+      # descriptive name because nothing looks it up by convention.
+      - name: Collect artifacts
+        run: |
+          mkdir -p out
+          bin="${{ github.workspace }}/../godot/bin"
+          case "${{ matrix.target }}" in
+            editor)
+              cp "$bin/godot.x11.opt.tools.64" out/godot.box3d.linux.x86_64.editor
+              ;;
+            headless)
+              cp "$bin/godot_server.x11.opt.tools.64" out/godot.box3d.linux.x86_64.headless
+              ;;
+            linux-templates)
+              cp "$bin/godot.x11.opt.64" out/linux_x11_64_release
+              cp "$bin/godot.x11.opt.debug.64" out/linux_x11_64_debug
+              ;;
+            windows-templates)
+              cp "$bin/godot.windows.opt.64.exe" out/windows_64_release.exe
+              cp "$bin/godot.windows.opt.debug.64.exe" out/windows_64_debug.exe
+              ;;
+          esac
+          ls -l out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: out/*
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      # A .tpz is the archive Godot's template manager installs, and the
+      # directory name inside it has to be the engine version string or the
+      # editor will not find the templates.
+      - name: Pack export templates
+        run: |
+          mkdir -p templates
+          cp artifacts/linux-templates/* artifacts/windows-templates/* templates/
+          echo "${{ env.GODOT_VERSION }}" > templates/version.txt
+          chmod +x templates/linux_x11_64_* || true
+          zip -r "Godot-Box3D-export-templates-${{ env.GODOT_VERSION }}.tpz" templates
+          ls -l
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          generate_release_notes: true
+          files: |
+            artifacts/linux-editor/*
+            artifacts/linux-headless/*
+            *.tpz
