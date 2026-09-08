@@ -36,8 +36,49 @@ func _ready():
 	add_child(area)
 	area.global_transform = Transform(Basis(), Vector3(10, 2, 0))
 
+	# Level geometry that detects nothing: layer 1, mask 0. Godot decides a space
+	# query by query.mask & body.layer alone, so this must still be hittable.
+	var deaf = StaticBody.new()
+	var deaf_shape = BoxShape.new()
+	deaf_shape.extents = Vector3(1, 0.5, 1)
+	var deaf_col = CollisionShape.new()
+	deaf_col.shape = deaf_shape
+	deaf.add_child(deaf_col)
+	add_child(deaf)
+	deaf.global_transform = Transform(Basis(), Vector3(-14, 0, 0))
+	deaf.collision_layer = 1
+	deaf.collision_mask = 0
+
+	# On layer 4 only, so a query masked to layer 1 must not see it.
+	var other_layer = StaticBody.new()
+	var other_shape = BoxShape.new()
+	other_shape.extents = Vector3(1, 0.5, 1)
+	var other_col = CollisionShape.new()
+	other_col.shape = other_shape
+	other_layer.add_child(other_col)
+	add_child(other_layer)
+	other_layer.global_transform = Transform(Basis(), Vector3(-18, 0, 0))
+	other_layer.collision_layer = 4
+	other_layer.collision_mask = 0
+
 	yield(get_tree(), "physics_frame")
 	_run_queries(floor_body, wall, area)
+	_run_layer_queries(deaf, other_layer)
+
+
+func _run_layer_queries(p_deaf, p_other):
+	var ss = get_world().direct_space_state
+	print("collision layers:")
+	var hit = ss.intersect_ray(Vector3(-14, 4, 0), Vector3(-14, -1, 0), [], 1)
+	_check(not hit.empty(), "ray finds a body whose own mask is 0")
+	if not hit.empty():
+		_check(hit.collider == p_deaf, "names that body as the collider")
+	var miss = ss.intersect_ray(Vector3(-18, 4, 0), Vector3(-18, -1, 0), [], 1)
+	_check(miss.empty(), "ray masked to layer 1 skips a body on layer 4")
+	var found = ss.intersect_ray(Vector3(-18, 4, 0), Vector3(-18, -1, 0), [], 4)
+	_check(not found.empty(), "same ray masked to layer 4 finds it")
+	var excluded = ss.intersect_ray(Vector3(-14, 4, 0), Vector3(-14, -1, 0), [p_deaf], 1)
+	_check(excluded.empty(), "exclude list drops the body")
 
 func _run_queries(p_floor, p_wall, p_area):
 	var sphere = SphereShape.new()

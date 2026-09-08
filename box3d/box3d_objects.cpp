@@ -133,7 +133,7 @@ static bool b3_fill_shape_def(b3ShapeDef &r_def, Box3DBody *p_body, int p_idx, b
 	r_def.baseMaterial.friction = p_body->friction;
 	r_def.baseMaterial.restitution = p_body->bounce;
 	r_def.filter.categoryBits = p_body->collision_layer;
-	r_def.filter.maskBits = p_body->collision_mask;
+	r_def.filter.maskBits = (uint64_t)p_body->collision_mask | BOX3D_QUERY_BIT;
 	r_def.enableSensorEvents = true;
 	r_def.isSensor = p_sensor;
 	r_def.updateBodyMass = false;
@@ -448,7 +448,7 @@ void Box3DBody::apply_filter() {
 	}
 	b3Filter filter = b3DefaultFilter();
 	filter.categoryBits = collision_layer;
-	filter.maskBits = collision_mask;
+	filter.maskBits = (uint64_t)collision_mask | BOX3D_QUERY_BIT;
 	for (int i = 0; i < shapes.size(); i++) {
 		if (B3_IS_NON_NULL(shapes[i].id)) {
 			b3Shape_SetFilter(shapes[i].id, filter, true);
@@ -705,7 +705,7 @@ void Box3DArea::_create_shape(int p_idx) {
 	def.enableSensorEvents = true;
 	def.updateBodyMass = false;
 	def.filter.categoryBits = collision_layer;
-	def.filter.maskBits = collision_mask;
+	def.filter.maskBits = (uint64_t)collision_mask | BOX3D_QUERY_BIT;
 	def.userData = (void *)(intptr_t)p_idx;
 
 	switch (si.shape->type) {
@@ -773,7 +773,7 @@ void Box3DArea::apply_filter() {
 	}
 	b3Filter filter = b3DefaultFilter();
 	filter.categoryBits = collision_layer;
-	filter.maskBits = collision_mask;
+	filter.maskBits = (uint64_t)collision_mask | BOX3D_QUERY_BIT;
 	for (int i = 0; i < shapes.size(); i++) {
 		if (B3_IS_NON_NULL(shapes[i].id)) {
 			b3Shape_SetFilter(shapes[i].id, filter, true);

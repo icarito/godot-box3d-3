@@ -75,8 +75,10 @@ static bool query_accepts(const QueryEntity &p_entity, const Set<RID> &p_exclude
 // A world shape passes when its category bits meet the query mask, which is
 // what the Box3D broadphase applies on every query.
 static b3QueryFilter query_filter(uint32_t p_collision_mask) {
+	// See BOX3D_QUERY_BIT: claiming it as the query's category satisfies Box3D's
+	// second filter term for every shape, leaving Godot's rule, query.mask & layer.
 	b3QueryFilter filter = b3DefaultQueryFilter();
-	filter.categoryBits = 1;
+	filter.categoryBits = BOX3D_QUERY_BIT;
 	filter.maskBits = p_collision_mask;
 	return filter;
 }

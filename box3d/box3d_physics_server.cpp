@@ -810,7 +810,16 @@ int Box3DPhysicsServer::body_test_ray_separation(RID p_body, const Transform &p_
 }
 
 RID Box3DPhysicsServer::soft_body_create(bool p_init_sleeping) {
-	return RID();
+	// Box3D is a rigid body engine, so soft bodies stay unsimulated. Godot's
+	// SoftBody node still attaches an instance id to this RID and frees it on
+	// exit, and the editor builds one of every node class at startup to read
+	// property defaults, so returning a null RID means two errors every run.
+	// Hand back a real body that is never given a space: inert, and valid.
+	Box3DBody *body = memnew(Box3DBody);
+	body->mode = BODY_MODE_STATIC;
+	RID rid = body_owner.make_rid(body);
+	body->self = rid;
+	return rid;
 }
 
 void Box3DPhysicsServer::soft_body_update_visual_server(RID p_body, class SoftBodyVisualServerHandler *p_visual_server_handler) {

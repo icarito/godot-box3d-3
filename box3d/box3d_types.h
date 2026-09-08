@@ -10,6 +10,16 @@
 
 #include <box3d/box3d.h>
 
+// Box3D accepts a shape for a query only when the filters agree both ways:
+//   (shape.categoryBits & query.maskBits) && (shape.maskBits & query.categoryBits)
+// Godot has no second term: a space query hits a body when query.mask & body.layer,
+// and the body's own mask says what it detects, not what may detect it. A body with
+// collision_mask 0 (ordinary for level geometry) would be invisible to every query.
+// Godot's layers are 32 bits and these filters are 64, so the top bit is free: every
+// shape claims it in maskBits and every query claims it as its category. No shape
+// ever carries it as a category, so body-vs-body filtering is untouched.
+#define BOX3D_QUERY_BIT (((uint64_t)1) << 63)
+
 // Box3D keeps world positions in b3Pos, which widens to double only in large-world
 // builds, and everything else in float.
 
