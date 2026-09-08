@@ -26,6 +26,8 @@ scenes=(
 	res://tests/m17_cryopod.tscn
 	res://tests/m18_scaled_hull.tscn
 	res://tests/m20_body_scale.tscn
+	res://tests/m21_character_mover.tscn
+	res://tests/m22_trimesh_jitter.tscn
 )
 
 status=0
