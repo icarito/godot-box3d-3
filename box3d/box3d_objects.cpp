@@ -5,6 +5,7 @@
 #include "box3d_objects.h"
 
 #include "core/object.h"
+#include "core/project_settings.h"
 
 static b3BodyType b3_body_type(PhysicsServer::BodyMode p_mode) {
 	switch (p_mode) {
@@ -770,6 +771,10 @@ Box3DSpace::Box3DSpace() {
 	direct_state = memnew(Box3DDirectSpaceState);
 	direct_state->space = this;
 	apply_gravity();
+
+	if (ProjectSettings::get_singleton()->has_setting("physics/3d/box3d_substeps")) {
+		sub_steps = CLAMP((int)ProjectSettings::get_singleton()->get_setting("physics/3d/box3d_substeps"), 1, 8);
+	}
 }
 
 Box3DSpace::~Box3DSpace() {
@@ -809,7 +814,7 @@ void Box3DSpace::apply_gravity() {
 void Box3DSpace::step(real_t p_delta) {
 	last_step = p_delta;
 	apply_area_overrides();
-	b3World_Step(world, p_delta, 4);
+	b3World_Step(world, p_delta, sub_steps);
 	pump_events(p_delta);
 	for (List<Box3DBody *>::Element *E = bodies.front(); E; E = E->next()) {
 		E->get()->dispatch_force_integration(p_delta);

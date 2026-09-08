@@ -2,7 +2,7 @@ extends Spatial
 
 # Physics benchmark: identical stress scene under every backend.
 # Stacks of boxes settle, then a rain of spheres hits them while
-# Performance.TIME_PHYSICS is accumulated over the measurement window.
+# Performance.TIME_PHYSICS_PROCESS is accumulated over the measurement window.
 # Prints one line for scripts/bench.sh to parse:
 #   BENCH result engine=<name> avg_physics_ms=<x> active=<y> pairs=<z>
 
@@ -23,7 +23,7 @@ func _ready():
 			_add_box(Vector3(-6 + 3 * (s % 5) + (0.02 * i if i % 2 == 0 else -0.02 * i),
 					0.51 + i * 1.02, -2.4 + 1.6 * (s / 5)))
 	for i in range(RAIN_BOXES):
-		_add_box(Vector3(fmod(i * 0.737, 10.0) - 5.0, 14.0 + i * 0.65, fmod(i * 1.311, 6.0) - 3.0), true)
+		_add_box(Vector3(fmod(i * 0.737, 10.0) - 5.0, 14.0 + i * 0.65, fmod(i * 1.311, 6.0) - 3.0))
 	print("BENCH start engine=", ProjectSettings.get_setting("physics/3d/physics_engine"),
 			" bodies=", spawned)
 
@@ -48,7 +48,7 @@ func _physics_process(delta):
 	frames += 1
 	if frames <= WARMUP_FRAMES:
 		return
-	acc_usec += Performance.get_monitor(Performance.TIME_PHYSICS) * 1000000.0
+	acc_usec += Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS) * 1000000.0
 	if frames == WARMUP_FRAMES + MEASURE_FRAMES:
 		var measured = frames - WARMUP_FRAMES
 		print("BENCH result engine=", ProjectSettings.get_setting("physics/3d/physics_engine"),

@@ -264,7 +264,7 @@ void Box3DSpace::apply_area_overrides() {
 
 		// Box3D applies internal gravity every sub-step but consumes applied
 		// forces once, so scale the override force to land the same delta-v.
-		const float substeps = 4.0f;
+		const float substeps = (float)sub_steps;
 		float mass = MAX((float)body->mass, CMP_EPSILON);
 		b3Body_ApplyForceToCenter(body->id, b3_vec(total_gravity * mass * substeps), false);
 

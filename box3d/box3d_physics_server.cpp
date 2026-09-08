@@ -1369,6 +1369,12 @@ bool Box3DPhysicsServer::is_flushing_queries() const {
 }
 
 void Box3DPhysicsServer::set_collision_iterations(int p_iterations) {
+	// Godot's "iterations" knob maps onto Box3D's sub-step count: each sub-step
+	// re-runs collision detection and the solver, trading speed for accuracy.
+	// The default is 4, also overridable through physics/3d/box3d_substeps.
+	for (int i = 0; i < active_spaces.size(); i++) {
+		active_spaces[i]->sub_steps = CLAMP(p_iterations, 1, 8);
+	}
 }
 
 int Box3DPhysicsServer::get_process_info(PhysicsServer::ProcessInfo p_info) {

@@ -212,6 +212,7 @@ public:
 	RID self;
 	b3WorldId world = b3_nullWorldId;
 	bool active = false;
+	int sub_steps = 4; // physics/3d/box3d_substeps
 
 	// Godot's World feeds gravity through the space RID's default area.
 	real_t gravity_magnitude = 9.8;
