@@ -135,7 +135,7 @@ GODOT=../godot/bin/godot.x11.tools.64 scripts/test.sh
    - Flat (zero-volume) convex polygon shapes work, but Box3D's hull builder
      needs a volume, so they are thickened by ~1 cm total along their plane
      normal. A plate collides as a very thin prism rather than a true plane.
-   - Optional tuning: `physics/3d/box3d_substeps` (default 4, range 1–8).
+   - Optional tuning: `physics/3d/box3d_substeps` (default 2, range 1–8).
      More sub-steps cost time and buy accuracy; 1 is closest to what Godot's
      Bullet backend does per frame.
 
@@ -187,7 +187,7 @@ Three runs on the reference machine, a debug (unoptimised) build:
 | Backend | avg physics ms/frame |
 |---------|---------------------|
 | Box3D, 1 sub-step | 5.4 – 8.3 |
-| Box3D, 4 sub-steps (default) | 10.0 – 11.9 |
+| Box3D, 4 sub-steps | 10.0 – 11.9 |
 | Bullet (Godot's default 3D backend) | 7.1 – 12.4 |
 
 Read that carefully before drawing conclusions:
@@ -244,7 +244,7 @@ Feature complete for the Godot 3 gameplay layer:
 - Soft bodies remain unsupported (Box3D is a rigid-body engine); every soft
   body call is a documented no-op.
 - Single-threaded stepping (`workerCount = 1`) for determinism; Box3D's
-  internal sub-stepping is used (4 sub-steps per frame).
+  internal sub-stepping is used (2 sub-steps per frame by default).
 
 Roadmap ideas: incremental shape rebuilds, height field grid centering,
 threaded stepping once determinism is verified across runs.

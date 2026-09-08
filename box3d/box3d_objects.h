@@ -212,7 +212,9 @@ public:
 	RID self;
 	b3WorldId world = b3_nullWorldId;
 	bool active = false;
-	int sub_steps = 4; // physics/3d/box3d_substeps
+	// Sub-steps buy solver quality and cost close to linear time. Two is the
+	// low-end default; physics/3d/box3d_substeps overrides it, range 1-8.
+	int sub_steps = 2;
 
 	// Godot's World feeds gravity through the space RID's default area.
 	real_t gravity_magnitude = 9.8;
