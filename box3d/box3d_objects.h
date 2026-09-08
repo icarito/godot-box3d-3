@@ -1,6 +1,6 @@
 /**************************************************************************/
 /*  box3d_objects.h                                                       */
-/*  Shapes, spaces and bodies backing the Godot RIDs.                     */
+/*  Shapes, spaces, bodies, areas and joints backing the Godot RIDs.      */
 /**************************************************************************/
 
 #ifndef BOX3D_OBJECTS_H
@@ -14,6 +14,7 @@
 
 class Box3DSpace;
 class Box3DBody;
+class Box3DJoint;
 
 /// A Godot shape RID is a geometry definition, not a Box3D shape: the same RID
 /// can be attached to several bodies and Box3D shapes always belong to one body.
@@ -28,22 +29,41 @@ public:
 
 	// Bodies to rebuild when the geometry changes under them.
 	Set<Box3DBody *> owners;
+
+	// Owned Box3D geometry that the world only references. Convex hulls are
+	// cloned into the world hull database at shape creation, but meshes and
+	// height fields keep pointing at the data, so it has to stay alive here.
+	b3MeshData *mesh_data = nullptr;
+	b3HeightFieldData *height_data = nullptr;
+
+	void clear_geometry();
+
+	~Box3DShape();
 };
 
-/// Placeholder so Area nodes and the World's default-area parameters have
-/// somewhere to land. Real area behaviour is M6.
-class Box3DArea : public RID_Data {
+/// Tag on the b3 body user data so queries can tell physics bodies from the
+/// proxies created for areas. It must stay the first base class of both users:
+/// the b3 user data is a void pointer, and only a first base shares the
+/// complete object's address.
+class Box3DEntity {
 public:
-	RID space;
-	ObjectID instance_id = 0;
-	uint32_t collision_layer = 1;
-	uint32_t collision_mask = 1;
-	bool ray_pickable = true;
-	Transform transform;
-	Map<PhysicsServer::AreaParameter, Variant> params;
+	bool is_area = false;
+	virtual ~Box3DEntity() {}
 };
 
-class Box3DBody : public RID_Data {
+/// One reported contact on a body, in the shape PhysicsDirectBodyState expects.
+struct Box3DContact {
+	Vector3 local_position; // World point minus this body's origin.
+	Vector3 world_position;
+	Vector3 normal; // Points from the collider toward this body.
+	real_t impulse = 0;
+	int local_shape = 0;
+	RID collider;
+	ObjectID collider_id = 0;
+	int collider_shape = 0;
+};
+
+class Box3DBody : public Box3DEntity, public RID_Data {
 public:
 	struct ShapeInstance {
 		Box3DShape *shape = nullptr;
@@ -81,22 +101,39 @@ public:
 	real_t angular_damp = -1.0;
 	real_t kinematic_safe_margin = 0.001;
 
+	// Gravity and damping after area overrides ran, for the direct state.
+	Vector3 total_gravity;
+	real_t total_linear_damp = 0.0;
+	real_t total_angular_damp = 0.0;
+	bool gravity_from_area = false; // gravity came from an override, applied as a force
+
 	Vector<ShapeInstance> shapes;
+
+	// Collision exceptions, kept as RIDs so freeing order does not matter.
+	Set<RID> exceptions;
+	Map<RID, b3JointId> exception_joints;
+
+	// Contacts gathered after the last step, only when reporting is on.
+	Vector<Box3DContact> contacts;
 
 	ObjectID fi_callback_id = 0;
 	StringName fi_callback_method;
 	Variant fi_callback_udata;
 	bool was_awake = true;
 
+	Set<Box3DJoint *> joints;
+
 	_FORCE_INLINE_ bool in_world() const { return B3_IS_NON_NULL(id); }
 
 	void set_space(Box3DSpace *p_space);
 	void rebuild_shapes();
 	void apply_mass();
-	void apply_damping();
+	void apply_damping(real_t p_linear = -1.0, real_t p_angular = -1.0);
 	void apply_filter();
 	void apply_material();
 	void apply_motion_locks();
+	void apply_exceptions();
+	void clear_exceptions();
 
 	Transform get_transform() const;
 	Vector3 get_linear_velocity() const;
@@ -104,8 +141,63 @@ public:
 	bool is_sleeping() const;
 
 	void dispatch_force_integration(real_t p_delta);
-
+	void collect_contacts();
 	~Box3DBody();
+
+private:
+	void _create_in_world();
+	void _destroy_in_world();
+	void _create_shape(int p_idx);
+};
+
+/// Godot Areas ride on a kinematic proxy body whose shapes are Box3D sensors:
+/// that gives body monitoring, area monitoring and query support for free.
+class Box3DArea : public Box3DEntity, public RID_Data {
+public:
+	struct ShapeInstance {
+		Box3DShape *shape = nullptr;
+		Transform xform;
+		bool disabled = false;
+		b3ShapeId id = b3_nullShapeId;
+	};
+
+	RID self;
+	Box3DSpace *space = nullptr;
+	b3BodyId id = b3_nullBodyId;
+
+	ObjectID instance_id = 0;
+	uint32_t collision_layer = 1;
+	uint32_t collision_mask = 1;
+	PhysicsServer::AreaSpaceOverrideMode override_mode = PhysicsServer::AREA_SPACE_OVERRIDE_DISABLED;
+	bool monitorable = true;
+	bool ray_pickable = true;
+	Transform transform;
+
+	Map<PhysicsServer::AreaParameter, Variant> params;
+
+	Vector<ShapeInstance> shapes;
+
+	ObjectID monitor_callback_id = 0;
+	StringName monitor_callback_method;
+	ObjectID area_monitor_callback_id = 0;
+	StringName area_monitor_callback_method;
+
+	_FORCE_INLINE_ bool in_world() const { return B3_IS_NON_NULL(id); }
+	_FORCE_INLINE_ bool monitoring() const { return monitor_callback_id != 0 || area_monitor_callback_id != 0; }
+
+	void set_space(Box3DSpace *p_space);
+	void set_transform(const Transform &p_transform);
+	void rebuild_shapes();
+	void apply_filter();
+	void apply_material();
+
+	void set_monitor_callback(Object *p_receiver, const StringName &p_method);
+	void set_area_monitor_callback(Object *p_receiver, const StringName &p_method);
+
+	void report_body(uint32_t p_status, Box3DBody *p_body, int p_body_shape, int p_area_shape);
+	void report_area(uint32_t p_status, Box3DArea *p_area, int p_area_shape, int p_self_shape);
+
+	~Box3DArea();
 
 private:
 	void _create_in_world();
@@ -129,10 +221,24 @@ public:
 
 	real_t last_step = 0.0;
 	List<Box3DBody *> bodies;
+	List<Box3DArea *> areas;
+
+	Box3DBody *owner_body(RID p_rid) const;
+
+	// Debug contact buffer for the physics visualization.
+	int debug_contact_max = 0;
+	Vector<Vector3> debug_contacts;
+
 	Box3DDirectSpaceState *direct_state = nullptr;
 
 	void apply_gravity();
 	void step(real_t p_delta);
+	void pump_events(real_t p_delta);
+	void apply_area_overrides();
+
+	// Kinematic queries, see box3d_motion.cpp.
+	bool test_motion(Box3DBody *p_body, const Transform &p_from, const Vector3 &p_motion, real_t p_margin,
+			PhysicsServer::MotionResult *r_result, const Set<RID> &p_exclude);
 
 	Box3DSpace();
 	~Box3DSpace();
@@ -144,21 +250,13 @@ class Box3DDirectSpaceState : public PhysicsDirectSpaceState {
 public:
 	Box3DSpace *space = nullptr;
 
-	// Queries land in M5. Until then they answer "nothing hit" rather than lie.
-	virtual int intersect_point(const Vector3 &p_point, ShapeResult *r_results, int p_result_max, const Set<RID> &p_exclude = Set<RID>(), uint32_t p_collision_mask = 0xFFFFFFFF, bool p_collide_with_bodies = true, bool p_collide_with_areas = false) { return 0; }
-	virtual bool intersect_ray(const Vector3 &p_from, const Vector3 &p_to, RayResult &r_result, const Set<RID> &p_exclude = Set<RID>(), uint32_t p_collision_mask = 0xFFFFFFFF, bool p_collide_with_bodies = true, bool p_collide_with_areas = false, bool p_pick_ray = false) { return false; }
-	virtual int intersect_shape(const RID &p_shape, const Transform &p_xform, float p_margin, ShapeResult *r_results, int p_result_max, const Set<RID> &p_exclude = Set<RID>(), uint32_t p_collision_mask = 0xFFFFFFFF, bool p_collide_with_bodies = true, bool p_collide_with_areas = false) { return 0; }
-	virtual bool cast_motion(const RID &p_shape, const Transform &p_xform, const Vector3 &p_motion, float p_margin, float &p_closest_safe, float &p_closest_unsafe, const Set<RID> &p_exclude = Set<RID>(), uint32_t p_collision_mask = 0xFFFFFFFF, bool p_collide_with_bodies = true, bool p_collide_with_areas = false, ShapeRestInfo *r_info = nullptr) {
-		p_closest_safe = 1.0f;
-		p_closest_unsafe = 1.0f;
-		return false;
-	}
-	virtual bool collide_shape(RID p_shape, const Transform &p_shape_xform, float p_margin, Vector3 *r_results, int p_result_max, int &r_result_count, const Set<RID> &p_exclude = Set<RID>(), uint32_t p_collision_mask = 0xFFFFFFFF, bool p_collide_with_bodies = true, bool p_collide_with_areas = false) {
-		r_result_count = 0;
-		return false;
-	}
-	virtual bool rest_info(RID p_shape, const Transform &p_shape_xform, float p_margin, ShapeRestInfo *r_info, const Set<RID> &p_exclude = Set<RID>(), uint32_t p_collision_mask = 0xFFFFFFFF, bool p_collide_with_bodies = true, bool p_collide_with_areas = false) { return false; }
-	virtual Vector3 get_closest_point_to_object_volume(RID p_object, const Vector3 p_point) const { return Vector3(); }
+	virtual int intersect_point(const Vector3 &p_point, ShapeResult *r_results, int p_result_max, const Set<RID> &p_exclude = Set<RID>(), uint32_t p_collision_mask = 0xFFFFFFFF, bool p_collide_with_bodies = true, bool p_collide_with_areas = false);
+	virtual bool intersect_ray(const Vector3 &p_from, const Vector3 &p_to, RayResult &r_result, const Set<RID> &p_exclude = Set<RID>(), uint32_t p_collision_mask = 0xFFFFFFFF, bool p_collide_with_bodies = true, bool p_collide_with_areas = false, bool p_pick_ray = false);
+	virtual int intersect_shape(const RID &p_shape, const Transform &p_xform, float p_margin, ShapeResult *r_results, int p_result_max, const Set<RID> &p_exclude = Set<RID>(), uint32_t p_collision_mask = 0xFFFFFFFF, bool p_collide_with_bodies = true, bool p_collide_with_areas = false);
+	virtual bool cast_motion(const RID &p_shape, const Transform &p_xform, const Vector3 &p_motion, float p_margin, float &p_closest_safe, float &p_closest_unsafe, const Set<RID> &p_exclude = Set<RID>(), uint32_t p_collision_mask = 0xFFFFFFFF, bool p_collide_with_bodies = true, bool p_collide_with_areas = false, ShapeRestInfo *r_info = nullptr);
+	virtual bool collide_shape(RID p_shape, const Transform &p_shape_xform, float p_margin, Vector3 *r_results, int p_result_max, int &r_result_count, const Set<RID> &p_exclude = Set<RID>(), uint32_t p_collision_mask = 0xFFFFFFFF, bool p_collide_with_bodies = true, bool p_collide_with_areas = false);
+	virtual bool rest_info(RID p_shape, const Transform &p_shape_xform, float p_margin, ShapeRestInfo *r_info, const Set<RID> &p_exclude = Set<RID>(), uint32_t p_collision_mask = 0xFFFFFFFF, bool p_collide_with_bodies = true, bool p_collide_with_areas = false);
+	virtual Vector3 get_closest_point_to_object_volume(RID p_object, const Vector3 p_point) const;
 };
 
 /// One shared instance, like Godot's own servers do: it is only ever live for
@@ -205,20 +303,54 @@ public:
 	virtual void set_sleep_state(bool p_enable);
 	virtual bool is_sleeping() const;
 
-	// Contact reporting is M6.
-	virtual int get_contact_count() const { return 0; }
-	virtual Vector3 get_contact_local_position(int p_contact_idx) const { return Vector3(); }
-	virtual Vector3 get_contact_local_normal(int p_contact_idx) const { return Vector3(); }
-	virtual float get_contact_impulse(int p_contact_idx) const { return 0; }
-	virtual int get_contact_local_shape(int p_contact_idx) const { return 0; }
-	virtual RID get_contact_collider(int p_contact_idx) const { return RID(); }
-	virtual Vector3 get_contact_collider_position(int p_contact_idx) const { return Vector3(); }
-	virtual ObjectID get_contact_collider_id(int p_contact_idx) const { return 0; }
-	virtual int get_contact_collider_shape(int p_contact_idx) const { return 0; }
-	virtual Vector3 get_contact_collider_velocity_at_position(int p_contact_idx) const { return Vector3(); }
+	virtual int get_contact_count() const;
+	virtual Vector3 get_contact_local_position(int p_contact_idx) const;
+	virtual Vector3 get_contact_local_normal(int p_contact_idx) const;
+	virtual float get_contact_impulse(int p_contact_idx) const;
+	virtual int get_contact_local_shape(int p_contact_idx) const;
+	virtual RID get_contact_collider(int p_contact_idx) const;
+	virtual Vector3 get_contact_collider_position(int p_contact_idx) const;
+	virtual ObjectID get_contact_collider_id(int p_contact_idx) const;
+	virtual int get_contact_collider_shape(int p_contact_idx) const;
+	virtual Vector3 get_contact_collider_velocity_at_position(int p_contact_idx) const;
 
 	virtual real_t get_step() const { return delta; }
 	virtual PhysicsDirectSpaceState *get_space_state();
+};
+
+/// Box3D joints live as long as both bodies share a space, and are rebuilt
+/// when a body re-enters. Godot-side parameters are kept so getters work.
+class Box3DJoint : public RID_Data {
+public:
+	RID self;
+	PhysicsServer::JointType type = PhysicsServer::JOINT_PIN;
+	b3JointId id = b3_nullJointId;
+
+	Box3DBody *body_a = nullptr;
+	Box3DBody *body_b = nullptr;
+
+	bool disable_collisions = false;
+	int solver_priority = 1;
+
+	Transform frame_a;
+	Transform frame_b;
+
+	// Generic parameter storage, keyed per joint family.
+	Map<int, real_t> params;
+	Map<int, bool> flags;
+	Vector3 axis_a;
+	Vector3 axis_b;
+
+	_FORCE_INLINE_ bool in_world() const { return B3_IS_NON_NULL(id); }
+
+	void set_bodies(Box3DBody *p_a, Box3DBody *p_b);
+	void rebuild();
+	void invalidate();
+
+	~Box3DJoint();
+
+private:
+	void _destroy_in_world();
 };
 
 #endif // BOX3D_OBJECTS_H

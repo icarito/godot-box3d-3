@@ -12,8 +12,16 @@ class Box3DPhysicsServer : public PhysicsServer {
 	mutable RID_Owner<Box3DSpace> space_owner;
 	mutable RID_Owner<Box3DArea> area_owner;
 	mutable RID_Owner<Box3DBody> body_owner;
+	mutable RID_Owner<Box3DJoint> joint_owner;
 	Vector<Box3DSpace *> active_spaces;
 	bool active = true;
+
+	static Box3DPhysicsServer *singleton;
+
+public:
+	static Box3DShape *shape_from_rid(RID p_rid) {
+		return singleton ? singleton->shape_owner.getornull(p_rid) : nullptr;
+	}
 
 public:
 	virtual RID shape_create(ShapeType p_shape);
