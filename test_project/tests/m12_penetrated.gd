@@ -14,6 +14,8 @@ var velocity = Vector3()
 var state = 0
 var frames = 0
 var mark = 0.0
+var pod_body
+var pod_velocity = Vector3()
 var failures = []
 
 
@@ -22,6 +24,10 @@ func _ready():
 	_trimesh_floor()
 	# A block the body is spawned INSIDE of, overlapping by 0.3 m.
 	_box_static(Vector3(1.0, 1.0, 1.0), Vector3(0, 1.0, 0))
+	# A tall pod, like a cryo capsule, with the body waking up inside it near a
+	# side wall. Escaping upward is 2.3 m and sideways 0.15 m: pushing out the
+	# long way leaves the body standing on the pod's invisible roof.
+	_box_static(Vector3(0.5, 1.2, 0.5), Vector3(20, 1.2, 0))
 
 	body = KinematicBody.new()
 	var box = BoxShape.new()
@@ -32,6 +38,15 @@ func _ready():
 	add_child(body)
 	# Overlapping the block on purpose.
 	body.global_transform = Transform(Basis(), Vector3(1.1, 1.5, 0))
+
+	pod_body = KinematicBody.new()
+	var pbox = BoxShape.new()
+	pbox.extents = Vector3(0.35, 0.9, 0.35)
+	var pcol = CollisionShape.new()
+	pcol.shape = pbox
+	pod_body.add_child(pcol)
+	add_child(pod_body)
+	pod_body.global_transform = Transform(Basis(), Vector3(20.4, 1.0, 0))
 
 
 func _trimesh_floor():
@@ -68,6 +83,8 @@ func _check(p_ok, p_what):
 func _physics_process(delta):
 	frames += 1
 	velocity.y -= GRAVITY * delta
+	pod_velocity.y -= GRAVITY * delta
+	pod_velocity = pod_body.move_and_slide(pod_velocity, Vector3.UP)
 	var o = body.global_transform.origin
 	match state:
 		0:
@@ -82,6 +99,9 @@ func _physics_process(delta):
 			velocity = body.move_and_slide(velocity, Vector3.UP)
 			if frames >= WALKF:
 				_check(o.x > mark + 2.0, "walks away afterwards (moved %.3f)" % (o.x - mark))
+				var po = pod_body.global_transform.origin
+				_check(po.y < 1.6, "pod escape goes sideways, not over the roof (y=%.3f, roof is 2.4)" % po.y)
+				_check(po.x > 20.7, "escapes through the near wall at +x (x=%.3f, needs > 20.7)" % po.x)
 				if failures.empty():
 					print("RESULT m12_penetrated -> PASS")
 					get_tree().quit(0)

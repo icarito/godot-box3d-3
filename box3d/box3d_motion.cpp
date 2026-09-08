@@ -116,60 +116,75 @@ bool proxy_contact(const Box3DWorldProxy &p_ours, const b3ShapeProxy &p_theirs, 
 		return true;
 	}
 
-	// Interpenetrating. Scaling our cloud toward its centroid separates the pair
-	// again, which is enough to name the axis. Scale rather than a fixed inset:
-	// an inset shrinks each axis only in proportion to its share of the diagonal,
-	// which barely dents a flat box.
+	// Interpenetrating. GJK gives no direction here, and shrinking our cloud
+	// toward its centroid cannot help when we are entirely inside the other
+	// shape, which is exactly the case that matters: a character waking up
+	// inside a cryo pod. Projection needs neither. Score candidate axes and
+	// keep the shallowest escape, which is what stops a body being flung out
+	// the long way: that pod is 2.4 m tall and its near wall 0.05 m away, and
+	// pushing up left the character standing on the pod's invisible roof.
+	//
+	// ponytail: the candidates are the world axes, exact for the axis-aligned
+	// boxes that level geometry is built from and an approximation elsewhere.
+	// A true minimum translation needs both shapes' face normals plus their
+	// edge cross products; add that if angled geometry starts trapping bodies.
+	const Vector3 axes[3] = { Vector3(1, 0, 0), Vector3(0, 1, 0), Vector3(0, 0, 1) };
+
+	real_t best_depth = 1e30;
+	Vector3 best_normal;
+	for (int a = 0; a < 3; a++) {
+		const Vector3 axis = axes[a];
+
+		real_t ours_min = 1e30, ours_max = -1e30;
+		for (int i = 0; i < p_ours.proxy.count; i++) {
+			const real_t d = axis.dot(g_vec(p_ours.points[i]));
+			ours_min = MIN(ours_min, d);
+			ours_max = MAX(ours_max, d);
+		}
+		ours_min -= p_ours.proxy.radius;
+		ours_max += p_ours.proxy.radius;
+
+		real_t theirs_min = 1e30, theirs_max = -1e30;
+		for (int i = 0; i < p_theirs.count; i++) {
+			const real_t d = axis.dot(g_vec(p_theirs.points[i]));
+			theirs_min = MIN(theirs_min, d);
+			theirs_max = MAX(theirs_max, d);
+		}
+		theirs_min -= p_theirs.radius;
+		theirs_max += p_theirs.radius;
+
+		// Both are positive while the pair overlaps on this axis: how far we
+		// must travel along +axis, and along -axis, to clear them.
+		const real_t push_positive = theirs_max - ours_min;
+		const real_t push_negative = ours_max - theirs_min;
+		if (push_positive <= 0.0 || push_negative <= 0.0) {
+			return false; // a separating axis: they do not actually overlap
+		}
+		if (push_positive < best_depth) {
+			best_depth = push_positive;
+			best_normal = axis;
+		}
+		if (push_negative < best_depth) {
+			best_depth = push_negative;
+			best_normal = -axis;
+		}
+	}
+
+	if (best_normal.length_squared() < CMP_EPSILON) {
+		return false;
+	}
+
+	// Put the witness point on the face we are escaping through.
 	Vector3 centroid;
 	for (int i = 0; i < p_ours.proxy.count; i++) {
 		centroid += g_vec(p_ours.points[i]);
 	}
 	centroid /= MAX(p_ours.proxy.count, 1);
 
-	const real_t factors[3] = { 0.5, 0.25, 0.08 };
-	for (int step = 0; step < 3; step++) {
-		Box3DWorldProxy small = p_ours;
-		small.proxy.radius = p_ours.proxy.radius * (float)factors[step];
-		for (int i = 0; i < small.proxy.count; i++) {
-			Vector3 pt = g_vec(p_ours.points[i]);
-			small.points[i] = b3_vec(centroid + (pt - centroid) * factors[step]);
-		}
-		small.proxy.points = small.points;
-
-		input.proxyA = small.proxy;
-		b3SimplexCache retry_cache = { 0 };
-		out = b3ShapeDistance(&input, &retry_cache, nullptr, 0);
-		if (out.distance <= 0.0f) {
-			continue; // still buried, shrink harder
-		}
-
-		// The shrunken query only gives the direction. Measure the real overlap
-		// by projecting both full clouds onto it.
-		Vector3 normal = -g_vec(out.normal);
-		real_t ours_min = 1e30;
-		for (int i = 0; i < p_ours.proxy.count; i++) {
-			ours_min = MIN(ours_min, normal.dot(g_vec(p_ours.points[i])));
-		}
-		ours_min -= p_ours.proxy.radius;
-
-		real_t theirs_max = -1e30;
-		for (int i = 0; i < p_theirs.count; i++) {
-			theirs_max = MAX(theirs_max, normal.dot(g_vec(p_theirs.points[i])));
-		}
-		theirs_max += p_theirs.radius;
-
-		const real_t penetration = theirs_max - ours_min;
-		if (penetration <= 0.0) {
-			continue; // the axis does not actually separate them
-		}
-
-		r_normal = normal;
-		r_point = g_vec(out.pointB);
-		r_depth = penetration + p_margin;
-		return true;
-	}
-
-	return false; // buried past any shrink we are willing to try
+	r_normal = best_normal;
+	r_point = centroid - best_normal * (best_depth * 0.5);
+	r_depth = best_depth + p_margin;
+	return true;
 }
 
 // Meshes and height fields have no point-cloud form, so the contact phase used to
