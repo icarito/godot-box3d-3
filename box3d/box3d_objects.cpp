@@ -35,25 +35,13 @@ static b3Matrix3 b3_scale_matrix(const b3Matrix3 &p_m, float p_s) {
 
 /* Box3DShape */
 
-Box3DShape::~Box3DShape() {
-	clear_geometry();
-}
-
-void Box3DShape::clear_geometry() {
-	if (mesh_data) {
-		b3DestroyMesh(mesh_data);
-		mesh_data = nullptr;
-	}
-	if (height_data) {
-		b3DestroyHeightField(height_data);
-		height_data = nullptr;
-	}
-}
-
 /* Box3DBody */
 
 Box3DBody::~Box3DBody() {
 	_destroy_in_world();
+	for (int i = 0; i < shapes.size(); i++) {
+		free_shape_geometry(i);
+	}
 }
 
 void Box3DBody::set_space(Box3DSpace *p_space) {
@@ -279,6 +267,18 @@ static b3ShapeId b3_create_godot_shape(b3BodyId p_id, const b3ShapeDef &p_def, B
 	}
 }
 
+void Box3DBody::free_shape_geometry(int p_idx) {
+	ShapeInstance &si = shapes.write[p_idx];
+	if (si.mesh_data) {
+		b3DestroyMesh(si.mesh_data);
+		si.mesh_data = nullptr;
+	}
+	if (si.height_data) {
+		b3DestroyHeightField(si.height_data);
+		si.height_data = nullptr;
+	}
+}
+
 void Box3DBody::_create_shape(int p_idx) {
 	ShapeInstance &si = shapes.write[p_idx];
 	si.id = b3_nullShapeId;
@@ -317,34 +317,23 @@ void Box3DBody::_create_shape(int p_idx) {
 				verts[i] = b3_vec(r[i]);
 				indices[i] = i;
 			}
+			// Bake the local transform into the vertices before building, so the
+			// BVH is built once instead of built, thrown away and rebuilt.
+			if (si.xform != Transform()) {
+				for (int i = 0; i < vertex_count; i++) {
+					verts[i] = b3_vec(si.xform.xform(g_vec(verts[i])));
+				}
+			}
 			b3MeshDef mdef = { 0 };
 			mdef.vertices = verts.ptr();
 			mdef.indices = indices.ptr();
 			mdef.vertexCount = vertex_count;
 			mdef.triangleCount = triangles;
 			mdef.weldVertices = true;
-			si.shape->clear_geometry();
-			si.shape->mesh_data = b3CreateMesh(&mdef, nullptr, 0);
-			
-			ERR_FAIL_NULL(si.shape->mesh_data);
-			// Meshes are only cloned by reference, so the transform must be
-			// baked through the mesh def; Godot trimesh bodies keep their
-			// per-shape transform on the body, which stays supported because
-			// the b3 body transform carries it. Local shape offsets are baked
-			// by shifting the vertices themselves.
-			if (si.xform != Transform()) {
-				LocalVector<b3Vec3> moved;
-				moved.resize(vertex_count);
-				for (int i = 0; i < vertex_count; i++) {
-					moved[i] = b3_vec(si.xform.xform(g_vec(verts[i])));
-				}
-				b3MeshDef moved_def = mdef;
-				moved_def.vertices = moved.ptr();
-				si.shape->clear_geometry();
-				si.shape->mesh_data = b3CreateMesh(&moved_def, nullptr, 0);
-				ERR_FAIL_NULL(si.shape->mesh_data);
-			}
-			si.id = b3CreateMeshShape(id, &def, si.shape->mesh_data, b3Vec3_one);
+			free_shape_geometry(p_idx);
+			si.mesh_data = b3CreateMesh(&mdef, nullptr, 0);
+			ERR_FAIL_NULL(si.mesh_data);
+			si.id = b3CreateMeshShape(id, &def, si.mesh_data, b3Vec3_one);
 			
 		} break;
 		case PhysicsServer::SHAPE_HEIGHTMAP: {
@@ -370,13 +359,13 @@ void Box3DBody::_create_shape(int p_idx) {
 			hfdef.countZ = depth;
 			hfdef.globalMinimumHeight = d.has("min_height") ? (float)(real_t)d["min_height"] : -1e30f;
 			hfdef.globalMaximumHeight = d.has("max_height") ? (float)(real_t)d["max_height"] : 1e30f;
-			si.shape->clear_geometry();
-			si.shape->height_data = b3CreateHeightField(&hfdef);
-			ERR_FAIL_NULL(si.shape->height_data);
+			free_shape_geometry(p_idx);
+			si.height_data = b3CreateHeightField(&hfdef);
+			ERR_FAIL_NULL(si.height_data);
 			// ponytail: Godot centers the height map grid on the body origin while
 			// Box3D's grid starts at (0,0); the offset cannot be baked into a height
 			// field, so height maps created off-origin lose that offset.
-			si.id = b3CreateHeightFieldShape(id, &def, si.shape->height_data);
+			si.id = b3CreateHeightFieldShape(id, &def, si.height_data);
 		} break;
 		case PhysicsServer::SHAPE_RAY: {
 			// Box3D has no ray shape: rays take part in casts only, never in
@@ -403,6 +392,7 @@ void Box3DBody::rebuild_shapes() {
 			b3DestroyShape(shapes[i].id, false);
 			shapes.write[i].id = b3_nullShapeId;
 		}
+		free_shape_geometry(i);
 	}
 	for (int i = 0; i < shapes.size(); i++) {
 		_create_shape(i);

@@ -425,6 +425,7 @@ void Box3DPhysicsServer::body_remove_shape(RID p_body, int p_shape_idx) {
 	GET_OR_FAIL(Box3DBody, body, body_owner, p_body);
 	ERR_FAIL_INDEX(p_shape_idx, body->shapes.size());
 	Box3DShape *shape = body->shapes[p_shape_idx].shape;
+	body->free_shape_geometry(p_shape_idx);
 	body->shapes.remove(p_shape_idx);
 	if (shape) {
 		bool still_used = false;
@@ -444,6 +445,7 @@ void Box3DPhysicsServer::body_clear_shapes(RID p_body) {
 		if (body->shapes[i].shape) {
 			body->shapes[i].shape->owners.erase(body);
 		}
+		body->free_shape_geometry(i);
 	}
 	body->shapes.clear();
 	body->rebuild_shapes();
@@ -1295,6 +1297,7 @@ void Box3DPhysicsServer::free(RID p_rid) {
 			Box3DBody *body = E->get();
 			for (int i = body->shapes.size() - 1; i >= 0; i--) {
 				if (body->shapes[i].shape == shape) {
+					body->free_shape_geometry(i);
 					body->shapes.remove(i);
 				}
 			}
@@ -1313,6 +1316,7 @@ void Box3DPhysicsServer::free(RID p_rid) {
 			if (body->shapes[i].shape) {
 				body->shapes[i].shape->owners.erase(body);
 			}
+			body->free_shape_geometry(i);
 		}
 		// Joints attached to this body lose one anchor and die.
 		while (!body->joints.empty()) {

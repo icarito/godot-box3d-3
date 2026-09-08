@@ -30,15 +30,6 @@ public:
 	// Bodies to rebuild when the geometry changes under them.
 	Set<Box3DBody *> owners;
 
-	// Owned Box3D geometry that the world only references. Convex hulls are
-	// cloned into the world hull database at shape creation, but meshes and
-	// height fields keep pointing at the data, so it has to stay alive here.
-	b3MeshData *mesh_data = nullptr;
-	b3HeightFieldData *height_data = nullptr;
-
-	void clear_geometry();
-
-	~Box3DShape();
 };
 
 /// Tag on the b3 body user data so queries can tell physics bodies from the
@@ -70,6 +61,13 @@ public:
 		Transform xform;
 		bool disabled = false;
 		b3ShapeId id = b3_nullShapeId;
+
+		// Box3D clones hulls into the world's database but only REFERENCES mesh
+		// and height field data, so it must outlive the b3 shape. It belongs to
+		// the instance, not to the shared Box3DShape: the same trimesh resource
+		// on two bodies needs two of these, and the local transform is baked in.
+		b3MeshData *mesh_data = nullptr;
+		b3HeightFieldData *height_data = nullptr;
 	};
 
 	RID self;
@@ -132,6 +130,8 @@ public:
 	void apply_filter();
 	void apply_material();
 	void apply_motion_locks();
+	// Dropping a shape instance has to release the geometry it owns.
+	void free_shape_geometry(int p_idx);
 	void apply_exceptions();
 	void clear_exceptions();
 
