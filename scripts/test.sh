@@ -21,6 +21,7 @@ scenes=(
 	res://tests/m12_penetrated.tscn
 	res://tests/m13_trigger_layers.tscn
 	res://tests/m14_shared_trimesh.tscn
+	res://tests/m15_shape_scale.tscn
 )
 
 status=0

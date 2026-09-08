@@ -187,16 +187,29 @@ static bool b3_thicken_flat_points(const LocalVector<b3Vec3> &p_points, LocalVec
 
 static b3ShapeId b3_create_godot_shape(b3BodyId p_id, const b3ShapeDef &p_def, Box3DShape *p_shape,
 		const Transform &p_xform) {
+	// A CollisionShape's local basis routinely carries scale, and level geometry
+	// exported from modelling tools is full of mirrored ones (negative
+	// determinant). b3_transform() keeps only the rotation, so the scale has to
+	// ride along separately. Godot decomposes a basis as rotation * scale, with
+	// the scale going all-negative for a mirror, and Box3D applies its scale in
+	// the same order: point, then scale, then rotate, then translate. It also
+	// reverses hull winding for a reflected scale, so mirrors come out solid.
+	const Vector3 basis_scale = p_xform.basis.get_scale();
+	const b3Vec3 b3_scale = b3_vec(basis_scale);
+	// Spheres and capsules take no scale argument, so theirs is baked into the
+	// geometry. Only a uniform factor makes sense there; take the largest.
+	const float uniform_scale = MAX(Math::abs(basis_scale.x), MAX(Math::abs(basis_scale.y), Math::abs(basis_scale.z)));
+
 	switch (p_shape->type) {
 		case PhysicsServer::SHAPE_BOX: {
 			Vector3 he = p_shape->data;
 			b3BoxHull hull = b3MakeBoxHull(MAX((float)he.x, B3_LINEAR_SLOP), MAX((float)he.y, B3_LINEAR_SLOP), MAX((float)he.z, B3_LINEAR_SLOP));
 			// Box3D bakes the local transform into a world-owned clone of the hull,
 			// so the stack copy above does not need to outlive this call.
-			return b3CreateTransformedHullShape(p_id, &p_def, &hull.base, b3_transform(p_xform), b3Vec3_one);
+			return b3CreateTransformedHullShape(p_id, &p_def, &hull.base, b3_transform(p_xform), b3_scale);
 		}
 		case PhysicsServer::SHAPE_SPHERE: {
-			b3Sphere sphere = { b3_vec(p_xform.origin), (float)p_shape->data };
+			b3Sphere sphere = { b3_vec(p_xform.origin), (float)p_shape->data * uniform_scale };
 			return b3CreateSphereShape(p_id, &p_def, &sphere);
 		}
 		case PhysicsServer::SHAPE_CAPSULE: {
@@ -209,10 +222,12 @@ static b3ShapeId b3_create_godot_shape(b3BodyId p_id, const b3ShapeDef &p_def, B
 			// Godot's height is the mid-section; the caps extend past it by radius.
 			// b3CreateCapsuleShape carries no transform, so the shape transform's
 			// rotation is baked into the axis endpoints.
+			// The basis already carries the scale, so transforming the endpoints
+			// stretches the axis; only the radius needs the uniform factor.
 			b3Capsule capsule = {
 				b3_vec(p_xform.basis.xform(Vector3(0, 0, -height * 0.5)) + p_xform.origin),
 				b3_vec(p_xform.basis.xform(Vector3(0, 0, height * 0.5)) + p_xform.origin),
-				MAX(radius, B3_LINEAR_SLOP)
+				MAX(radius * uniform_scale, B3_LINEAR_SLOP)
 			};
 			return b3CreateCapsuleShape(p_id, &p_def, &capsule);
 		}
@@ -227,7 +242,7 @@ static b3ShapeId b3_create_godot_shape(b3BodyId p_id, const b3ShapeDef &p_def, B
 			if (!hull) {
 				return b3_nullShapeId;
 			}
-			b3ShapeId sid = b3CreateTransformedHullShape(p_id, &p_def, hull, b3_transform(p_xform), b3Vec3_one);
+			b3ShapeId sid = b3CreateTransformedHullShape(p_id, &p_def, hull, b3_transform(p_xform), b3_scale);
 			b3DestroyHull(hull);
 			return sid;
 		}
@@ -258,7 +273,7 @@ static b3ShapeId b3_create_godot_shape(b3BodyId p_id, const b3ShapeDef &p_def, B
 				ERR_PRINT("Box3D: failed to build a convex hull from the given points, ignoring it.");
 				return b3_nullShapeId;
 			}
-			b3ShapeId sid = b3CreateTransformedHullShape(p_id, &p_def, hull, b3_transform(p_xform), b3Vec3_one);
+			b3ShapeId sid = b3CreateTransformedHullShape(p_id, &p_def, hull, b3_transform(p_xform), b3_scale);
 			b3DestroyHull(hull); // Cloned into the world hull database.
 			return sid;
 		}
@@ -707,49 +722,14 @@ void Box3DArea::_create_shape(int p_idx) {
 	def.filter.maskBits = (uint64_t)collision_mask | BOX3D_QUERY_BIT;
 	def.userData = (void *)(intptr_t)p_idx;
 
-	switch (si.shape->type) {
-		case PhysicsServer::SHAPE_BOX: {
-			Vector3 he = si.shape->data;
-			b3BoxHull hull = b3MakeBoxHull(MAX((float)he.x, B3_LINEAR_SLOP), MAX((float)he.y, B3_LINEAR_SLOP), MAX((float)he.z, B3_LINEAR_SLOP));
-			si.id = b3CreateTransformedHullShape(id, &def, &hull.base, b3_transform(si.xform), b3Vec3_one);
-		} break;
-		case PhysicsServer::SHAPE_SPHERE: {
-			b3Sphere sphere = { b3_vec(Vector3()), (float)si.shape->data };
-			si.id = b3CreateSphereShape(id, &def, &sphere);
-		} break;
-		case PhysicsServer::SHAPE_CAPSULE: {
-			Dictionary d = si.shape->data;
-			float radius = d.has("radius") ? (float)(real_t)d["radius"] : 0.5;
-			float height = d.has("height") ? (float)(real_t)d["height"] : 1.0;
-			b3Capsule capsule = {
-				b3_vec(si.xform.basis.xform(Vector3(0, 0, -height * 0.5)) + si.xform.origin),
-				b3_vec(si.xform.basis.xform(Vector3(0, 0, height * 0.5)) + si.xform.origin),
-				MAX(radius, B3_LINEAR_SLOP)
-			};
-			si.id = b3CreateCapsuleShape(id, &def, &capsule);
-		} break;
-		case PhysicsServer::SHAPE_CONVEX_POLYGON: {
-			PoolVector3Array points = si.shape->data;
-			int count = points.size();
-			if (count < 4) {
-				return;
-			}
-			PoolVector3Array::Read r = points.read();
-			LocalVector<b3Vec3> b3points;
-			b3points.resize(count);
-			for (int i = 0; i < count; i++) {
-				b3points[i] = b3_vec(r[i]);
-			}
-			b3HullData *hull = b3CreateHull(b3points.ptr(), count, count);
-			if (hull) {
-				si.id = b3CreateTransformedHullShape(id, &def, hull, b3_transform(si.xform), b3Vec3_one);
-				b3DestroyHull(hull);
-			}
-		} break;
-		default: {
-			ERR_PRINT("Box3D: shape type " + itos(si.shape->type) + " is not supported on areas, ignoring it.");
-		} break;
+	// Areas used to duplicate the body path and had drifted from it: no scale,
+	// no cylinders, a sphere that ignored its local offset, and no thickening
+	// for flat convex plates. One builder, one behaviour.
+	si.id = b3_create_godot_shape(id, def, si.shape, si.xform);
+	if (B3_IS_NULL(si.id)) {
+		ERR_PRINT("Box3D: shape type " + itos(si.shape->type) + " is not supported on areas, ignoring it.");
 	}
+
 }
 
 void Box3DArea::rebuild_shapes() {
