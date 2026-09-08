@@ -27,11 +27,15 @@ func _ready():
 	var sphere = SphereShape.new()
 	sphere.radius = 0.4
 	subjects.sphere = _add_rigid(sphere, Vector3(-3, DROP_Y, 0))
-	# 2. Capsule: radius 0.25, mid height 0.5 -> rests at y = 1.0.
+	# 2. Capsule: radius 0.25, mid height 0.5, rotated to stand like a
+	#    character (capsules are Z-aligned in Godot 3's physics).
 	var capsule = CapsuleShape.new()
 	capsule.radius = 0.25
 	capsule.height = 0.5
-	subjects.capsule = _add_rigid(capsule, Vector3(-1, DROP_Y, 0))
+	var cap_col = CollisionShape.new()
+	cap_col.shape = capsule
+	cap_col.transform = Transform(Basis(Vector3(1, 0, 0), -PI * 0.5), Vector3())
+	subjects.capsule = _add_rigid_with_col(cap_col, Vector3(-1, DROP_Y, 0))
 	# 3. Cylinder: radius 0.25, height 0.6 -> rests at y = 0.8.
 	var cylinder = CylinderShape.new()
 	cylinder.radius = 0.25
@@ -83,11 +87,14 @@ func _add_floor():
 	floor_body.global_transform = Transform(Basis(), Vector3(2, 0, 0))
 
 func _add_rigid(p_shape, p_origin):
-	var body = RigidBody.new()
-	body.contact_monitor = false
 	var col = CollisionShape.new()
 	col.shape = p_shape
-	body.add_child(col)
+	return _add_rigid_with_col(col, p_origin)
+
+func _add_rigid_with_col(p_col, p_origin):
+	var body = RigidBody.new()
+	body.contact_monitor = false
+	body.add_child(p_col)
 	add_child(body)
 	body.global_transform = Transform(Basis(), p_origin)
 	return body

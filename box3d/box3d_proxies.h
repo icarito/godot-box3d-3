@@ -41,8 +41,10 @@ inline bool box3d_build_godot_proxy(const Box3DShape *p_shape, const Transform &
 			Dictionary d = p_shape->data;
 			float radius = d.has("radius") ? (float)(real_t)d["radius"] : 0.5;
 			float height = d.has("height") ? (float)(real_t)d["height"] : 1.0;
-			r_proxy.points[0] = b3_vec(p_xform.xform(Vector3(0, -height * 0.5, 0)));
-			r_proxy.points[1] = b3_vec(p_xform.xform(Vector3(0, height * 0.5, 0)));
+			// Z-aligned, like the Bullet module's btCapsuleShapeZ (see
+			// box3d_objects.cpp for the reasoning).
+			r_proxy.points[0] = b3_vec(p_xform.xform(Vector3(0, 0, -height * 0.5)));
+			r_proxy.points[1] = b3_vec(p_xform.xform(Vector3(0, 0, height * 0.5)));
 			r_proxy.proxy.count = 2;
 			r_proxy.proxy.radius = radius;
 		} break;

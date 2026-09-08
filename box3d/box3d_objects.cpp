@@ -208,15 +208,24 @@ static b3ShapeId b3_create_godot_shape(b3BodyId p_id, const b3ShapeDef &p_def, B
 			return b3CreateTransformedHullShape(p_id, &p_def, &hull.base, b3_transform(p_xform), b3Vec3_one);
 		}
 		case PhysicsServer::SHAPE_SPHERE: {
-			b3Sphere sphere = { b3_vec(Vector3()), (float)p_shape->data };
+			b3Sphere sphere = { b3_vec(p_xform.origin), (float)p_shape->data };
 			return b3CreateSphereShape(p_id, &p_def, &sphere);
 		}
 		case PhysicsServer::SHAPE_CAPSULE: {
 			Dictionary d = p_shape->data;
 			float radius = d.has("radius") ? (float)(real_t)d["radius"] : 0.5;
 			float height = d.has("height") ? (float)(real_t)d["height"] : 1.0;
+			// Godot 3's Bullet module maps CapsuleShape to btCapsuleShapeZ, so a
+			// capsule is Z-aligned here (the shape's local Y is the capsule axis
+			// in Godot 4, but every 3.x scene was authored against Bullet).
 			// Godot's height is the mid-section; the caps extend past it by radius.
-			b3Capsule capsule = { b3_vec(Vector3(0, -height * 0.5, 0)), b3_vec(Vector3(0, height * 0.5, 0)), MAX(radius, B3_LINEAR_SLOP) };
+			// b3CreateCapsuleShape carries no transform, so the shape transform's
+			// rotation is baked into the axis endpoints.
+			b3Capsule capsule = {
+				b3_vec(p_xform.basis.xform(Vector3(0, 0, -height * 0.5)) + p_xform.origin),
+				b3_vec(p_xform.basis.xform(Vector3(0, 0, height * 0.5)) + p_xform.origin),
+				MAX(radius, B3_LINEAR_SLOP)
+			};
 			return b3CreateCapsuleShape(p_id, &p_def, &capsule);
 		}
 		case PhysicsServer::SHAPE_CYLINDER: {
@@ -722,7 +731,11 @@ void Box3DArea::_create_shape(int p_idx) {
 			Dictionary d = si.shape->data;
 			float radius = d.has("radius") ? (float)(real_t)d["radius"] : 0.5;
 			float height = d.has("height") ? (float)(real_t)d["height"] : 1.0;
-			b3Capsule capsule = { b3_vec(Vector3(0, -height * 0.5, 0)), b3_vec(Vector3(0, height * 0.5, 0)), MAX(radius, B3_LINEAR_SLOP) };
+			b3Capsule capsule = {
+				b3_vec(si.xform.basis.xform(Vector3(0, 0, -height * 0.5)) + si.xform.origin),
+				b3_vec(si.xform.basis.xform(Vector3(0, 0, height * 0.5)) + si.xform.origin),
+				MAX(radius, B3_LINEAR_SLOP)
+			};
 			si.id = b3CreateCapsuleShape(id, &def, &capsule);
 		} break;
 		case PhysicsServer::SHAPE_CONVEX_POLYGON: {

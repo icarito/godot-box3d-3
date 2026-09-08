@@ -146,9 +146,52 @@ bool triangle_callback(b3Vec3 p_a, b3Vec3 p_b, b3Vec3 p_c, int, void *p_context)
 	return true;
 }
 
+// Vertical penetration probe for mesh and height field shapes.
+struct MeshProbeContext {
+	b3BodyId skip;
+	const Set<RID> *exclude;
+	uint32_t mask;
+	Vector3 point;
+
+	bool hit = false;
+	float fraction = 1.0f;
+	b3Pos point_hit;
+	b3Vec3 normal;
+	b3ShapeId shape = b3_nullShapeId;
+};
+
+float mesh_probe_callback(b3ShapeId p_shape, b3Pos p_point, b3Vec3 p_normal, float p_fraction, uint64_t, int, int, void *p_context) {
+	MeshProbeContext *ctx = (MeshProbeContext *)p_context;
+	b3BodyId owner = b3Shape_GetBody(p_shape);
+	if (B3_ID_EQUALS(owner, ctx->skip)) {
+		return -1.0f;
+	}
+	Box3DEntity *entity = (Box3DEntity *)b3Body_GetUserData(owner);
+	if (!entity || entity->is_area) {
+		return -1.0f;
+	}
+	Box3DBody *other = (Box3DBody *)entity;
+	if (ctx->exclude && !ctx->exclude->empty() && ctx->exclude->has(other->self)) {
+		return -1.0f;
+	}
+	// The probe targets the queried shape's own layer mask.
+	b3Filter shape_filter = b3Shape_GetFilter(p_shape);
+	if (((shape_filter.categoryBits & ctx->mask) == 0) || ((shape_filter.maskBits & BOX3D_QUERY_BIT) == 0)) {
+		return -1.0f;
+	}
+
+	if (p_fraction < ctx->fraction) {
+		ctx->fraction = p_fraction;
+		ctx->point_hit = p_point;
+		ctx->normal = p_normal;
+		ctx->shape = p_shape;
+		ctx->hit = true;
+	}
+	return p_fraction;
+}
+
 // The world-space proxy, expressed as bounds in the queried shape's own frame.
-b3AABB local_bounds(const Box3DWorldProxy &p_proxy, const Transform &p_to_local, float p_inflate) {
-	Vector3 lower = p_to_local.xform(g_vec(p_proxy.points[0]));
+b3AABB local_bounds(const Box3DWorldProxy &p_proxy, const Transform &p_to_local, float p_inflate) {	Vector3 lower = p_to_local.xform(g_vec(p_proxy.points[0]));
 	Vector3 upper = lower;
 	for (int i = 1; i < p_proxy.proxy.count; i++) {
 		Vector3 v = p_to_local.xform(g_vec(p_proxy.points[i]));
@@ -176,8 +219,11 @@ bool query_contacts(Box3DBody *p_body, const Transform &p_xform, real_t p_margin
 		*r_recover = Vector3();
 	}
 
+	// Query group = BOX3D_QUERY_BIT (see box3d_types.h): the broadphase filter
+	// is bidirectional, and only the reserved query bit satisfies its second
+	// term for every shape, leaving Godot's query.mask & body.layer rule.
 	b3QueryFilter filter = b3DefaultQueryFilter();
-	filter.categoryBits = p_body->collision_layer;
+	filter.categoryBits = BOX3D_QUERY_BIT;
 	filter.maskBits = p_body->collision_mask;
 
 	for (int i = 0; i < p_body->shapes.size(); i++) {
@@ -222,6 +268,71 @@ bool query_contacts(Box3DBody *p_body, const Transform &p_xform, real_t p_margin
 					b3QueryHeightField(b3Shape_GetHeightField(candidates.shapes[c]), bounds, triangle_callback, &tri_ctx);
 				}
 				any = any || tri_ctx.any;
+
+				// GJK cannot measure a shape that already overlaps the triangle
+				// (distance collapses to zero with no direction), which is exactly
+				// the state a body resting on level geometry is in. Probe each
+				// proxy point with a vertical ray from slightly above: a hit
+				// closer than the point's surface means penetration, and the hit
+				// normal doubles as the recovery direction. Bullet recovers these
+				// through its custom mesh contact pairs; Box3D has none for
+				// kinematic bodies.
+				const float probe_down = 2.0f * p_margin + ours.proxy.radius;
+				for (int pi = 0; pi < ours.proxy.count; pi++) {
+					Vector3 from = g_vec(ours.points[pi]) + Vector3(0, p_margin, 0);
+					Vector3 to = from - Vector3(0, p_margin + probe_down, 0);
+
+					MeshProbeContext probe_ctx;
+					probe_ctx.skip = p_body->id;
+					probe_ctx.exclude = &p_exclude;
+					probe_ctx.mask = p_body->collision_mask;
+					probe_ctx.point = from;
+
+					b3World_CastRay(p_body->space->world, b3_pos(from), b3_vec(to - from), filter,
+							mesh_probe_callback, &probe_ctx);
+
+					if (!probe_ctx.hit) {
+						continue;
+					}
+
+					float penetration = (p_margin + ours.proxy.radius) - probe_ctx.fraction * probe_down;
+					if (penetration <= 0.0f && penetration > -p_margin) {
+						// Touching within the margin: resting contact, no recovery.
+						float depth = p_margin + penetration;
+						if (r_deepest && depth > r_deepest->depth) {
+							r_deepest->normal = g_vec(probe_ctx.normal);
+							r_deepest->point = g_pos(probe_ctx.point_hit);
+							r_deepest->depth = depth;
+							r_deepest->shape = candidates.shapes[c];
+							r_deepest->local_shape = i;
+							r_deepest->valid = true;
+							any = true;
+						}
+						continue;
+					}
+					if (penetration <= 0.0f) {
+						continue;
+					}
+
+					Vector3 normal = g_vec(probe_ctx.normal);
+					if (normal.length_squared() < 0.5f) {
+						// Initial-overlap hits carry no normal (the probe started
+						// inside the surface); recover straight up the probe.
+						normal = Vector3(0, 1, 0);
+					}
+					if (r_recover) {
+						*r_recover += normal * penetration * RECOVER_SCALE;
+					}
+					if (r_deepest && penetration > r_deepest->depth) {
+						r_deepest->normal = normal;
+						r_deepest->point = g_pos(probe_ctx.point_hit);
+						r_deepest->depth = penetration;
+						r_deepest->shape = candidates.shapes[c];
+						r_deepest->local_shape = i;
+						r_deepest->valid = true;
+					}
+					any = true;
+				}
 				continue;
 			}
 
@@ -375,8 +486,9 @@ bool Box3DSpace::test_motion(Box3DBody *p_body, const Transform &p_from, const V
 	CastHit sweep;
 
 	if (total_length > CMP_EPSILON) {
+		// Query group = BOX3D_QUERY_BIT: see the note in query_contacts().
 		b3QueryFilter filter = b3DefaultQueryFilter();
-		filter.categoryBits = p_body->collision_layer;
+		filter.categoryBits = BOX3D_QUERY_BIT;
 		filter.maskBits = p_body->collision_mask;
 
 		for (int i = 0; i < p_body->shapes.size(); i++) {
@@ -400,6 +512,9 @@ bool Box3DSpace::test_motion(Box3DBody *p_body, const Transform &p_from, const V
 			hit.skip = p_body->id;
 			hit.exclude = &p_exclude;
 			b3World_CastShape(world, b3_pos(Vector3()), &ours.proxy, b3_vec(motion), filter, cast_callback, &hit);
+
+			b3TreeStats stats = b3World_CastShape(world, b3_pos(Vector3()), &ours.proxy, b3_vec(motion), filter, cast_callback, &hit);
+
 
 			if (!hit.hit) {
 				continue;
@@ -520,7 +635,7 @@ int Box3DSpace::test_ray_separation(Box3DBody *p_body, const Transform &p_transf
 			down /= ray_length;
 
 			b3QueryFilter filter = b3DefaultQueryFilter();
-			filter.categoryBits = p_body->collision_layer;
+			filter.categoryBits = BOX3D_QUERY_BIT;
 			filter.maskBits = p_body->collision_mask;
 
 			// Cast from the origin down to the tip (the origin stays outside

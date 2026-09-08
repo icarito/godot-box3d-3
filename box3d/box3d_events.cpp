@@ -160,7 +160,10 @@ static bool area_overlaps_body(Box3DArea *p_area, Box3DBody *p_body) {
 			continue;
 		}
 		b3QueryFilter filter = b3DefaultQueryFilter();
-		filter.categoryBits = p_area->collision_layer;
+		// Query group = BOX3D_QUERY_BIT: the filter is bidirectional, and an
+		// area detects bodies whose layer meets the area's mask, not the
+		// other way around.
+		filter.categoryBits = BOX3D_QUERY_BIT;
 		filter.maskBits = p_area->collision_mask;
 		if (b3Body_OverlapShape(p_body->id, b3_pos(Vector3()), &area_proxy.proxy, filter,
 					b3Body_GetTransform(p_body->id))) {
