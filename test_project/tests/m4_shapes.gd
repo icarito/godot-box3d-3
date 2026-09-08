@@ -42,6 +42,24 @@ func _ready():
 	ramp_box_shape.extents = Vector3(0.15, 0.15, 0.15)
 	subjects.ramp_box = _add_rigid(ramp_box_shape, Vector3(3.5, DROP_Y, 0))
 	_add_convex_ramp(Vector3(3.5, 1.2, 0))
+	# 5b. Flat convex plate: a zero-volume ConvexPolygonShape, which Godot allows
+	# and Box3D's hull builder rejects unless it is thickened first. A static
+	# plate at y=2 must still stop a box dropped onto it.
+	var plate_points = PoolVector3Array([
+		Vector3(-0.5, 0, -0.5), Vector3(0.5, 0, -0.5),
+		Vector3(0.5, 0, 0.5), Vector3(-0.5, 0, 0.5)])
+	var plate_shape = ConvexPolygonShape.new()
+	plate_shape.points = plate_points
+	var plate = StaticBody.new()
+	var plate_col = CollisionShape.new()
+	plate_col.shape = plate_shape
+	plate.add_child(plate_col)
+	add_child(plate)
+	plate.global_transform = Transform(Basis(), Vector3(-3.5, 2.0, 0))
+	var plate_box = BoxShape.new()
+	plate_box.extents = Vector3(0.2, 0.2, 0.2)
+	subjects.plate_box = _add_rigid(plate_box, Vector3(-3.5, DROP_Y, 0))
+
 	# 5. Sphere on a trimesh patch.
 	var tri_sphere = SphereShape.new()
 	tri_sphere.radius = 0.3
@@ -135,6 +153,8 @@ func _physics_process(delta):
 				"box leaves the convex ramp (y=%.4f)" % rb.global_transform.origin.y)
 			_check(abs(subjects.trimesh_sphere.global_transform.origin.y - 1.2) < TOLERANCE,
 				"sphere rests on trimesh at y=1.2 (got %.4f)" % subjects.trimesh_sphere.global_transform.origin.y)
+			var pb = subjects.plate_box.global_transform.origin.y
+			_check(pb > 1.9, "flat convex plate stops the box (y=%.4f, would fall past 1.9)" % pb)
 			print("exceptions:")
 			var a = subjects.ex_a.global_transform.origin
 			var b = subjects.ex_b.global_transform.origin

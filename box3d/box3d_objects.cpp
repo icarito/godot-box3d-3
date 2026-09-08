@@ -143,6 +143,60 @@ static bool b3_fill_shape_def(b3ShapeDef &r_def, Box3DBody *p_body, int p_idx, b
 
 // Creates the b3 shape for a Godot shape definition under a body. Returns the
 // shape id; geometry conversions that fail report and return null.
+// A convex point set with no volume (a flat quad, a line) cannot become a hull.
+// Find its plane normal from the largest spanning triangle and push the points
+// out to both sides, which turns the plate into a thin prism Box3D can build.
+// Returns false when the points are not merely flat but degenerate beyond use.
+static bool b3_thicken_flat_points(const LocalVector<b3Vec3> &p_points, LocalVector<b3Vec3> &r_thickened) {
+	const int count = (int)p_points.size();
+	if (count < 3) {
+		return false;
+	}
+
+	const Vector3 base = g_vec(p_points[0]);
+	real_t best = 0.0;
+	int far_idx = -1;
+	for (int i = 1; i < count; i++) {
+		real_t d = (g_vec(p_points[i]) - base).length_squared();
+		if (d > best) {
+			best = d;
+			far_idx = i;
+		}
+	}
+	if (far_idx < 0 || best <= CMP_EPSILON) {
+		return false; // every point is the same point
+	}
+
+	const Vector3 edge = (g_vec(p_points[far_idx]) - base).normalized();
+	best = 0.0;
+	int off_idx = -1;
+	for (int i = 1; i < count; i++) {
+		Vector3 v = g_vec(p_points[i]) - base;
+		real_t d = (v - edge * edge.dot(v)).length_squared();
+		if (d > best) {
+			best = d;
+			off_idx = i;
+		}
+	}
+	if (off_idx < 0 || best <= CMP_EPSILON) {
+		return false; // collinear, there is no plane to thicken
+	}
+
+	const Vector3 normal = edge.cross(g_vec(p_points[off_idx]) - base).normalized();
+	if (normal.length_squared() < CMP_EPSILON) {
+		return false;
+	}
+
+	const Vector3 offset = normal * (real_t)(2.0f * B3_LINEAR_SLOP);
+	r_thickened.resize(count * 2);
+	for (int i = 0; i < count; i++) {
+		Vector3 p = g_vec(p_points[i]);
+		r_thickened[i] = b3_vec(p + offset);
+		r_thickened[count + i] = b3_vec(p - offset);
+	}
+	return true;
+}
+
 static b3ShapeId b3_create_godot_shape(b3BodyId p_id, const b3ShapeDef &p_def, Box3DShape *p_shape,
 		const Transform &p_xform) {
 	switch (p_shape->type) {
@@ -195,6 +249,15 @@ static b3ShapeId b3_create_godot_shape(b3BodyId p_id, const b3ShapeDef &p_def, B
 			}
 			b3HullData *hull = b3CreateHull(b3points.ptr(), count, count);
 			if (!hull) {
+				// Godot accepts flat convex shapes and Bullet collides them as
+				// zero-thickness plates. Box3D's hull builder needs a real
+				// volume, so give a degenerate point set one and retry.
+				LocalVector<b3Vec3> thickened;
+				if (b3_thicken_flat_points(b3points, thickened)) {
+					hull = b3CreateHull(thickened.ptr(), (int)thickened.size(), (int)thickened.size());
+				}
+			}
+			if (!hull) {
 				ERR_PRINT("Box3D: failed to build a convex hull from the given points, ignoring it.");
 				return b3_nullShapeId;
 			}
@@ -226,6 +289,11 @@ void Box3DBody::_create_shape(int p_idx) {
 			}
 			PoolVector3Array faces = si.shape->data;
 			int triangles = faces.size() / 3;
+			if (faces.size() == 0) {
+				// A ConcavePolygonShape with no faces is legal and simply has no
+				// collision; Godot's own backends stay quiet about it.
+				return;
+			}
 			if (triangles < 1) {
 				ERR_PRINT("Box3D: a concave polygon shape needs at least one triangle, ignoring it.");
 				return;

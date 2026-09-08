@@ -132,10 +132,9 @@ GODOT=../godot/bin/godot.x11.tools.64 scripts/test.sh
      generate contact response, which is Godot's own semantics.
    - Generic 6DOF joints degrade to welds; pin/hinge/slider/cone-twist map
      1:1.
-   - Convex polygon shapes whose point cloud Box3D's hull builder rejects are
-     **dropped**: the collider silently stops existing while the rest of the
-     scene keeps working. See *Troubleshooting* — this is the failure mode
-     most likely to make a ported project look broken.
+   - Flat (zero-volume) convex polygon shapes work, but Box3D's hull builder
+     needs a volume, so they are thickened by ~1 cm total along their plane
+     normal. A plate collides as a very thin prism rather than a true plane.
    - Optional tuning: `physics/3d/box3d_substeps` (default 4, range 1–8).
      More sub-steps cost time and buy accuracy; 1 is closest to what Godot's
      Bullet backend does per frame.
@@ -162,21 +161,19 @@ next to it and delete it afterwards:
 **Only the binary built with this module has the backend.** Selecting `"Box3D"`
 in a stock Godot build silently falls back to Bullet.
 
-**Known issue — rejected convex hulls.**
+**Rejected convex hulls.**
 
 ```
 ERROR: Box3D: failed to build a convex hull from the given points, ignoring it.
 ERROR: Box3D: failed to create shape type 6, ignoring it.
 ```
 
-Box3D builds convex shapes with QuickHull, which refuses point sets it cannot
-turn into a closed volume. Every rejected shape is skipped, so a level built
-out of `ConvexPolygonShape` colliders loads with no collision at all and the
-player falls through the world. Seen on a Qodot/TrenchBroom project, where the
-per-brush collision shapes were all rejected; the exact property of the input
-that trips the builder has not been identified yet. Workarounds until it is
-fixed: use `ConcavePolygonShape` (trimesh) for static level geometry, or
-primitive shapes for movers.
+Box3D builds convex shapes with QuickHull, which cannot close a volume around a
+point set that has none. Flat plates are handled (see *Setup / porting*), so
+what is left here is genuinely unusable input: every point identical, or all of
+them on one line. The shape is skipped and that collider stops existing while
+the rest of the scene keeps working, which reads as "the level has no
+collision". Check the shape's points before blaming the backend.
 
 ## Benchmarks
 
