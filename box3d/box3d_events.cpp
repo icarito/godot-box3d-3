@@ -147,35 +147,105 @@ static Vector3 area_gravity(Box3DArea *p_area, const Vector3 &p_body_origin) {
 	return Vector3();
 }
 
-// Area/shape overlap test between an override area and a body. One exact
-// b3Body_OverlapShape call per area shape covers every shape on the body.
-static bool area_overlaps_body(Box3DArea *p_area, Box3DBody *p_body) {
-	for (int s = 0; s < p_area->shapes.size(); s++) {
-		const Box3DArea::ShapeInstance &si = p_area->shapes[s];
-		if (si.disabled || !si.shape || B3_IS_NULL(si.id)) {
-			continue;
-		}
-		Box3DWorldProxy area_proxy;
-		if (!box3d_build_b3_proxy(si.id, area_proxy)) {
-			continue;
-		}
-		b3QueryFilter filter = b3DefaultQueryFilter();
-		// Query group = BOX3D_QUERY_BIT: the filter is bidirectional, and an
-		// area detects bodies whose layer meets the area's mask, not the
-		// other way around.
-		filter.categoryBits = BOX3D_QUERY_BIT;
-		filter.maskBits = p_area->collision_mask;
-		if (b3Body_OverlapShape(p_body->id, b3_pos(Vector3()), &area_proxy.proxy, filter,
-					b3Body_GetTransform(p_body->id))) {
-			return true;
-		}
+// Candidate bodies for one override area, gathered once per step: the area's
+// shape proxies are built once and the broadphase prunes the candidates, so a
+// body far from every override area costs one AABB test instead of a proxy
+// build plus a precise overlap per area shape.
+struct AreaOverlap {
+	Box3DArea *area = nullptr;
+	LocalVector<Box3DWorldProxy> proxies; // world space, one per usable shape
+	Set<Box3DBody *> candidates;          // broadphase candidates, mode-filtered
+	Set<Box3DBody *> bodies;              // candidates that pass the precise test
+};
+
+struct AreaOverlapCtx {
+	Set<Box3DBody *> *candidates;
+};
+
+static bool area_candidate_callback(b3ShapeId p_shape, void *p_context) {
+	AreaOverlapCtx *ctx = (AreaOverlapCtx *)p_context;
+	b3BodyId bid = b3Shape_GetBody(p_shape);
+	if (B3_IS_NULL(bid)) {
+		return true;
 	}
-	return false;
+	Box3DEntity *entity = (Box3DEntity *)b3Body_GetUserData(bid);
+	if (!entity || entity->is_area) {
+		return true; // area-vs-area overrides ride on other sensors' events
+	}
+	Box3DBody *body = (Box3DBody *)entity;
+	if (body->mode != PhysicsServer::BODY_MODE_RIGID && body->mode != PhysicsServer::BODY_MODE_CHARACTER) {
+		return true;
+	}
+	ctx->candidates->insert(body);
+	return true; // keep searching: other bodies may overlap too
 }
 
 void Box3DSpace::apply_area_overrides() {
 	if (B3_IS_NULL(world)) {
 		return;
+	}
+
+	// Gather overlap sets once per step. When no area overrides gravity the
+	// pass is a single branch; only scenes that actually use override areas
+	// pay for the per-area queries.
+	LocalVector<AreaOverlap> overlaps;
+	if (override_area_count > 0) {
+		overlaps.reserve(override_area_count);
+		for (List<Box3DArea *>::Element *A = areas.front(); A; A = A->next()) {
+			Box3DArea *area = A->get();
+			if (area->override_mode == PhysicsServer::AREA_SPACE_OVERRIDE_DISABLED || !area->in_world()) {
+				continue;
+			}
+			AreaOverlap ov;
+			ov.area = area;
+			for (int s = 0; s < area->shapes.size(); s++) {
+				const Box3DArea::ShapeInstance &si = area->shapes[s];
+				if (si.disabled || !si.shape || B3_IS_NULL(si.id)) {
+					continue;
+				}
+				Box3DWorldProxy proxy;
+				if (!box3d_build_b3_proxy(si.id, proxy)) {
+					continue;
+				}
+				ov.proxies.push_back(proxy);
+			}
+			if (ov.proxies.empty()) {
+				continue;
+			}
+
+			// Broadphase stage: every shape whose fat AABB meets the area's
+			// bounds, with Godot's one-way mask rule applied by the engine.
+			b3AABB bounds = box3d_proxy_aabb(ov.proxies[0], 0.0f);
+			for (int p = 1; p < (int)ov.proxies.size(); p++) {
+				b3AABB other = box3d_proxy_aabb(ov.proxies[p], 0.0f);
+				bounds.lowerBound = b3Min(bounds.lowerBound, other.lowerBound);
+				bounds.upperBound = b3Max(bounds.upperBound, other.upperBound);
+			}
+			b3QueryFilter filter = b3DefaultQueryFilter();
+			// Query group = BOX3D_QUERY_BIT: the filter is bidirectional, and
+			// an area detects bodies whose layer meets the area's mask, not
+			// the other way around.
+			filter.categoryBits = BOX3D_QUERY_BIT;
+			filter.maskBits = area->collision_mask;
+			AreaOverlapCtx ctx = { &ov.candidates };
+			b3World_OverlapAABB(world, bounds, filter, area_candidate_callback, &ctx);
+
+			// Precise stage, the same b3Body_OverlapShape call the per-body
+			// loop used to run for every dynamic body, now per candidate.
+			for (Set<Box3DBody *>::Element *B = ov.candidates.front(); B; B = B->next()) {
+				Box3DBody *body = B->get();
+				for (int p = 0; p < (int)ov.proxies.size(); p++) {
+					if (b3Body_OverlapShape(body->id, b3_pos(Vector3()), &ov.proxies[p].proxy, filter,
+								b3Body_GetTransform(body->id))) {
+						ov.bodies.insert(body);
+						break;
+					}
+				}
+			}
+			if (!ov.bodies.empty()) {
+				overlaps.push_back(ov);
+			}
+		}
 	}
 
 	for (List<Box3DBody *>::Element *E = bodies.front(); E; E = E->next()) {
@@ -190,15 +260,13 @@ void Box3DSpace::apply_area_overrides() {
 		real_t total_angular_damp = body->angular_damp >= 0 ? body->angular_damp : area_angular_damp;
 
 		bool stopped = false;
-		for (List<Box3DArea *>::Element *A = areas.front(); A && !stopped; A = A->next()) {
-			Box3DArea *area = A->get();
+		for (int a = 0; a < (int)overlaps.size() && !stopped; a++) {
+			const AreaOverlap &ov = overlaps[a];
+			if (!ov.bodies.has(body)) {
+				continue;
+			}
+			Box3DArea *area = ov.area;
 			PhysicsServer::AreaSpaceOverrideMode mode = area->override_mode;
-			if (mode == PhysicsServer::AREA_SPACE_OVERRIDE_DISABLED || !area->in_world()) {
-				continue;
-			}
-			if (!area_overlaps_body(area, body)) {
-				continue;
-			}
 
 			Vector3 support_gravity = area_gravity(area, body->get_transform().origin);
 			const Map<PhysicsServer::AreaParameter, Variant>::Element *ld =
@@ -284,5 +352,9 @@ void Box3DSpace::pump_events(real_t p_delta) {
 		E->get()->collect_contacts();
 	}
 	collect_debug_contacts(this);
-	pump_sensor_events(this);
+	// Only area shapes are sensors, so a space without areas cannot have
+	// sensor events to pump.
+	if (!areas.empty()) {
+		pump_sensor_events(this);
+	}
 }

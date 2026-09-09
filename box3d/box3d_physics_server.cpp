@@ -26,7 +26,7 @@ void Box3DPhysicsServer::shape_set_data(RID p_shape, const Variant &p_data) {
 	GET_OR_FAIL(Box3DShape, shape, shape_owner, p_shape);
 	shape->data = p_data;
 	for (Set<Box3DEntity *>::Element *E = shape->owners.front(); E; E = E->next()) {
-		E->get()->rebuild_shapes();
+		E->get()->rebuild_shape(shape);
 	}
 }
 
@@ -141,7 +141,12 @@ RID Box3DPhysicsServer::area_get_space(RID p_area) const {
 
 void Box3DPhysicsServer::area_set_space_override_mode(RID p_area, PhysicsServer::AreaSpaceOverrideMode p_mode) {
 	GET_OR_FAIL(Box3DArea, area, area_owner, p_area);
+	const bool was_active = area->in_world() && area->override_mode != PhysicsServer::AREA_SPACE_OVERRIDE_DISABLED;
+	const bool is_active = area->in_world() && p_mode != PhysicsServer::AREA_SPACE_OVERRIDE_DISABLED;
 	area->override_mode = p_mode;
+	if (area->space && was_active != is_active) {
+		area->space->override_area_count += is_active ? 1 : -1;
+	}
 }
 
 PhysicsServer::AreaSpaceOverrideMode Box3DPhysicsServer::area_get_space_override_mode(RID p_area) const {
@@ -159,7 +164,10 @@ void Box3DPhysicsServer::area_add_shape(RID p_area, RID p_shape, const Transform
 	si.xform = p_transform;
 	si.disabled = p_disabled;
 	area->shapes.push_back(si);
-	area->rebuild_shapes();
+	area->create_shape(area->shapes.size() - 1);
+	if (area->in_world()) {
+		b3Body_ApplyMassFromShapes(area->id);
+	}
 }
 
 void Box3DPhysicsServer::area_set_shape(RID p_area, int p_shape_idx, RID p_shape) {
@@ -171,14 +179,17 @@ void Box3DPhysicsServer::area_set_shape(RID p_area, int p_shape_idx, RID p_shape
 	}
 	area->shapes.write[p_shape_idx].shape = shape;
 	shape->owners.insert(area);
-	area->rebuild_shapes();
+	area->create_shape(p_shape_idx);
+	if (area->in_world()) {
+		b3Body_ApplyMassFromShapes(area->id);
+	}
 }
 
 void Box3DPhysicsServer::area_set_shape_transform(RID p_area, int p_shape_idx, const Transform &p_transform) {
 	GET_OR_FAIL(Box3DArea, area, area_owner, p_area);
 	ERR_FAIL_INDEX(p_shape_idx, area->shapes.size());
 	area->shapes.write[p_shape_idx].xform = p_transform;
-	area->rebuild_shapes();
+	area->create_shape(p_shape_idx);
 }
 
 int Box3DPhysicsServer::area_get_shape_count(RID p_area) const {
@@ -230,8 +241,11 @@ void Box3DPhysicsServer::area_clear_shapes(RID p_area) {
 void Box3DPhysicsServer::area_set_shape_disabled(RID p_area, int p_shape_idx, bool p_disabled) {
 	GET_OR_FAIL(Box3DArea, area, area_owner, p_area);
 	ERR_FAIL_INDEX(p_shape_idx, area->shapes.size());
+	if (area->shapes[p_shape_idx].disabled == p_disabled) {
+		return;
+	}
 	area->shapes.write[p_shape_idx].disabled = p_disabled;
-	area->rebuild_shapes();
+	area->create_shape(p_shape_idx);
 }
 
 void Box3DPhysicsServer::area_attach_object_instance_id(RID p_area, ObjectID p_id) {
@@ -402,7 +416,10 @@ void Box3DPhysicsServer::body_add_shape(RID p_body, RID p_shape, const Transform
 	si.disabled = p_disabled;
 	body->shapes.push_back(si);
 	shape->owners.insert(body);
-	body->rebuild_shapes();
+	// Appending shifts no indices: build just the new instance instead of
+	// rebuilding the whole body (which made loading an n-shape body O(n^2)).
+	body->create_shape(body->shapes.size() - 1);
+	body->apply_mass();
 }
 
 void Box3DPhysicsServer::body_set_shape(RID p_body, int p_shape_idx, RID p_shape) {
@@ -413,14 +430,16 @@ void Box3DPhysicsServer::body_set_shape(RID p_body, int p_shape_idx, RID p_shape
 	body->shapes.write[p_shape_idx].shape->owners.erase(body);
 	body->shapes.write[p_shape_idx].shape = shape;
 	shape->owners.insert(body);
-	body->rebuild_shapes();
+	body->create_shape(p_shape_idx);
+	body->apply_mass();
 }
 
 void Box3DPhysicsServer::body_set_shape_transform(RID p_body, int p_shape_idx, const Transform &p_transform) {
 	GET_OR_FAIL(Box3DBody, body, body_owner, p_body);
 	ERR_FAIL_INDEX(p_shape_idx, body->shapes.size());
 	body->shapes.write[p_shape_idx].xform = p_transform;
-	body->rebuild_shapes();
+	body->create_shape(p_shape_idx);
+	body->apply_mass();
 }
 
 int Box3DPhysicsServer::body_get_shape_count(RID p_body) const {
@@ -474,8 +493,12 @@ void Box3DPhysicsServer::body_clear_shapes(RID p_body) {
 void Box3DPhysicsServer::body_set_shape_disabled(RID p_body, int p_shape_idx, bool p_disabled) {
 	GET_OR_FAIL(Box3DBody, body, body_owner, p_body);
 	ERR_FAIL_INDEX(p_shape_idx, body->shapes.size());
+	if (body->shapes[p_shape_idx].disabled == p_disabled) {
+		return;
+	}
 	body->shapes.write[p_shape_idx].disabled = p_disabled;
-	body->rebuild_shapes();
+	body->create_shape(p_shape_idx);
+	body->apply_mass();
 }
 
 void Box3DPhysicsServer::body_attach_object_instance_id(RID p_body, uint32_t p_id) {

@@ -8,6 +8,8 @@
 
 #include "box3d_types.h"
 
+#include "core/hash_map.h"
+#include "core/local_vector.h"
 #include "core/rid.h"
 #include "core/set.h"
 #include "servers/physics_server.h"
@@ -33,6 +35,14 @@ public:
 
 };
 
+/// Godot 3.6's HashMapHasherDefault has no RID overload; the identity of a RID
+/// is its RID_Data pointer, so hash that.
+struct Box3DRIDHasher {
+	static _FORCE_INLINE_ uint32_t hash(const RID &p_rid) {
+		return HashMapHasherDefault::hash((uint64_t)(uintptr_t)p_rid.get_data());
+	}
+};
+
 /// Tag on the b3 body user data so queries can tell physics bodies from the
 /// proxies created for areas. It must stay the first base class of both users:
 /// the b3 user data is a void pointer, and only a first base shares the
@@ -44,6 +54,9 @@ public:
 	// Zone components resize their BoxShape once the area is live, so areas
 	// need this as much as bodies do.
 	virtual void rebuild_shapes() {}
+	// A shape resource edit reaches only the holders of that resource, not
+	// the whole holder: rebuild just the instances carrying p_shape.
+	virtual void rebuild_shape(Box3DShape *p_shape) {}
 	virtual ~Box3DEntity() {}
 };
 
@@ -122,7 +135,6 @@ public:
 	ObjectID fi_callback_id = 0;
 	StringName fi_callback_method;
 	Variant fi_callback_udata;
-	bool was_awake = true;
 
 	Set<Box3DJoint *> joints;
 
@@ -130,6 +142,13 @@ public:
 
 	void set_space(Box3DSpace *p_space);
 	void rebuild_shapes();
+	// Rebuild only the instances carrying p_shape (a shape resource edit).
+	void rebuild_shape(Box3DShape *p_shape);
+	// Incremental single-shape maintenance: destroy_shape() releases the b3
+	// shape and the geometry it owns, create_shape() builds instance p_idx
+	// again. Callers follow up with apply_mass().
+	void create_shape(int p_idx);
+	void destroy_shape(int p_idx);
 	void apply_mass();
 	void apply_damping(real_t p_linear = -1.0, real_t p_angular = -1.0);
 	void apply_filter();
@@ -193,6 +212,9 @@ public:
 	void set_space(Box3DSpace *p_space);
 	void set_transform(const Transform &p_transform);
 	void rebuild_shapes();
+	void rebuild_shape(Box3DShape *p_shape);
+	void create_shape(int p_idx);
+	void destroy_shape(int p_idx);
 	void apply_filter();
 	void apply_material();
 
@@ -230,6 +252,16 @@ public:
 	real_t last_step = 0.0;
 	List<Box3DBody *> bodies;
 	List<Box3DArea *> areas;
+	// Lookup companion to the bodies list: the list keeps insertion order for
+	// deterministic stepping, the map makes RID lookups O(1).
+	HashMap<RID, Box3DBody *, Box3DRIDHasher> body_map;
+
+	// Override areas participating in apply_area_overrides(), maintained on
+	// mode change and space entry/exit so a scene with none skips the pass.
+	int override_area_count = 0;
+
+	// Reused contact read-back buffer, grown to the largest body's capacity.
+	LocalVector<b3ContactData> contact_scratch;
 
 	Box3DBody *owner_body(RID p_rid) const;
 
@@ -243,6 +275,9 @@ public:
 	void step(real_t p_delta);
 	void pump_events(real_t p_delta);
 	void apply_area_overrides();
+	// _integrate_forces/_direct_state_changed dispatch, driven by the engine's
+	// per-step move events: only bodies that moved or fell asleep are visited.
+	void dispatch_force_integration(real_t p_delta);
 
 	// Kinematic queries, see box3d_motion.cpp.
 	bool test_motion(Box3DBody *p_body, const Transform &p_from, const Vector3 &p_motion, real_t p_margin,

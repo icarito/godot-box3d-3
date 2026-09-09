@@ -64,10 +64,12 @@ void Box3DBody::set_space(Box3DSpace *p_space) {
 		exception_joints.clear();
 		_destroy_in_world();
 		space->bodies.erase(this);
+		space->body_map.erase(self);
 	}
 	space = p_space;
 	if (space) {
 		space->bodies.push_back(this);
+		space->body_map.set(self, this);
 		_create_in_world();
 		apply_exceptions();
 	}
@@ -101,7 +103,6 @@ void Box3DBody::_create_in_world() {
 	apply_mass();
 	apply_damping();
 	apply_motion_locks();
-	was_awake = true;
 }
 
 void Box3DBody::_destroy_in_world() {
@@ -472,24 +473,51 @@ void Box3DBody::_create_shape(int p_idx) {
 	}
 }
 
+void Box3DBody::destroy_shape(int p_idx) {
+	ShapeInstance &si = shapes.write[p_idx];
+	if (B3_IS_NON_NULL(si.id)) {
+		b3DestroyShape(si.id, false);
+		si.id = b3_nullShapeId;
+	}
+	free_shape_geometry(p_idx);
+}
+
+void Box3DBody::create_shape(int p_idx) {
+	destroy_shape(p_idx);
+	_create_shape(p_idx);
+}
+
 void Box3DBody::rebuild_shapes() {
-	// ponytail: rebuilds every shape on any shape change, so building a body with
-	// n shapes is O(n^2). Bodies carry a handful of shapes; make it incremental if
-	// a real scene ever shows this in a profile.
+	// Whole-body rebuild, kept for changes that touch every shape at once
+	// (a body transform scale rides into every shape's geometry). Single
+	// shape edits go through create_shape()/destroy_shape().
 	if (!in_world()) {
 		return;
 	}
 	for (int i = 0; i < shapes.size(); i++) {
-		if (B3_IS_NON_NULL(shapes[i].id)) {
-			b3DestroyShape(shapes[i].id, false);
-			shapes.write[i].id = b3_nullShapeId;
-		}
-		free_shape_geometry(i);
+		destroy_shape(i);
 	}
 	for (int i = 0; i < shapes.size(); i++) {
 		_create_shape(i);
 	}
 	apply_mass();
+}
+
+void Box3DBody::rebuild_shape(Box3DShape *p_shape) {
+	if (!in_world()) {
+		return;
+	}
+	bool changed = false;
+	for (int i = 0; i < shapes.size(); i++) {
+		if (shapes[i].shape != p_shape) {
+			continue;
+		}
+		create_shape(i);
+		changed = true;
+	}
+	if (changed) {
+		apply_mass();
+	}
 }
 
 void Box3DBody::apply_mass() {
@@ -634,14 +662,10 @@ void Box3DBody::dispatch_force_integration(real_t p_delta) {
 		return;
 	}
 
-	// Same rule as the Bullet backend: report while moving, plus the one frame
-	// where the body falls asleep, so nodes settle on the final transform.
-	const bool awake = b3Body_IsAwake(id);
-	const bool report = awake || awake != was_awake;
-	was_awake = awake;
-	if (!report) {
-		return;
-	}
+	// Called from the space's move-event pump, which only reaches a body the
+	// solver integrated this step, or one that fell asleep this step: the same
+	// "report while moving, plus the final frame" rule the Bullet backend
+	// applies -- bodies that were already asleep are never visited.
 
 	Object *obj = ObjectDB::get_instance(fi_callback_id);
 	if (!obj) {
@@ -672,8 +696,12 @@ void Box3DBody::collect_contacts() {
 	if (capacity <= 0) {
 		return;
 	}
-	LocalVector<b3ContactData> data;
-	data.resize(capacity);
+	// One buffer shared by every body in the space, grown to the largest
+	// capacity seen: reading contacts back allocates nothing per frame.
+	LocalVector<b3ContactData> &data = space->contact_scratch;
+	if ((int)data.size() < capacity) {
+		data.resize(capacity);
+	}
 	int count = b3Body_GetContactData(id, data.ptr(), capacity);
 
 	b3Pos own_center = b3Body_GetWorldCenter(id);
@@ -736,12 +764,18 @@ void Box3DArea::set_space(Box3DSpace *p_space) {
 		return;
 	}
 	if (space) {
+		if (override_mode != PhysicsServer::AREA_SPACE_OVERRIDE_DISABLED) {
+			space->override_area_count--;
+		}
 		_destroy_in_world();
 		space->areas.erase(this);
 	}
 	space = p_space;
 	if (space) {
 		space->areas.push_back(this);
+		if (override_mode != PhysicsServer::AREA_SPACE_OVERRIDE_DISABLED) {
+			space->override_area_count++;
+		}
 		_create_in_world();
 	}
 }
@@ -815,15 +849,25 @@ void Box3DArea::_create_shape(int p_idx) {
 
 }
 
+void Box3DArea::destroy_shape(int p_idx) {
+	ShapeInstance &si = shapes.write[p_idx];
+	if (B3_IS_NON_NULL(si.id)) {
+		b3DestroyShape(si.id, false);
+		si.id = b3_nullShapeId;
+	}
+}
+
+void Box3DArea::create_shape(int p_idx) {
+	destroy_shape(p_idx);
+	_create_shape(p_idx);
+}
+
 void Box3DArea::rebuild_shapes() {
 	if (!in_world()) {
 		return;
 	}
 	for (int i = 0; i < shapes.size(); i++) {
-		if (B3_IS_NON_NULL(shapes[i].id)) {
-			b3DestroyShape(shapes[i].id, false);
-			shapes.write[i].id = b3_nullShapeId;
-		}
+		destroy_shape(i);
 	}
 	for (int i = 0; i < shapes.size(); i++) {
 		_create_shape(i);
@@ -831,6 +875,23 @@ void Box3DArea::rebuild_shapes() {
 	// Sensor shapes are created with updateBodyMass = false; Box3D asserts on
 	// step while the body still carries that flag, statics included.
 	b3Body_ApplyMassFromShapes(id);
+}
+
+void Box3DArea::rebuild_shape(Box3DShape *p_shape) {
+	if (!in_world()) {
+		return;
+	}
+	bool changed = false;
+	for (int i = 0; i < shapes.size(); i++) {
+		if (shapes[i].shape != p_shape) {
+			continue;
+		}
+		create_shape(i);
+		changed = true;
+	}
+	if (changed) {
+		b3Body_ApplyMassFromShapes(id);
+	}
 }
 
 void Box3DArea::apply_filter() {
@@ -931,12 +992,8 @@ Box3DSpace::~Box3DSpace() {
 }
 
 Box3DBody *Box3DSpace::owner_body(RID p_rid) const {
-	for (const List<Box3DBody *>::Element *E = bodies.front(); E; E = E->next()) {
-		if (E->get()->self == p_rid) {
-			return E->get();
-		}
-	}
-	return nullptr;
+	const Box3DBody *const *found = body_map.getptr(p_rid);
+	return found ? const_cast<Box3DBody *>(*found) : nullptr;
 }
 
 void Box3DSpace::apply_gravity() {
@@ -951,8 +1008,29 @@ void Box3DSpace::step(real_t p_delta) {
 	apply_area_overrides();
 	b3World_Step(world, p_delta, sub_steps);
 	pump_events(p_delta);
-	for (List<Box3DBody *>::Element *E = bodies.front(); E; E = E->next()) {
-		E->get()->dispatch_force_integration(p_delta);
+	dispatch_force_integration(p_delta);
+}
+
+void Box3DSpace::dispatch_force_integration(real_t p_delta) {
+	if (B3_IS_NULL(world)) {
+		return;
+	}
+	// One read-back for the whole step, listing exactly the bodies the solver
+	// integrated (plus the ones that fell asleep): a settled scene costs a
+	// single array fetch instead of one b3Body_IsAwake call per body.
+	b3BodyEvents events = b3World_GetBodyEvents(world);
+	for (int i = 0; i < events.moveCount; i++) {
+		const b3BodyMoveEvent &e = events.moveEvents[i];
+		// A callback may have freed a body earlier in this loop; the id
+		// generation makes the stale event detectable.
+		if (!b3Body_IsValid(e.bodyId)) {
+			continue;
+		}
+		Box3DEntity *entity = (Box3DEntity *)e.userData;
+		if (!entity || entity->is_area) {
+			continue; // area proxies carry no force integration
+		}
+		static_cast<Box3DBody *>(entity)->dispatch_force_integration(p_delta);
 	}
 }
 
@@ -1145,10 +1223,9 @@ Vector3 Box3DDirectBodyState::get_contact_collider_velocity_at_position(int p_co
 	ERR_FAIL_COND_V(!body || !body->space || p_contact_idx < 0 || p_contact_idx >= body->contacts.size(), Vector3());
 	const Box3DContact &c = body->contacts[p_contact_idx];
 	// The collider RID names a body in this space; find its b3 id there.
-	for (List<Box3DBody *>::Element *E = body->space->bodies.front(); E; E = E->next()) {
-		if (E->get()->self == c.collider && E->get()->in_world()) {
-			return g_vec(b3Body_GetWorldPointVelocity(E->get()->id, b3_pos(c.world_position)));
-		}
+	Box3DBody *const *found = body->space->body_map.getptr(c.collider);
+	if (found && *found && (*found)->in_world()) {
+		return g_vec(b3Body_GetWorldPointVelocity((*found)->id, b3_pos(c.world_position)));
 	}
 	return Vector3();
 }

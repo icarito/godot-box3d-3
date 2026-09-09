@@ -404,8 +404,10 @@ b3AABB local_bounds(const Box3DWorldProxy &p_proxy, const Transform &p_to_local,
 // Closest contact between one of our shapes and everything within p_margin.
 // Returns the deepest one, which is what Godot reports as "the" collision.
 // Ray shapes are skipped: they have no contact surface to rest on.
+// r_plane_scratch carries the plane buffer across the recovery cycles so a
+// move_and_slide tick allocates it once, not once per phase.
 bool query_contacts(Box3DBody *p_body, const Transform &p_xform, real_t p_margin, const Set<RID> &p_exclude,
-		Contact *r_deepest, Vector3 *r_recover, bool p_include_rays) {
+		Contact *r_deepest, Vector3 *r_recover, bool p_include_rays, Vector<b3CollisionPlane> *r_plane_scratch) {
 	bool any = false;
 	if (r_recover) {
 		*r_recover = Vector3();
@@ -416,7 +418,10 @@ bool query_contacts(Box3DBody *p_body, const Transform &p_xform, real_t p_margin
 	// and the probe that confirms it, one probe per proxy point -- and the body
 	// buzzes against level geometry at several times the margin.
 	Vector<b3CollisionPlane> planes;
-	Vector<b3CollisionPlane> *r_planes = r_recover ? &planes : nullptr;
+	Vector<b3CollisionPlane> *r_planes = r_recover ? (r_plane_scratch ? r_plane_scratch : &planes) : nullptr;
+	if (r_planes) {
+		r_planes->clear();
+	}
 
 	// Query group = BOX3D_QUERY_BIT (see box3d_types.h): the broadphase filter
 	// is bidirectional, and only the reserved query bit satisfies its second
@@ -424,6 +429,9 @@ bool query_contacts(Box3DBody *p_body, const Transform &p_xform, real_t p_margin
 	b3QueryFilter filter = b3DefaultQueryFilter();
 	filter.categoryBits = BOX3D_QUERY_BIT;
 	filter.maskBits = p_body->collision_mask;
+
+	Candidates candidates;
+	candidates.exclude = &p_exclude;
 
 	for (int i = 0; i < p_body->shapes.size(); i++) {
 		const Box3DBody::ShapeInstance &si = p_body->shapes[i];
@@ -443,9 +451,8 @@ bool query_contacts(Box3DBody *p_body, const Transform &p_xform, real_t p_margin
 			continue;
 		}
 
-		Candidates candidates;
 		candidates.skip = p_body->id;
-		candidates.exclude = &p_exclude;
+		candidates.shapes.clear();
 		b3World_OverlapAABB(p_body->space->world, box3d_proxy_aabb(ours, p_margin), filter, collect_candidate, &candidates);
 
 		for (int c = 0; c < candidates.shapes.size(); c++) {
@@ -572,8 +579,8 @@ bool query_contacts(Box3DBody *p_body, const Transform &p_xform, real_t p_margin
 	// over-corrected wherever one surface reported twice; damping a solved delta
 	// only leaves the body short of the margin, and then the next sweep starts
 	// touching, reports initial overlap and clamps the motion to zero.
-	if (r_recover && !planes.empty()) {
-		b3PlaneSolverResult solved = b3SolvePlanes(b3Vec3_zero, planes.ptrw(), planes.size());
+	if (r_recover && r_planes && !r_planes->empty()) {
+		b3PlaneSolverResult solved = b3SolvePlanes(b3Vec3_zero, r_planes->ptrw(), r_planes->size());
 		*r_recover = g_vec(solved.delta);
 	}
 	return any;
@@ -783,9 +790,10 @@ bool Box3DSpace::test_motion(Box3DBody *p_body, const Transform &p_from, const V
 
 	// Phase 1: depenetrate real shapes; ray shapes have no contact surface.
 	Vector3 recovered;
+	Vector<b3CollisionPlane> plane_scratch;
 	for (int i = 0; i < RECOVER_CYCLES; i++) {
 		Vector3 step;
-		if (!query_contacts(p_body, xform, margin, p_exclude, nullptr, &step, false)) {
+		if (!query_contacts(p_body, xform, margin, p_exclude, nullptr, &step, false, &plane_scratch)) {
 			break;
 		}
 		xform.origin += step;
@@ -852,7 +860,7 @@ bool Box3DSpace::test_motion(Box3DBody *p_body, const Transform &p_from, const V
 
 	// Phase 3: what are we resting against now?
 	Contact contact;
-	bool colliding = query_contacts(p_body, xform, margin, p_exclude, &contact, nullptr, false) && contact.valid;
+	bool colliding = query_contacts(p_body, xform, margin, p_exclude, &contact, nullptr, false, &plane_scratch) && contact.valid;
 
 	// The contact phase compares point clouds, so it cannot see meshes or height
 	// fields, and ray shapes have no surface to rest on. The sweep sees all of

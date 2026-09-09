@@ -450,13 +450,8 @@ bool Box3DDirectSpaceState::rest_info(RID p_shape, const Transform &p_shape_xfor
 Vector3 Box3DDirectSpaceState::get_closest_point_to_object_volume(RID p_object, const Vector3 p_point) const {
 	ERR_FAIL_COND_V(!space, Vector3());
 
-	b3BodyId body_id = b3_nullBodyId;
-	for (List<Box3DBody *>::Element *E = space->bodies.front(); E; E = E->next()) {
-		if (E->get()->self == p_object && E->get()->in_world()) {
-			body_id = E->get()->id;
-			break;
-		}
-	}
+	Box3DBody *const *found = space->body_map.getptr(p_object);
+	b3BodyId body_id = found && (*found)->in_world() ? (*found)->id : b3_nullBodyId;
 	if (B3_IS_NULL(body_id)) {
 		for (List<Box3DArea *>::Element *E = space->areas.front(); E; E = E->next()) {
 			if (E->get()->self == p_object && E->get()->in_world()) {

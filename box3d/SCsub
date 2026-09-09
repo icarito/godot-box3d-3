@@ -49,5 +49,11 @@ module_obj = []
 env_box3d.add_source_files(module_obj, "*.cpp")
 env.modules_sources += module_obj
 
+# The module's own float math feeds the solver (plane offsets, capsule
+# endpoints, hull bakes); keep it under the same contraction policy as the
+# engine so module and library never disagree on a fused result.
+if not env.msvc:
+    env_box3d.Append(CCFLAGS=["-ffp-contract=off"])
+
 # Needed to force rebuilding the module files when the thirdparty library is updated.
 env.Depends(module_obj, thirdparty_obj)
