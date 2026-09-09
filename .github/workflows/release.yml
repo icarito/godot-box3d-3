@@ -169,7 +169,13 @@ jobs:
               cp "$BIN/iphone.zip" out/iphone.zip
               ;;
           esac
-          ls -l out
+          # Belt and braces: production=yes already omits them, but a stray
+          # symbol table costs hundreds of megabytes on every CI download.
+          case "${{ matrix.target }}" in
+            windows-templates) x86_64-w64-mingw32-strip out/* || true ;;
+            editor|headless|linux-templates|linux-arm64-templates) strip out/* || true ;;
+          esac
+          ls -lh out
 
       - uses: actions/upload-artifact@v4
         with:

@@ -84,9 +84,17 @@ pack_ios() {
 	(cd "$bin/ios_xcode" && rm -f ../iphone.zip && zip -q -r9 ../iphone.zip -- *)
 }
 
+# production=yes is what makes a binary publishable: no debug symbols (they are
+# 90% of the file -- 520 MB against 42 MB for a Linux template) and a statically
+# linked libstdc++, so the binary does not depend on the runner's toolchain
+# version. LTO is off because it roughly doubles build time for a preliminary
+# release. Set PRODUCTION=no when building to debug the module itself.
+PRODUCTION="${PRODUCTION:-yes}"
+
 build() { # build <scons args...>
 	echo "==> scons $*"
-	(cd "$GODOT_DIR" && scons -j"$JOBS" custom_modules="$here" progress=no "$@")
+	(cd "$GODOT_DIR" && scons -j"$JOBS" custom_modules="$here" progress=no \
+		production="$PRODUCTION" lto=none "$@")
 }
 
 for target in "$@"; do
