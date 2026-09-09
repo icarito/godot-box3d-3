@@ -1,0 +1,121 @@
+diff --git a/drivers/gles3/shader_cache_gles3.cpp b/drivers/gles3/shader_cache_gles3.cpp
+index 32ab2b2..93a4054 100644
+--- a/drivers/gles3/shader_cache_gles3.cpp
++++ b/drivers/gles3/shader_cache_gles3.cpp
+@@ -97,12 +97,28 @@ void ShaderCacheGLES3::store(const String &p_program_hash, uint32_t p_program_fo
+ 		return;
+ 	}
+ 
+-	FileAccessRef fa = FileAccess::open(storage_path.plus_file(p_program_hash), FileAccess::WRITE);
+-	ERR_FAIL_COND(!fa);
+-	fa->store_32(p_program_format);
+-	fa->store_32(p_program_data.size());
+-	PoolByteArray::Read r = p_program_data.read();
+-	fa->store_buffer(r.ptr(), p_program_data.size());
++	// An empty binary would be read back as a corrupted entry; the GL gave us nothing useful.
++	if (p_program_data.size() == 0) {
++		return;
++	}
++
++	// Write to a temporary and rename, so an interrupted run (a kill mid-boot) can't leave
++	// a truncated or empty file behind for the next one to reject as corrupted.
++	String final_path = storage_path.plus_file(p_program_hash);
++	String tmp_path = final_path + ".tmp";
++
++	{
++		FileAccessRef fa = FileAccess::open(tmp_path, FileAccess::WRITE);
++		ERR_FAIL_COND(!fa);
++		fa->store_32(p_program_format);
++		fa->store_32(p_program_data.size());
++		PoolByteArray::Read r = p_program_data.read();
++		fa->store_buffer(r.ptr(), p_program_data.size());
++	} // Closed by FileAccessRef going out of scope, before the rename.
++
++	if (storage_da->rename(tmp_path, final_path) != OK) {
++		storage_da->remove(tmp_path);
++	}
+ }
+ 
+ void ShaderCacheGLES3::remove(const String &p_program_hash) {
+diff --git a/drivers/gles3/shader_gles3.cpp b/drivers/gles3/shader_gles3.cpp
+index 6fe2a20..c7fcecf 100644
+--- a/drivers/gles3/shader_gles3.cpp
++++ b/drivers/gles3/shader_gles3.cpp
+@@ -352,7 +352,13 @@ bool ShaderGLES3::_process_program_state(Version *p_version, bool p_async_forbid
+ 				// This is from the async. queue
+ 				switch (p_version->program_binary.result_from_queue.get()) {
+ 					case -1: { // Error
+-						p_version->compile_status = Version::COMPILE_STATUS_ERROR;
++						// The secondary context failed to build this one (some drivers, e.g. Adreno,
++						// reject the ubershader there). Retry it synchronously in the main context.
++						WARN_PRINT(p_version->shader->get_shader_name() + ": shader compile queue failed; falling back to synchronous compilation.");
++						p_version->queue_rejected = true;
++						glDeleteProgram(p_version->ids.main);
++						p_version->ids.main = 0;
++						p_version->compile_status = Version::COMPILE_STATUS_RESTART_NEEDED;
+ 						p_version->compiling_list.remove_from_list();
+ 						active_compiles_count--;
+ #ifdef DEV_ENABLED
+@@ -440,9 +446,15 @@ bool ShaderGLES3::_process_program_state(Version *p_version, bool p_async_forbid
+ 							p_version->compile_status = Version::COMPILE_STATUS_RESTART_NEEDED;
+ 						} else {
+ 							if (p_version->program_binary.source == Version::ProgramBinary::SOURCE_QUEUE) {
+-								ERR_PRINT("Program binary from compile queue has been rejected by the GL. Bug?");
++								WARN_PRINT("Program binary from compile queue has been rejected by the GL. Falling back to synchronous compilation.");
++								p_version->queue_rejected = true;
++								if (shader_cache) {
++									shader_cache->remove(p_version->program_binary.cache_hash);
++								}
++								p_version->compile_status = Version::COMPILE_STATUS_RESTART_NEEDED;
++							} else {
++								p_version->compile_status = Version::COMPILE_STATUS_ERROR;
+ 							}
+-							p_version->compile_status = Version::COMPILE_STATUS_ERROR;
+ 						}
+ 					}
+ 					p_version->program_binary.data = PoolByteArray();
+@@ -802,6 +814,7 @@ ShaderGLES3::Version *ShaderGLES3::get_current_version(bool &r_async_forbidden)
+ 
+ 	if (!r_async_forbidden) {
+ 		r_async_forbidden =
++				v.queue_rejected ||
+ 				(v.async_mode == ASYNC_MODE_HIDDEN && async_hidden_forbidden) ||
+ 				(v.async_mode == ASYNC_MODE_VISIBLE && get_ubershader_flags_uniform() == -1);
+ 	}
+@@ -848,6 +861,7 @@ ShaderGLES3::Version *ShaderGLES3::get_current_version(bool &r_async_forbidden)
+ 			concat_shader_strings(strings_fragment, &fragment_code);
+ 
+ 			v.program_binary.source = Version::ProgramBinary::SOURCE_QUEUE;
++			v.program_binary.result_from_queue.set(0);
+ 			v.compile_status = Version::COMPILE_STATUS_PROCESSING_AT_QUEUE;
+ 			versions_compiling.add_last(&v.compiling_list);
+ 			active_compiles_count++;
+@@ -875,7 +889,7 @@ ShaderGLES3::Version *ShaderGLES3::get_current_version(bool &r_async_forbidden)
+ 					glDeleteProgram(async_ids.main);
+ 					v.program_binary.result_from_queue.set(1);
+ 				} else {
+-					v.program_binary.result_from_queue.set(0);
++					v.program_binary.result_from_queue.set(-1);
+ 				}
+ 			});
+ 		} else {
+diff --git a/drivers/gles3/shader_gles3.h b/drivers/gles3/shader_gles3.h
+index c30e354..6858647 100644
+--- a/drivers/gles3/shader_gles3.h
++++ b/drivers/gles3/shader_gles3.h
+@@ -193,6 +193,7 @@ private:
+ 			COMPILE_STATUS_OK,
+ 		};
+ 		CompileStatus compile_status;
++		bool queue_rejected; // The binary built by the secondary context was rejected; only compile this variant in the main context.
+ 		SelfList<Version> compiling_list;
+ 
+ 		struct ProgramBinary {
+@@ -219,6 +220,7 @@ private:
+ 				uniforms_ready(false),
+ 				last_frame_processed(UINT64_MAX),
+ 				compile_status(COMPILE_STATUS_PENDING),
++				queue_rejected(false),
+ 				compiling_list(this),
+ 				program_binary() {}
+ 	};

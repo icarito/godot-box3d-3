@@ -219,6 +219,10 @@ jobs:
         with:
           tag_name: ${{ github.event.inputs.tag || github.ref_name }}
           generate_release_notes: true
+          # A tag with a pre-release suffix (v0.2.1-rc1) publishes as a
+          # pre-release, so a project pinning BOX3D_RELEASE is not handed
+          # binaries nobody has run on a device yet. Plain vX.Y.Z is final.
+          prerelease: ${{ contains(github.event.inputs.tag || github.ref_name, '-') }}
           # The .tpz is what a person installs through the editor. The loose
           # slots are for CI: an export job needs one or two of them, and making
           # it pull half a gigabyte of every other platform to get them is the
