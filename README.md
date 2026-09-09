@@ -182,6 +182,9 @@ GODOT=../godot/bin/godot.x11.tools.64 scripts/test.sh
 
 - **This module**: this README is the setup and status reference; the module
   code comments (search for `ponytail:`) track known limitations.
+- **Odisea notes**: `docs/odisea-box3d.md` — what Odisea already gains from
+  the migration, the low-hanging fruit on its side (fake shadows, bakes,
+  culling, queries), and the module roadmap items that matter to it.
 - **Box3D engine** (`box3d/thirdparty/box3d/docs/`): upstream's own guide —
   `overview.md`, `collision.md`, `simulation.md` (sub-steps, determinism),
   `character.md`, `large_worlds.md`, `faq.md`.
@@ -259,7 +262,9 @@ collision". Check the shape's points before blaming the backend.
 `scripts/bench.sh` runs the same 264-rigid-box stress scene headlessly under
 each backend compiled into the engine, reporting the average
 `Performance.TIME_PHYSICS_PROCESS` per frame over 300 frames after a
-120-frame warmup.
+120-frame warmup. `scripts/bench.sh` covers the awake case only; for the
+settled case see `test_project/bench/bench_settle.gd` (run it with
+`godot --path test_project --no-window res://bench/bench_settle.tscn`).
 
 Three runs on the reference machine, `target=release_debug`:
 
@@ -281,6 +286,29 @@ Three runs on the reference machine, `target=release_debug`:
 - **Box3D holds a small edge here**, with its default band under Bullet's
   across three runs. One scene on one machine is not a general claim about
   the two engines.
+- **The 2026-09 per-step optimizations do not move this scene.** Three runs
+  on an Iris Xe laptop, before and after the event-driven dispatch,
+  incremental shape edits and O(1) lookups:
+
+  | Backend | before | after |
+  |---------|--------|-------|
+  | Box3D, 1 sub-step | 2.03 – 2.64 | 1.89 – 2.71 |
+  | Box3D, 2 sub-steps (default) | 2.15 – 3.52 | 2.00 – 2.91 |
+  | Box3D, 4 sub-steps | 3.52 – 4.13 | 2.42 – 6.04 |
+  | Bullet | 2.53 – 2.98 | 2.01 – 3.17 |
+
+  The bands overlap and Bullet's shift by as much as Box3D's: on this
+  264-awake-box scene the solver dominates, the module's bookkeeping is
+  noise, and the laptop's thermal throttling is the variable. The
+  optimizations pay off on paths this scene does not exercise: scene loads
+  with multi-shape bodies (single-shape edits are O(1) instead of a full
+  rebuild), scenes with no override areas, contact monitoring, and settled
+  levels.
+- **A settled pile is near-free.** The 1000-box `bench_settle` scene, once its
+  stacks fall asleep, costs 0.46 – 0.8 ms/frame with all contact pairs still
+  registered, identical before and after the per-step changes. Sleeping
+  bodies are never integrated and never dispatched to nodes, so an
+  as-settled level costs the broadphase bookkeeping alone.
 
 `INFO_ACTIVE_OBJECTS` and `INFO_COLLISION_PAIRS` report real values on Box3D;
 the Bullet module returns zeroes for them, which is why its rows read 0.
@@ -330,6 +358,13 @@ Feature complete for the Godot 3 gameplay layer:
   body call is a documented no-op.
 - Single-threaded stepping (`workerCount = 1`) for determinism; Box3D's
   internal sub-stepping is used (2 sub-steps per frame by default).
+- **Per-step overhead scales with awake bodies, not with all bodies**: node
+  integration dispatch (`_integrate_forces`/`_direct_state_changed`) is driven
+  by the engine's per-step move events, so a settled scene costs one array
+  fetch instead of an awake check per body; area space overrides gather their
+  overlaps through the broadphase once per step (a scene with no override
+  areas pays a single branch); contact read-back reuses one per-space buffer.
 
-Roadmap ideas: incremental shape rebuilds, height field grid centering,
-threaded stepping once determinism is verified across runs.
+Roadmap ideas: height field grid centering, single-sided trimesh option to
+halve BVH traversal, threaded stepping once determinism is verified across
+runs. See `docs/odisea-box3d.md` for the Odisea-facing optimization notes.
