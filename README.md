@@ -49,7 +49,7 @@ compile Godot:
 |----------|------------|
 | `godot.box3d.linux.x86_64.headless` | `platform=server` build, links no X11 — the one a CI runner should call as `GODOT_BIN` |
 | `godot.box3d.linux.x86_64.editor` | X11 editor binary, for working locally |
-| `Godot-Box3D-export-templates-*.tpz` | Export templates, Linux and Windows x86_64, release and debug |
+| `Godot-Box3D-export-templates-*.tpz` | Export templates for every platform Godot 3.6 targets: Linux x86_64 and ARM64, Windows x86_64, macOS universal, iOS, Android, HTML5 (threaded and not) |
 
 Consuming them:
 
@@ -73,9 +73,11 @@ Exporting with the stock templates produces a game running Bullet, whatever the
 project setting says: the backend only exists in binaries built with this
 module. That is the whole reason the templates are published.
 
-**Not yet published**: macOS, iOS, Android and HTML5 templates. Each needs a
-toolchain the release workflow does not set up yet (SDK/NDK, Emscripten, an
-Apple runner); the build recipe itself is platform-agnostic.
+Two things to know before shipping on 32-bit targets: ARMv7 falls back to
+scalar SIMD, which is upstream's own call (ARMv7 NEON has no divide or sqrt),
+and Box3D guarantees cross-platform determinism on 64-bit platforms only, which
+leaves wasm32 and ARMv7 out. Both work; a simulation recorded on one will not
+necessarily replay bit-for-bit on the other.
 
 ## Engine patches
 
@@ -116,8 +118,14 @@ publishes.
 scripts/build.sh editor                    # X11 editor, for scripts/test.sh locally
 scripts/build.sh headless                  # server build, what CI runs
 scripts/build.sh linux-templates           # export templates, release and debug
-scripts/build.sh windows-templates         # cross-compiled, needs mingw-w64
+scripts/build.sh windows-templates         # cross-compiled, needs mingw-w64 (-posix)
+scripts/build.sh html5-templates           # needs emsdk
+scripts/build.sh android-templates         # needs the SDK and NDK r23c
+scripts/build.sh macos-templates           # needs Xcode
+scripts/build.sh ios-templates             # needs Xcode
 ```
+
+Run it with no arguments for the list.
 
 The resulting editor binary includes both the builtin `Bullet` server and the
 new `Box3D` server.
