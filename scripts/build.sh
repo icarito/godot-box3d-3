@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds a Godot 3.6 binary carrying the Box3D module, reproducibly.
+# Builds a Godot 3.7 binary carrying the Box3D module, reproducibly.
 #
 # Usage: scripts/build.sh <target>...
 #   editor            X11 editor binary, also what scripts/test.sh runs locally
@@ -16,10 +16,10 @@
 # engine it is compiled into. Override with GODOT_REF / GODOT_DIR.
 set -euo pipefail
 
-# Godot 3.6 branch, "Bump version to 3.6.4-rc". Engine version strings end up in
+# Godot 3.7 (3.x) branch. Engine version strings end up in
 # the template directory name, so moving this pin changes what a project must
 # install; see the README's release notes.
-GODOT_REF="${GODOT_REF:-6371881f6742425cc14eaa367f18dd95955bf5e5}"
+GODOT_REF="${GODOT_REF:-dd52ac78293af1cdf3a171647aa18e2227946d04}"
 GODOT_URL="${GODOT_URL:-https://github.com/godotengine/godot.git}"
 here="$(cd "$(dirname "$0")/.." && pwd)"
 GODOT_DIR="${GODOT_DIR:-$(dirname "$here")/godot}"
@@ -34,7 +34,7 @@ echo "==> Godot   $GODOT_DIR @ $GODOT_REF"
 echo "==> Module  $here"
 
 if [ ! -d "$GODOT_DIR/.git" ]; then
-	# Blobless: the full 3.6 history is large and only one commit is built.
+	# Blobless: the full 3.x history is large and only one commit is built.
 	git clone --filter=blob:none "$GODOT_URL" "$GODOT_DIR"
 fi
 git -C "$GODOT_DIR" fetch --quiet origin "$GODOT_REF" 2>/dev/null || git -C "$GODOT_DIR" fetch --quiet origin

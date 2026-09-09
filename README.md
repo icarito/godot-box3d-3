@@ -1,6 +1,6 @@
 # godot-box3d-3
 
-**Box3D** is a Godot 3.6.x custom module that integrates
+**Box3D** is a Godot 3.7.x custom module that integrates
 [Box3D](https://github.com/erincatto/box3d) — Erin Catto's 3D physics engine,
 the 3D sibling of Box2D — as an alternative 3D physics server, without forking
 Godot.
@@ -9,7 +9,7 @@ The engine source stays untouched: this repo is only consumed through Godot's
 `custom_modules` build option.
 
 ```text
-godotengine/godot        (development dependency, branch 3.6)
+godotengine/godot        (development dependency, branch 3.x / 3.7)
 icarito/godot-box3d-3    (this repo, evolves independently)
 ```
 
@@ -49,7 +49,7 @@ compile Godot:
 |----------|------------|
 | `godot.box3d.linux.x86_64.headless` | `platform=server` build, links no X11 — the one a CI runner should call as `GODOT_BIN` |
 | `godot.box3d.linux.x86_64.editor` | X11 editor binary, for working locally |
-| `Godot-Box3D-export-templates-*.tpz` | Export templates for every platform Godot 3.6 targets: Linux x86_64 and ARM64, Windows x86_64, macOS universal, iOS, Android, HTML5 (threaded and not) |
+| `Godot-Box3D-export-templates-*.tpz` | Export templates for every platform Godot 3.7 targets: Linux x86_64 and ARM64, Windows x86_64, macOS universal, iOS, Android, HTML5 (threaded and not) |
 
 Consuming them:
 
@@ -59,10 +59,10 @@ curl -sSLo godot-box3d -H "Accept: application/octet-stream"   "https://github.c
 chmod +x godot-box3d
 
 # Export templates, unpacked where the editor looks for them.
-curl -sSLo templates.tpz   "https://github.com/icarito/godot-box3d-3/releases/latest/download/Godot-Box3D-export-templates-3.6.4.rc.custom_build.tpz"
+curl -sSLo templates.tpz   "https://github.com/icarito/godot-box3d-3/releases/latest/download/Godot-Box3D-export-templates-3.7.dev.custom_build.tpz"
 mkdir -p ~/.local/share/godot/templates
 unzip -q templates.tpz -d /tmp/tpl
-mv /tmp/tpl/templates ~/.local/share/godot/templates/3.6.4.rc.custom_build
+mv /tmp/tpl/templates ~/.local/share/godot/templates/3.7.dev.custom_build
 ```
 
 The template directory name must match the engine version string exactly or the
@@ -97,10 +97,10 @@ git clone --recurse-submodules https://github.com/icarito/godot-box3d-3.git
 git submodule update --init --recursive
 ```
 
-Clone Godot next to this repo and checkout the 3.6 branch:
+Clone Godot next to this repo and checkout the 3.x (3.7) branch:
 
 ```bash
-git clone --branch 3.6 https://github.com/godotengine/godot.git godot
+git clone --branch 3.x https://github.com/godotengine/godot.git godot
 ```
 
 Build passing this repo as a custom module:
@@ -188,7 +188,7 @@ GODOT=../godot/bin/godot.x11.tools.64 scripts/test.sh
 - **Box3D engine** (`box3d/thirdparty/box3d/docs/`): upstream's own guide —
   `overview.md`, `collision.md`, `simulation.md` (sub-steps, determinism),
   `character.md`, `large_worlds.md`, `faq.md`.
-- **Godot side**: everything is exposed through the standard Godot 3.6 3D
+- **Godot side**: everything is exposed through the standard Godot 3.7 3D
   physics classes (`RigidBody`, `StaticBody`, `KinematicBody`, `Area`,
   `PhysicsDirectSpaceState`, ...), so the engine manual applies unchanged.
 

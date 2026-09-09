@@ -12,4 +12,4 @@ them. Each is upstreamable and none touches the Box3D module.
 
 Origin: the first two come from the Odisea game project
 (`src/tools/godot_web_template/`, `src/tools/godot_android_template/`), which
-carried them locally against Godot 3.6.
+carried them locally against Godot 3.6 / 3.7.

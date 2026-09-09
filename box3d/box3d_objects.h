@@ -35,7 +35,7 @@ public:
 
 };
 
-/// Godot 3.6's HashMapHasherDefault has no RID overload; the identity of a RID
+/// Godot 3.x's HashMapHasherDefault has no RID overload; the identity of a RID
 /// is its RID_Data pointer, so hash that.
 struct Box3DRIDHasher {
 	static _FORCE_INLINE_ uint32_t hash(const RID &p_rid) {
