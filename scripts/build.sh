@@ -147,8 +147,8 @@ for target in "$@"; do
 		ios-templates)
 			build platform=iphone arch=arm64 target=release tools=no
 			build platform=iphone arch=arm64 target=release_debug tools=no
-			build platform=iphone arch=x86_64 target=release tools=no simulator=yes
-			build platform=iphone arch=arm64 target=release tools=no simulator=yes
+			build platform=iphone arch=x86_64 target=release tools=no ios_simulator=yes
+			build platform=iphone arch=arm64 target=release tools=no ios_simulator=yes
 			pack_ios
 			;;
 		*)
