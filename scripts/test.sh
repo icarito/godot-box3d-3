@@ -28,6 +28,12 @@ scenes=(
 	res://tests/m20_body_scale.tscn
 	res://tests/m21_character_mover.tscn
 	res://tests/m22_trimesh_jitter.tscn
+	res://tests/m23_flush_spawn.tscn
+	res://tests/m24_push_block.tscn
+	res://tests/m25_rigid_trimesh_faces.tscn
+	res://tests/m26_csg_floor.tscn
+	res://tests/m27_shape_swap.tscn
+	res://tests/m28_layer_asymmetry.tscn
 )
 
 status=0

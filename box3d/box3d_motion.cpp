@@ -242,7 +242,14 @@ bool proxy_contact(const Box3DWorldProxy &p_ours, const b3ShapeProxy &p_theirs, 
 		// must travel along +axis, and along -axis, to clear them.
 		const real_t push_positive = theirs_max - ours_min;
 		const real_t push_negative = ours_max - theirs_min;
-		if (push_positive <= 0.0 || push_negative <= 0.0) {
+		// Strictly negative is a separating axis. Zero is not: it means the two
+		// touch exactly along this axis, which is what a body placed flush on
+		// the floor looks like -- level geometry is authored snapped, so it is
+		// the common case, not a corner one. Reporting it as "no contact" left
+		// the body unrecovered, and the next sweep then started already
+		// touching: b3ShapeCast calls that initial overlap, hands back no
+		// normal, and the motion was clamped to zero in every direction.
+		if (push_positive < 0.0 || push_negative < 0.0) {
 			return false; // a separating axis: they do not actually overlap
 		}
 		if (push_positive < best_depth) {

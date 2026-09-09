@@ -120,12 +120,41 @@ void Box3DBody::_destroy_in_world() {
 	}
 }
 
+// Godot decides body collision with an OR: two bodies interact when either
+// one's mask sees the other's layer, and a body's own mask says what it detects,
+// not what may detect it. Box3D's filter is an AND -- both directions must agree
+// -- so a prop carrying its own layer fell straight through a floor whose mask
+// only lists layer 1, which is how nearly every level is set up. Queries and
+// areas already sidestep the mismatch through their reserved bits; body pairs
+// could not, because both sides are ordinary layers.
+//
+// So body shapes accept every layer in the broadphase and the real rule is
+// applied here. Box3D calls this only for pairs where one shape asked for it
+// and only for awake dynamic bodies, which is exactly the set that matters.
+static bool godot_collision_filter(b3ShapeId p_a, b3ShapeId p_b, void *) {
+	if (b3Shape_IsSensor(p_a) || b3Shape_IsSensor(p_b)) {
+		return true; // areas are filtered correctly by BOX3D_SENSOR_BIT already
+	}
+	Box3DEntity *entity_a = (Box3DEntity *)b3Body_GetUserData(b3Shape_GetBody(p_a));
+	Box3DEntity *entity_b = (Box3DEntity *)b3Body_GetUserData(b3Shape_GetBody(p_b));
+	if (!entity_a || !entity_b || entity_a->is_area || entity_b->is_area) {
+		return true;
+	}
+	const Box3DBody *a = (const Box3DBody *)entity_a;
+	const Box3DBody *b = (const Box3DBody *)entity_b;
+	return (a->collision_layer & b->collision_mask) != 0 || (b->collision_layer & a->collision_mask) != 0;
+}
+
 static bool b3_fill_shape_def(b3ShapeDef &r_def, Box3DBody *p_body, int p_idx, bool p_sensor) {
 	r_def = b3DefaultShapeDef();
 	r_def.baseMaterial.friction = p_body->friction;
 	r_def.baseMaterial.restitution = p_body->bounce;
 	r_def.filter.categoryBits = p_body->collision_layer;
-	r_def.filter.maskBits = (uint64_t)p_body->collision_mask | BOX3D_QUERY_BIT | BOX3D_SENSOR_BIT;
+	// Every layer, so body pairs always reach godot_collision_filter(). The
+	// reserved bits keep filtering queries and sensors here, where the semantics
+	// already match Godot.
+	r_def.filter.maskBits = (uint64_t)0xFFFFFFFF | BOX3D_QUERY_BIT | BOX3D_SENSOR_BIT;
+	r_def.enableCustomFiltering = true;
 	r_def.enableSensorEvents = true;
 	r_def.isSensor = p_sensor;
 	r_def.updateBodyMass = false;
@@ -345,11 +374,36 @@ void Box3DBody::_create_shape(int p_idx) {
 			int vertex_count = faces.size();
 			LocalVector<b3Vec3> verts;
 			verts.resize(vertex_count);
+			// Every triangle is emitted twice, once with each winding, because
+			// Box3D treats a mesh triangle as one-sided while Godot's own
+			// backend collides a ConcavePolygonShape from both faces. Level
+			// geometry authored for Godot -- CSG shapes and imported meshes
+			// alike -- therefore carries whatever winding it happens to have.
+			//
+			// Sweeps no longer need this (sweep_meshes() casts triangle by
+			// triangle, and b3ShapeCast has no notion of facing), but a falling
+			// RigidBody is resolved by the solver, which does: a crate landing
+			// on a back-facing floor fell straight through the level.
+			//
+			// ponytail: 2x triangles in the mesh BVH, ~15s of the reference
+			// replay's 48s of physics CPU. Only the solver needs the mirrored
+			// copies -- our own mesh paths are facing-agnostic already -- so the
+			// way to buy that back is a second mesh *shape* carrying the mirror,
+			// tagged in its user data and skipped by accept() and the cast
+			// callbacks. Worth doing if physics time gets tight; it touches every
+			// query path, which is why it is not done here.
 			LocalVector<int> indices;
-			indices.resize(vertex_count);
+			indices.resize(vertex_count * 2);
 			for (int i = 0; i < vertex_count; i++) {
 				verts[i] = b3_vec(r[i]);
-				indices[i] = i;
+			}
+			for (int t = 0; t < triangles; t++) {
+				indices[t * 3 + 0] = t * 3 + 0;
+				indices[t * 3 + 1] = t * 3 + 1;
+				indices[t * 3 + 2] = t * 3 + 2;
+				indices[vertex_count + t * 3 + 0] = t * 3 + 0;
+				indices[vertex_count + t * 3 + 1] = t * 3 + 2;
+				indices[vertex_count + t * 3 + 2] = t * 3 + 1;
 			}
 			// Bake the local transform into the vertices before building, so the
 			// BVH is built once instead of built, thrown away and rebuilt.
@@ -362,7 +416,7 @@ void Box3DBody::_create_shape(int p_idx) {
 			mdef.vertices = verts.ptr();
 			mdef.indices = indices.ptr();
 			mdef.vertexCount = vertex_count;
-			mdef.triangleCount = triangles;
+			mdef.triangleCount = triangles * 2;
 			mdef.weldVertices = true;
 			mdef.weldTolerance = B3_LINEAR_SLOP;
 			mdef.identifyEdges = true;
@@ -483,7 +537,7 @@ void Box3DBody::apply_filter() {
 	}
 	b3Filter filter = b3DefaultFilter();
 	filter.categoryBits = collision_layer;
-	filter.maskBits = (uint64_t)collision_mask | BOX3D_QUERY_BIT | BOX3D_SENSOR_BIT;
+	filter.maskBits = (uint64_t)0xFFFFFFFF | BOX3D_QUERY_BIT | BOX3D_SENSOR_BIT;
 	for (int i = 0; i < shapes.size(); i++) {
 		if (B3_IS_NON_NULL(shapes[i].id)) {
 			b3Shape_SetFilter(shapes[i].id, filter, true);
@@ -846,6 +900,7 @@ Box3DSpace::Box3DSpace() {
 	// ponytail: single threaded. Raise once M7 shows threading keeps determinism.
 	def.workerCount = 1;
 	world = b3CreateWorld(&def);
+	b3World_SetCustomFilterCallback(world, godot_collision_filter, nullptr);
 	direct_state = memnew(Box3DDirectSpaceState);
 	direct_state->space = this;
 	apply_gravity();
