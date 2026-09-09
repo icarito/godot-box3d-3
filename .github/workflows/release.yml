@@ -185,9 +185,12 @@ jobs:
 
   publish:
     needs: build
-    # Templates for a platform that failed to build are simply absent from the
-    # .tpz; a partial release still unblocks the platforms that did build.
-    if: always()
+    # A platform that fails to build is simply absent from the .tpz: a partial
+    # release still unblocks the ones that did build. A *cancelled* run is
+    # different -- it was interrupted on purpose, usually to replace it with a
+    # newer commit, and publishing whatever it had got that far overwrites the
+    # release with a half-finished, out-of-date set of binaries.
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-22.04
     permissions:
       contents: write
