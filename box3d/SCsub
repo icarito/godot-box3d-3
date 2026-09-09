@@ -28,6 +28,15 @@ else:
     env_thirdparty.Append(CCFLAGS=["-ffp-contract=off"])
 env_thirdparty.Prepend(CPPPATH=[thirdparty_dir + "/src"])
 
+# Box3D picks SSE2 for WebAssembly (src/core.h), and emscripten only provides
+# those intrinsics under -msimd128. Enabling that would raise the browser floor
+# for the whole engine binary, not just for physics -- wasm SIMD lands in Safari
+# only in 16.4 -- so web takes Box3D's scalar path instead. Drop this define
+# (and add -msimd128) if a project is willing to require a SIMD-capable browser.
+if env["platform"] == "javascript":
+    env_thirdparty.Append(CPPDEFINES=["BOX3D_DISABLE_SIMD"])
+    env_box3d.Append(CPPDEFINES=["BOX3D_DISABLE_SIMD"])
+
 thirdparty_obj = []
 env_thirdparty.add_source_files(thirdparty_obj, thirdparty_sources)
 env.modules_sources += thirdparty_obj
