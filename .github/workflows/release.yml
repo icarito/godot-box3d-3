@@ -216,7 +216,12 @@ jobs:
         with:
           tag_name: ${{ github.event.inputs.tag || github.ref_name }}
           generate_release_notes: true
+          # The .tpz is what a person installs through the editor. The loose
+          # slots are for CI: an export job needs one or two of them, and making
+          # it pull half a gigabyte of every other platform to get them is the
+          # kind of thing that quietly doubles a pipeline's runtime.
           files: |
             artifacts/linux-editor/*
             artifacts/linux-headless/*
+            templates/*
             *.tpz
