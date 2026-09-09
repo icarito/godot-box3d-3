@@ -94,6 +94,12 @@ jobs:
           distribution: temurin
           java-version: 17
 
+      # Runners ship the Android SDK but not its cmdline-tools on PATH, so
+      # sdkmanager is only callable after this.
+      - name: Set up Android SDK
+        if: matrix.target == 'android-templates'
+        uses: android-actions/setup-android@v3
+
       - name: Set up Android NDK
         if: matrix.target == 'android-templates'
         run: |
@@ -106,13 +112,15 @@ jobs:
       - name: Cache SCons objects
         uses: actions/cache@v4
         with:
-          path: ~/.scons_cache
+          # Absolute: a literal ~ in SCONS_CACHE is not expanded, and scons then
+          # fails outright trying to create a directory called "~".
+          path: ${{ github.workspace }}/.scons_cache
           key: ${{ matrix.name }}-${{ hashFiles('box3d/**', 'patches/**', 'scripts/build.sh') }}
           restore-keys: ${{ matrix.name }}-
 
       - name: Build
         env:
-          SCONS_CACHE: ~/.scons_cache
+          SCONS_CACHE: ${{ github.workspace }}/.scons_cache
           GODOT_DIR: ${{ github.workspace }}/../${{ env.GODOT_DIR_REL }}
         run: scripts/build.sh ${{ matrix.target }}
 
