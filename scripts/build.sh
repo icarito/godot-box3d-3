@@ -6,6 +6,7 @@
 #   headless          server build, no X11 needed: the one a CI runner wants
 #   linux-templates   Linux x86_64 export templates (release and debug)
 #   windows-templates Windows x86_64 export templates, cross-compiled with MinGW
+#   linux-arm64-templates  Linux ARM64 templates, built on an ARM64 host
 #   html5-templates   WebAssembly templates, threaded and not (needs emsdk)
 #   android-templates Android templates, all four ABIs (needs SDK + NDK)
 #   macos-templates   macOS universal template (needs Xcode)
@@ -25,7 +26,7 @@ GODOT_DIR="${GODOT_DIR:-$(dirname "$here")/godot}"
 JOBS="${JOBS:-$(nproc 2>/dev/null || echo 4)}"
 
 if [ $# -eq 0 ]; then
-	sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'
+	sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'
 	exit 1
 fi
 
@@ -99,6 +100,12 @@ for target in "$@"; do
 			build platform=server target=release_debug tools=yes
 			;;
 		linux-templates)
+			build platform=x11 target=release tools=no
+			build platform=x11 target=release_debug tools=no
+			;;
+		linux-arm64-templates)
+			# Built natively on an ARM64 runner; scons names the output by bit
+			# width, so the artifact step is what tells the arm64 slot apart.
 			build platform=x11 target=release tools=no
 			build platform=x11 target=release_debug tools=no
 			;;

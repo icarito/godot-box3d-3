@@ -33,6 +33,9 @@ jobs:
           - target: linux-templates
             name: linux-templates
             os: ubuntu-22.04
+          - target: linux-arm64-templates
+            name: linux-arm64-templates
+            os: ubuntu-22.04-arm
           - target: windows-templates
             name: windows-templates
             os: ubuntu-22.04
@@ -132,6 +135,10 @@ jobs:
               cp "$BIN/godot.x11.opt.64" out/linux_x11_64_release
               cp "$BIN/godot.x11.opt.debug.64" out/linux_x11_64_debug
               ;;
+            linux-arm64-templates)
+              cp "$BIN/godot.x11.opt.64" out/linux_x11_arm64_release
+              cp "$BIN/godot.x11.opt.debug.64" out/linux_x11_arm64_debug
+              ;;
             windows-templates)
               cp "$BIN/godot.windows.opt.64.exe" out/windows_64_release.exe
               cp "$BIN/godot.windows.opt.debug.64.exe" out/windows_64_debug.exe
@@ -186,7 +193,7 @@ jobs:
             [ -d "$d" ] && cp -a "$d"/* templates/ || true
           done
           echo "${{ env.GODOT_VERSION }}" > templates/version.txt
-          chmod +x templates/linux_x11_64_* templates/windows_64_* 2>/dev/null || true
+          chmod +x templates/linux_x11_* templates/windows_64_* 2>/dev/null || true
           zip -r "Godot-Box3D-export-templates-${{ env.GODOT_VERSION }}.tpz" templates
           unzip -l "Godot-Box3D-export-templates-${{ env.GODOT_VERSION }}.tpz"
 
