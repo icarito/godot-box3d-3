@@ -385,25 +385,27 @@ void Box3DBody::_create_shape(int p_idx) {
 			// RigidBody is resolved by the solver, which does: a crate landing
 			// on a back-facing floor fell straight through the level.
 			//
-			// ponytail: 2x triangles in the mesh BVH, ~15s of the reference
-			// replay's 48s of physics CPU. Only the solver needs the mirrored
-			// copies -- our own mesh paths are facing-agnostic already -- so the
-			// way to buy that back is a second mesh *shape* carrying the mirror,
-			// tagged in its user data and skipped by accept() and the cast
-			// callbacks. Worth doing if physics time gets tight; it touches every
-			// query path, which is why it is not done here.
+			// ponytail: 2x triangles in the mesh BVH. The traversal cost is
+			// still doubled; only the per-triangle work is skipped. Halving the
+			// traversal too would mean a separate mirrored shape, which every
+			// query path would then have to know to skip.
 			LocalVector<int> indices;
 			indices.resize(vertex_count * 2);
 			for (int i = 0; i < vertex_count; i++) {
 				verts[i] = b3_vec(r[i]);
 			}
+			// Interleaved rather than appended: the mirror of triangle t is at
+			// index 2t+1, so a mesh query can skip the copies by testing one bit
+			// without having to know how many triangles there are. Our own mesh
+			// paths do exactly that -- they are facing-agnostic, so the copies
+			// are pure duplicate work for them. Only the solver wants both.
 			for (int t = 0; t < triangles; t++) {
-				indices[t * 3 + 0] = t * 3 + 0;
-				indices[t * 3 + 1] = t * 3 + 1;
-				indices[t * 3 + 2] = t * 3 + 2;
-				indices[vertex_count + t * 3 + 0] = t * 3 + 0;
-				indices[vertex_count + t * 3 + 1] = t * 3 + 2;
-				indices[vertex_count + t * 3 + 2] = t * 3 + 1;
+				indices[t * 6 + 0] = t * 3 + 0;
+				indices[t * 6 + 1] = t * 3 + 1;
+				indices[t * 6 + 2] = t * 3 + 2;
+				indices[t * 6 + 3] = t * 3 + 0;
+				indices[t * 6 + 4] = t * 3 + 2;
+				indices[t * 6 + 5] = t * 3 + 1;
 			}
 			// Bake the local transform into the vertices before building, so the
 			// BVH is built once instead of built, thrown away and rebuilt.

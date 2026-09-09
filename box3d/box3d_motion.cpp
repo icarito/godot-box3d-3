@@ -292,12 +292,19 @@ struct TriangleContacts {
 	int local_shape = 0;
 
 	Vector<b3CollisionPlane> *planes = nullptr;
+	// Meshes carry every triangle twice, mirrored, for the solver's benefit;
+	// this path does not care which way a triangle faces, so it looks at the
+	// even ones only. Height fields are not duplicated.
+	bool skip_mirrors = false;
 	Contact *deepest = nullptr;
 	bool any = false;
 };
 
-bool triangle_callback(b3Vec3 p_a, b3Vec3 p_b, b3Vec3 p_c, int, void *p_context) {
+bool triangle_callback(b3Vec3 p_a, b3Vec3 p_b, b3Vec3 p_c, int p_index, void *p_context) {
 	TriangleContacts *ctx = (TriangleContacts *)p_context;
+	if (ctx->skip_mirrors && (p_index & 1)) {
+		return true; // the mirrored copy of a triangle already handled
+	}
 
 	Box3DWorldProxy tri;
 	tri.points[0] = b3_vec(ctx->to_world.xform(g_vec(p_a)));
@@ -458,6 +465,7 @@ bool query_contacts(Box3DBody *p_body, const Transform &p_xform, real_t p_margin
 
 				b3AABB bounds = local_bounds(ours, to_world.affine_inverse(), p_margin);
 				if (type == b3_meshShape) {
+					tri_ctx.skip_mirrors = true;
 					b3Mesh mesh = b3Shape_GetMesh(candidates.shapes[c]);
 					b3QueryMesh(&mesh, bounds, triangle_callback, &tri_ctx);
 				} else {
@@ -633,6 +641,7 @@ b3AABB extend_aabb(const b3AABB &p_box, const Vector3 &p_by) {
 
 struct MeshSweep {
 	const Box3DWorldProxy *ours = nullptr;
+	bool skip_mirrors = false; // see TriangleContacts::skip_mirrors
 	Transform to_world;
 	Vector3 motion;
 	b3ShapeId shape = b3_nullShapeId;
@@ -640,8 +649,11 @@ struct MeshSweep {
 	CastHit *hit = nullptr;
 };
 
-bool mesh_sweep_callback(b3Vec3 p_a, b3Vec3 p_b, b3Vec3 p_c, int, void *p_context) {
+bool mesh_sweep_callback(b3Vec3 p_a, b3Vec3 p_b, b3Vec3 p_c, int p_index, void *p_context) {
 	MeshSweep *ctx = (MeshSweep *)p_context;
+	if (ctx->skip_mirrors && (p_index & 1)) {
+		return true; // the mirrored copy of a triangle already handled
+	}
 
 	b3Vec3 triangle[3] = {
 		b3_vec(ctx->to_world.xform(g_vec(p_a))),
@@ -707,6 +719,7 @@ void sweep_meshes(Box3DBody *p_body, const Box3DWorldProxy &p_ours, const Vector
 				to_local.basis.xform(p_motion));
 
 		if (type == b3_meshShape) {
+			ctx.skip_mirrors = true;
 			b3Mesh mesh = b3Shape_GetMesh(candidates.shapes[c]);
 			b3QueryMesh(&mesh, bounds, mesh_sweep_callback, &ctx);
 		} else {
