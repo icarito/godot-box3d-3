@@ -6,6 +6,10 @@
 #   headless          server build, no X11 needed: the one a CI runner wants
 #   linux-templates   Linux x86_64 export templates (release and debug)
 #   windows-templates Windows x86_64 export templates, cross-compiled with MinGW
+#   html5-templates   WebAssembly templates, threaded and not (needs emsdk)
+#   android-templates Android templates, all four ABIs (needs SDK + NDK)
+#   macos-templates   macOS universal template (needs Xcode)
+#   ios-templates     iOS template (needs Xcode)
 #
 # The Godot checkout is pinned: a custom module is only as reproducible as the
 # engine it is compiled into. Override with GODOT_REF / GODOT_DIR.
@@ -21,7 +25,7 @@ GODOT_DIR="${GODOT_DIR:-$(dirname "$here")/godot}"
 JOBS="${JOBS:-$(nproc 2>/dev/null || echo 4)}"
 
 if [ $# -eq 0 ]; then
-	sed -n '2,8p' "$0" | sed 's/^# \{0,1\}//'
+	sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'
 	exit 1
 fi
 
@@ -48,6 +52,37 @@ if [ ! -e "$here/box3d/thirdparty/box3d/include/box3d/box3d.h" ]; then
 	exit 1
 fi
 
+# Godot ships these two as archives assembled from a template bundle plus the
+# binaries, rather than as a single file scons emits.
+pack_macos() {
+	local bin="$GODOT_DIR/bin"
+	rm -rf "$bin/osx_template.app"
+	cp -r "$GODOT_DIR/misc/dist/osx_template.app" "$bin/"
+	mkdir -p "$bin/osx_template.app/Contents/MacOS"
+	lipo -create "$bin/godot.osx.opt.x86_64" "$bin/godot.osx.opt.arm64" \
+		-output "$bin/osx_template.app/Contents/MacOS/godot_osx_release.64"
+	lipo -create "$bin/godot.osx.opt.debug.x86_64" "$bin/godot.osx.opt.debug.arm64" \
+		-output "$bin/osx_template.app/Contents/MacOS/godot_osx_debug.64"
+	chmod +x "$bin/osx_template.app/Contents/MacOS"/godot_osx*
+	(cd "$bin" && rm -f osx.zip && zip -q -r9 osx.zip osx_template.app)
+}
+
+pack_ios() {
+	local bin="$GODOT_DIR/bin"
+	rm -rf "$bin/ios_xcode"
+	cp -r "$GODOT_DIR/misc/dist/ios_xcode" "$bin/"
+	cp "$bin/libgodot.iphone.opt.arm64.a" \
+		"$bin/ios_xcode/libgodot.iphone.release.xcframework/ios-arm64/libgodot.a"
+	cp "$bin/libgodot.iphone.opt.debug.arm64.a" \
+		"$bin/ios_xcode/libgodot.iphone.debug.xcframework/ios-arm64/libgodot.a"
+	lipo -create "$bin/libgodot.iphone.opt.x86_64.simulator.a" \
+		"$bin/libgodot.iphone.opt.arm64.simulator.a" \
+		-output "$bin/ios_xcode/libgodot.iphone.release.xcframework/ios-arm64_x86_64-simulator/libgodot.a"
+	cp "$bin/ios_xcode/libgodot.iphone.release.xcframework/ios-arm64_x86_64-simulator/libgodot.a" \
+		"$bin/ios_xcode/libgodot.iphone.debug.xcframework/ios-arm64_x86_64-simulator/libgodot.a"
+	(cd "$bin/ios_xcode" && rm -f ../iphone.zip && zip -q -r9 ../iphone.zip -- *)
+}
+
 build() { # build <scons args...>
 	echo "==> scons $*"
 	(cd "$GODOT_DIR" && scons -j"$JOBS" custom_modules="$here" progress=no "$@")
@@ -70,6 +105,36 @@ for target in "$@"; do
 		windows-templates)
 			build platform=windows target=release tools=no
 			build platform=windows target=release_debug tools=no
+			;;
+		html5-templates)
+			# Odisea's preset is "HTML5 Threads", which reads the threads slot;
+			# the plain one is built too so the .tpz has every slot filled.
+			build platform=javascript target=release tools=no
+			build platform=javascript target=release_debug tools=no
+			build platform=javascript target=release tools=no threads_enabled=yes
+			build platform=javascript target=release_debug tools=no threads_enabled=yes
+			;;
+		android-templates)
+			for arch in armv7 arm64v8 x86 x86_64; do
+				build platform=android target=release tools=no android_arch=$arch
+				build platform=android target=release_debug tools=no android_arch=$arch
+			done
+			# Gradle wraps the .so files into the APKs Godot ships as templates.
+			(cd "$GODOT_DIR/platform/android/java" && ./gradlew generateGodotTemplates)
+			;;
+		macos-templates)
+			build platform=osx arch=x86_64 target=release tools=no
+			build platform=osx arch=arm64 target=release tools=no
+			build platform=osx arch=x86_64 target=release_debug tools=no
+			build platform=osx arch=arm64 target=release_debug tools=no
+			pack_macos
+			;;
+		ios-templates)
+			build platform=iphone arch=arm64 target=release tools=no
+			build platform=iphone arch=arm64 target=release_debug tools=no
+			build platform=iphone arch=x86_64 target=release tools=no simulator=yes
+			build platform=iphone arch=arm64 target=release tools=no simulator=yes
+			pack_ios
 			;;
 		*)
 			echo "!!! unknown target: $target" >&2
