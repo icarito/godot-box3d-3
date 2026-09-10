@@ -1,0 +1,158 @@
+diff --git a/drivers/dummy/rasterizer_dummy.h b/drivers/dummy/rasterizer_dummy.h
+index 7391122..cd9ec24 100644
+--- a/drivers/dummy/rasterizer_dummy.h
++++ b/drivers/dummy/rasterizer_dummy.h
+@@ -267,6 +267,7 @@ public:
+ 	void shader_remove_custom_define(RID p_shader, const String &p_define) {}
+ 
+ 	void set_shader_async_hidden_forbidden(bool p_forbidden) {}
++	void set_shader_async_compilation_enabled(bool p_enabled) {}
+ 	bool is_shader_async_hidden_forbidden() { return false; }
+ 
+ 	/* COMMON MATERIAL API */
+diff --git a/drivers/gles2/rasterizer_storage_gles2.h b/drivers/gles2/rasterizer_storage_gles2.h
+index 38a55c9..52a9ffb 100644
+--- a/drivers/gles2/rasterizer_storage_gles2.h
++++ b/drivers/gles2/rasterizer_storage_gles2.h
+@@ -550,6 +550,7 @@ public:
+ 	virtual void shader_remove_custom_define(RID p_shader, const String &p_define);
+ 
+ 	void set_shader_async_hidden_forbidden(bool p_forbidden) {}
++	void set_shader_async_compilation_enabled(bool p_enabled) {}
+ 	bool is_shader_async_hidden_forbidden() { return false; }
+ 
+ 	void _update_shader(Shader *p_shader) const;
+diff --git a/drivers/gles3/rasterizer_storage_gles3.cpp b/drivers/gles3/rasterizer_storage_gles3.cpp
+index 6fdd8c4..15a9adc 100644
+--- a/drivers/gles3/rasterizer_storage_gles3.cpp
++++ b/drivers/gles3/rasterizer_storage_gles3.cpp
+@@ -2540,6 +2540,19 @@ void RasterizerStorageGLES3::shader_remove_custom_define(RID p_shader, const Str
+ 	_shader_make_dirty(shader);
+ }
+ 
++// Apagar el async es poner max_simultaneous_compiles en cero: eso es lo unico que
++// mira is_async_compilation_supported(), y deja el cache de disco intacto (ese
++// depende de shader_cache, no de esto). Sirve para no pagar ubershaders en pantallas
++// donde no hay nada que cubrir -- el ubershader solo rinde si hay algo detras que
++// mostrar mientras compila la variante real.
++void RasterizerStorageGLES3::set_shader_async_compilation_enabled(bool p_enabled) {
++	if (p_enabled) {
++		ShaderGLES3::max_simultaneous_compiles = config.async_compilation_max_simultaneous;
++	} else {
++		ShaderGLES3::max_simultaneous_compiles = 0;
++	}
++}
++
+ void RasterizerStorageGLES3::set_shader_async_hidden_forbidden(bool p_forbidden) {
+ 	ShaderGLES3::async_hidden_forbidden = p_forbidden;
+ }
+@@ -8232,7 +8245,13 @@ void RasterizerStorageGLES3::initialize() {
+ 	config.shader_cache_enabled = compilation_mode == 2;
+ 
+ 	if (config.async_compilation_enabled) {
+-		ShaderGLES3::max_simultaneous_compiles = MAX(1, (int)ProjectSettings::get_singleton()->get("rendering/gles3/shaders/max_simultaneous_compiles"));
++		config.async_compilation_max_simultaneous = MAX(1, (int)ProjectSettings::get_singleton()->get("rendering/gles3/shaders/max_simultaneous_compiles"));
++		ShaderGLES3::max_simultaneous_compiles = config.async_compilation_max_simultaneous;
++		// El proyecto puede pedir que arranque apagado y encenderlo cuando tenga una
++		// pantalla que valga la pena cubrir (ver set_shader_async_compilation_enabled).
++		if (!(bool)GLOBAL_GET("rendering/gles3/shaders/async_compilation_starts_enabled")) {
++			ShaderGLES3::max_simultaneous_compiles = 0;
++		}
+ #ifdef GLES_OVER_GL
+ 		if (GLAD_GL_ARB_parallel_shader_compile) {
+ 			glMaxShaderCompilerThreadsARB(ShaderGLES3::max_simultaneous_compiles);
+diff --git a/drivers/gles3/rasterizer_storage_gles3.h b/drivers/gles3/rasterizer_storage_gles3.h
+index 9f7d480..b30df6a 100644
+--- a/drivers/gles3/rasterizer_storage_gles3.h
++++ b/drivers/gles3/rasterizer_storage_gles3.h
+@@ -119,6 +119,7 @@ public:
+ 		bool program_binary_supported;
+ 		bool parallel_shader_compile_supported;
+ 		bool async_compilation_enabled;
++		int async_compilation_max_simultaneous;
+ 		bool shader_cache_enabled;
+ 	} config;
+ 
+@@ -564,6 +565,7 @@ public:
+ 	virtual void shader_remove_custom_define(RID p_shader, const String &p_define);
+ 
+ 	virtual void set_shader_async_hidden_forbidden(bool p_forbidden);
++	virtual void set_shader_async_compilation_enabled(bool p_enabled);
+ 	virtual bool is_shader_async_hidden_forbidden();
+ 
+ 	void _update_shader(Shader *p_shader) const;
+diff --git a/servers/visual/rasterizer.h b/servers/visual/rasterizer.h
+index 5da9159..8c0cc7b 100644
+--- a/servers/visual/rasterizer.h
++++ b/servers/visual/rasterizer.h
+@@ -275,6 +275,7 @@ public:
+ 	virtual void shader_remove_custom_define(RID p_shader, const String &p_define) = 0;
+ 
+ 	virtual void set_shader_async_hidden_forbidden(bool p_forbidden) = 0;
++	virtual void set_shader_async_compilation_enabled(bool p_enabled) = 0;
+ 	virtual bool is_shader_async_hidden_forbidden() = 0;
+ 
+ 	/* COMMON MATERIAL API */
+diff --git a/servers/visual/visual_server_raster.h b/servers/visual/visual_server_raster.h
+index 635fdaa..86c9dd4 100644
+--- a/servers/visual/visual_server_raster.h
++++ b/servers/visual/visual_server_raster.h
+@@ -207,6 +207,7 @@ public:
+ 	BIND2(shader_remove_custom_define, RID, const String &)
+ 
+ 	BIND1(set_shader_async_hidden_forbidden, bool)
++	BIND1(set_shader_async_compilation_enabled, bool)
+ 
+ 	/* COMMON MATERIAL API */
+ 
+diff --git a/servers/visual/visual_server_wrap_mt.h b/servers/visual/visual_server_wrap_mt.h
+index 1e2f370..de49a98 100644
+--- a/servers/visual/visual_server_wrap_mt.h
++++ b/servers/visual/visual_server_wrap_mt.h
+@@ -133,6 +133,7 @@ public:
+ 	FUNC2(shader_remove_custom_define, RID, const String &)
+ 
+ 	FUNC1(set_shader_async_hidden_forbidden, bool)
++	FUNC1(set_shader_async_compilation_enabled, bool)
+ 
+ 	/* COMMON MATERIAL API */
+ 
+diff --git a/servers/visual_server.cpp b/servers/visual_server.cpp
+index ec085c9..70a26e2 100644
+--- a/servers/visual_server.cpp
++++ b/servers/visual_server.cpp
+@@ -1908,6 +1908,7 @@ void VisualServer::_bind_methods() {
+ 	ClassDB::bind_method(D_METHOD("shader_set_default_texture_param", "shader", "name", "texture"), &VisualServer::shader_set_default_texture_param);
+ 	ClassDB::bind_method(D_METHOD("shader_get_default_texture_param", "shader", "name"), &VisualServer::shader_get_default_texture_param);
+ 	ClassDB::bind_method(D_METHOD("set_shader_async_hidden_forbidden", "forbidden"), &VisualServer::set_shader_async_hidden_forbidden);
++	ClassDB::bind_method(D_METHOD("set_shader_async_compilation_enabled", "enabled"), &VisualServer::set_shader_async_compilation_enabled);
+ 
+ 	ClassDB::bind_method(D_METHOD("material_create"), &VisualServer::material_create);
+ 	ClassDB::bind_method(D_METHOD("material_set_shader", "shader_material", "shader"), &VisualServer::material_set_shader);
+@@ -2792,6 +2793,11 @@ VisualServer::VisualServer() {
+ 		force_shader_fallbacks = GLOBAL_GET("rendering/gles3/shaders/debug_shader_fallbacks");
+ 	}
+ #endif
++	// Con esto en false el async queda armado pero dormido: el cache y la cola de
++	// compilacion existen, y el juego lo enciende con
++	// VisualServer.set_shader_async_compilation_enabled(true) cuando ya tiene una
++	// pantalla que cubra el trabajo.
++	GLOBAL_DEF("rendering/gles3/shaders/async_compilation_starts_enabled", true);
+ 	GLOBAL_DEF("rendering/gles3/shaders/shader_compilation_mode", 0);
+ 	ProjectSettings::get_singleton()->set_custom_property_info("rendering/gles3/shaders/shader_compilation_mode", PropertyInfo(Variant::INT, "rendering/gles3/shaders/shader_compilation_mode", PROPERTY_HINT_ENUM, "Synchronous,Asynchronous,Asynchronous + Cache"));
+ 	GLOBAL_DEF("rendering/gles3/shaders/shader_compilation_mode.mobile", 0);
+diff --git a/servers/visual_server.h b/servers/visual_server.h
+index 3e592b1..959d094 100644
+--- a/servers/visual_server.h
++++ b/servers/visual_server.h
+@@ -208,6 +208,10 @@ public:
+ 	virtual void shader_remove_custom_define(RID p_shader, const String &p_define) = 0;
+ 
+ 	virtual void set_shader_async_hidden_forbidden(bool p_forbidden) = 0;
++	// Enciende o apaga la compilacion asincronica en caliente. Existe porque el modo
++	// se lee una sola vez al arrancar, y hay un momento del juego -- el menu -- donde
++	// el ubershader cuesta mas de lo que cubre: no hay nada que tapar todavia.
++	virtual void set_shader_async_compilation_enabled(bool p_enabled) = 0;
+ 
+ 	/* COMMON MATERIAL API */
+ 
