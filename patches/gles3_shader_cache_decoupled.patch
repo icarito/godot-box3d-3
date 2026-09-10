@@ -1,0 +1,119 @@
+--- a/servers/visual_server.cpp
++++ b/servers/visual_server.cpp
+@@ -2799,6 +2799,12 @@
+ 	// pantalla que cubra el trabajo.
+ 	GLOBAL_DEF("rendering/gles3/shaders/async_compilation_starts_enabled", true);
+ 	GLOBAL_DEF("rendering/gles3/shaders/ubershaders_enabled", true);
++	// Guardar tambien las variantes condicionadas, no solo los ubershaders. Cuesta
++	// espacio en disco (lo acota shader_cache_size_mb) y ahorra recompilarlas en cada
++	// arranque, que es donde se va el tiempo cuando el ubershader no se usa.
++	GLOBAL_DEF("rendering/gles3/shaders/cache_conditioned_variants", false);
++	// Mantener el cache de programas aunque la compilacion sea sincrona.
++	GLOBAL_DEF("rendering/gles3/shaders/shader_cache_always", false);
+ 	GLOBAL_DEF("rendering/gles3/shaders/shader_compilation_mode", 0);
+ 	ProjectSettings::get_singleton()->set_custom_property_info("rendering/gles3/shaders/shader_compilation_mode", PropertyInfo(Variant::INT, "rendering/gles3/shaders/shader_compilation_mode", PROPERTY_HINT_ENUM, "Synchronous,Asynchronous,Asynchronous + Cache"));
+ 	GLOBAL_DEF("rendering/gles3/shaders/shader_compilation_mode.mobile", 0);
+--- a/drivers/gles3/shader_gles3.h
++++ b/drivers/gles3/shader_gles3.h
+@@ -133,6 +133,7 @@
+ 
+ 	static bool async_hidden_forbidden;
+ 	static bool ubershaders_enabled;
++	static bool cache_conditioned_variants;
+ 	static uint32_t *compiles_started_this_frame;
+ 	static uint32_t *max_frame_compiles_in_progress;
+ 	static uint32_t max_simultaneous_compiles;
+@@ -157,7 +158,15 @@
+ 		VersionKey() {}
+ 		VersionKey(uint64_t p_key) :
+ 				key(p_key) {}
+-		_FORCE_INLINE_ bool is_subject_to_caching() const { return (version & UBERSHADER_FLAG); }
++		// Upstream solo cachea ubershaders. Eso deja fuera justo lo que se dibuja: las
++		// variantes condicionadas se recompilan enteras en cada arranque, y en un aparato
++		// que no puede enlazar el ubershader el cache termina guardando lo unico inservible.
++		// El hash del programa ya sale del fuente completo, asi que sirve igual para
++		// cualquier variante; lo que hay que vigilar es el tamaño, y de eso se ocupa
++		// _purge_excess() con shader_cache_size_mb.
++		_FORCE_INLINE_ bool is_subject_to_caching() const {
++			return (version & UBERSHADER_FLAG) || cache_conditioned_variants;
++		}
+ 	};
+ 
+ 	struct Version {
+--- a/drivers/gles3/shader_gles3.cpp
++++ b/drivers/gles3/shader_gles3.cpp
+@@ -66,6 +66,7 @@
+ 
+ bool ShaderGLES3::async_hidden_forbidden;
+ bool ShaderGLES3::ubershaders_enabled;
++bool ShaderGLES3::cache_conditioned_variants;
+ uint32_t *ShaderGLES3::compiles_started_this_frame;
+ uint32_t *ShaderGLES3::max_frame_compiles_in_progress;
+ uint32_t ShaderGLES3::max_simultaneous_compiles;
+--- a/drivers/gles3/rasterizer_storage_gles3.cpp
++++ b/drivers/gles3/rasterizer_storage_gles3.cpp
+@@ -8242,8 +8242,13 @@
+ 		compilation_mode = ProjectSettings::get_singleton()->get("rendering/gles3/shaders/shader_compilation_mode");
+ 	}
+ 	config.async_compilation_enabled = compilation_mode >= 1;
+-	config.shader_cache_enabled = compilation_mode == 2;
++	// El cache venia atado al modo: en sincrono no se guardaba nada, asi que cada
++	// arranque recompilaba todo para siempre. Son cosas independientes -- guardar el
++	// binario de un programa no exige compilarlo en otro hilo -- y en un aparato donde
++	// el ubershader no rinde, sincrono es justo el modo que mas necesita el cache.
++	config.shader_cache_enabled = compilation_mode == 2 || (bool)GLOBAL_GET("rendering/gles3/shaders/shader_cache_always");
+ 	ShaderGLES3::ubershaders_enabled = GLOBAL_GET("rendering/gles3/shaders/ubershaders_enabled");
++	ShaderGLES3::cache_conditioned_variants = GLOBAL_GET("rendering/gles3/shaders/cache_conditioned_variants");
+ 
+ 	if (config.async_compilation_enabled) {
+ 		config.async_compilation_max_simultaneous = MAX(1, (int)ProjectSettings::get_singleton()->get("rendering/gles3/shaders/max_simultaneous_compiles"));
+@@ -8295,35 +8300,33 @@
+ 	shaders.compile_queue = nullptr;
+ 	shaders.cache = nullptr;
+ 	shaders.cache_write_queue = nullptr;
+-	bool effectively_on = false;
+ 	if (config.async_compilation_enabled) {
+ 		if (config.parallel_shader_compile_supported) {
+ 			print_line("Async. shader compilation: ON (full native support)");
+-			effectively_on = true;
+ 		} else if (config.program_binary_supported && OS::get_singleton()->is_offscreen_gl_available()) {
+ 			shaders.compile_queue = memnew(ThreadedCallableQueue<GLuint>());
+ 			shaders.compile_queue->enqueue(0, []() { OS::get_singleton()->set_offscreen_gl_current(true); });
+ 			print_line("Async. shader compilation: ON (via secondary context)");
+-			effectively_on = true;
+ 		} else {
+ 			print_line("Async. shader compilation: OFF (enabled for " + String(Engine::get_singleton()->is_editor_hint() ? "editor" : "project") + ", but not supported)");
+ 		}
+-		if (effectively_on) {
+-			if (config.shader_cache_enabled) {
+-				if (config.program_binary_supported) {
+-					print_line("Shader cache: ON");
+-					shaders.cache = memnew(ShaderCacheGLES3);
+-					shaders.cache_write_queue = memnew(ThreadedCallableQueue<GLuint>());
+-				} else {
+-					print_line("Shader cache: OFF (enabled, but not supported)");
+-				}
+-			} else {
+-				print_line("Shader cache: OFF");
+-			}
+-		}
+ 	} else {
+ 		print_line("Async. shader compilation: OFF");
+ 	}
++	// El cache vivia dentro del bloque de async y solo se creaba si el async quedaba
++	// efectivamente encendido. Guardar el binario de un programa no depende de en que
++	// hilo se compilo, asi que ahora se decide solo.
++	if (config.shader_cache_enabled) {
++		if (config.program_binary_supported) {
++			print_line("Shader cache: ON");
++			shaders.cache = memnew(ShaderCacheGLES3);
++			shaders.cache_write_queue = memnew(ThreadedCallableQueue<GLuint>());
++		} else {
++			print_line("Shader cache: OFF (enabled, but not supported)");
++		}
++	} else {
++		print_line("Shader cache: OFF");
++	}
+ 	ShaderGLES3::compile_queue = shaders.compile_queue;
+ 	ShaderGLES3::parallel_compile_supported = config.parallel_shader_compile_supported;
+ 	ShaderGLES3::shader_cache = shaders.cache;
