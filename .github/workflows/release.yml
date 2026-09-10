@@ -121,6 +121,15 @@ jobs:
       - name: Build
         env:
           SCONS_CACHE: ${{ github.workspace }}/.scons_cache
+          # Godot trims the SCons cache to SCONS_CACHE_LIMIT MB after every build
+          # (methods.py, default 1024). The Android job writes eight configurations
+          # -- four ABIs x release/release_debug -- into one cache, so each arch was
+          # evicting the objects the previous one had just stored. Measured on
+          # v0.2.1-rc1: 8539 compiles against 4563 cache hits, and a job that stayed
+          # at 35-40 min while every single-config job finished in one. The entry
+          # uploads compressed (1 GB on disk was 244 MB stored), so the repo's 10 GB
+          # cache budget absorbs this comfortably.
+          SCONS_CACHE_LIMIT: 8192
           GODOT_DIR: ${{ github.workspace }}/../${{ env.GODOT_DIR_REL }}
         run: scripts/build.sh ${{ matrix.target }}
 

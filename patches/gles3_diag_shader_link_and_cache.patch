@@ -1,0 +1,65 @@
+diff --git a/drivers/gles3/shader_cache_gles3.cpp b/drivers/gles3/shader_cache_gles3.cpp
+index 93a4054..9f999e0 100644
+--- a/drivers/gles3/shader_cache_gles3.cpp
++++ b/drivers/gles3/shader_cache_gles3.cpp
+@@ -68,10 +68,14 @@ bool ShaderCacheGLES3::retrieve(const String &p_program_hash, uint32_t *r_format
+ 		return false;
+ 	}
+ 
++	uint64_t file_len = fa->get_len();
+ 	*r_format = fa->get_32();
+ 	uint32_t binary_len = fa->get_32();
+ 	if (binary_len <= 0 || binary_len > 0x10000000) {
+-		ERR_PRINT("Program binary cache file is corrupted. Ignoring and removing.");
++		// Instrumentation: say which entry and what the header actually held, so a
++		// bad file can be told apart from a truncated write or a stale entry.
++		ERR_PRINT(vformat("Program binary cache file is corrupted. Ignoring and removing. hash=%s file_len=%d format=%d binary_len=%d",
++				p_program_hash, (int64_t)file_len, (int64_t)*r_format, (int64_t)binary_len));
+ 		fa->close();
+ 		storage_da->remove(p_program_hash);
+ 		return false;
+diff --git a/drivers/gles3/shader_gles3.cpp b/drivers/gles3/shader_gles3.cpp
+index c7fcecf..929ef4b 100644
+--- a/drivers/gles3/shader_gles3.cpp
++++ b/drivers/gles3/shader_gles3.cpp
+@@ -426,6 +426,19 @@ bool ShaderGLES3::_process_program_state(Version *p_version, bool p_async_forbid
+ #endif
+ #endif
+ 					}
++					if (!ok) {
++						// Instrumentation: SOURCE_LOCAL here means the main context
++						// refused a program it compiled itself -- not a binary handed
++						// over by the secondary context.
++						const char *src_name = "none";
++						switch (p_version->program_binary.source) {
++							case Version::ProgramBinary::SOURCE_LOCAL: src_name = "local(main context)"; break;
++							case Version::ProgramBinary::SOURCE_QUEUE: src_name = "queue(secondary context)"; break;
++							case Version::ProgramBinary::SOURCE_CACHE: src_name = "cache"; break;
++							default: break;
++						}
++						WARN_PRINT(vformat("%s: link rejected, program_binary.source=%s", p_version->shader->get_shader_name(), src_name));
++					}
+ 					if (ok) {
+ 						if (must_save_to_cache) {
+ 							String &tmp_hash = p_version->program_binary.cache_hash;
+@@ -1045,6 +1058,20 @@ bool ShaderGLES3::_complete_link(Version::Ids p_ids, GLenum *r_program_format, P
+ 		String err_string = get_shader_name() + ": Program LINK FAILED:\n";
+ 
+ 		err_string += ilogmem;
++		{
++			// Instrumentation: the message alone does not say whether this was the
++			// ubershader (every conditional live at once) or a conditioned variant,
++			// nor how much sampler budget the driver actually has.
++			GLint max_tex_units = 0, max_combined = 0, max_vert_units = 0;
++			glGetIntegerv(GL_MAX_TEXTURE_IMAGE_UNITS, &max_tex_units);
++			glGetIntegerv(GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS, &max_combined);
++			glGetIntegerv(GL_MAX_VERTEX_TEXTURE_IMAGE_UNITS, &max_vert_units);
++			err_string += vformat("\n[diag] ubershader=%s conditional_version=%d code_version=%d",
++					(conditional_version.version & VersionKey::UBERSHADER_FLAG) ? "yes" : "no",
++					(int64_t)conditional_version.version, (int64_t)conditional_version.code_version);
++			err_string += vformat(" max_texture_image_units=%d max_vertex_texture_image_units=%d max_combined=%d",
++					(int64_t)max_tex_units, (int64_t)max_vert_units, (int64_t)max_combined);
++		}
+ 		ERR_PRINT(err_string.ascii().get_data());
+ 		Memory::free_static(ilogmem);
+ 		glDeleteShader(p_ids.frag);
