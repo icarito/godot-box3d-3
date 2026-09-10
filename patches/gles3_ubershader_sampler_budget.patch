@@ -1,0 +1,145 @@
+diff --git a/drivers/gles3/rasterizer_scene_gles3.cpp b/drivers/gles3/rasterizer_scene_gles3.cpp
+index 40df5a3..fece82f 100644
+--- a/drivers/gles3/rasterizer_scene_gles3.cpp
++++ b/drivers/gles3/rasterizer_scene_gles3.cpp
+@@ -1962,15 +1962,16 @@ void RasterizerSceneGLES3::_render_list(RenderList::Element **p_elements, int p_
+ 			WRAPPED_GL_ACTIVE_TEXTURE(GL_TEXTURE0 + storage->config.max_texture_image_units - 7);
+ 			glBindTexture(GL_TEXTURE_2D, p_sky->irradiance);
+ 			state.scene_shader.set_conditional(SceneShaderGLES3::USE_RADIANCE_MAP, true);
+-			state.scene_shader.set_conditional(SceneShaderGLES3::USE_RADIANCE_MAP_ARRAY, storage->config.use_texture_array_environment);
++			// Array vs. plain radiance is no longer a shader conditional: it is settled
++			// for the session by RADIANCE_MAP_ARRAY_AVAILABLE, so only one of the two
++			// samplers is ever declared -- and one fewer conditional halves this axis
++			// of the variant space.
+ 			use_radiance_map = true;
+ 		} else {
+ 			state.scene_shader.set_conditional(SceneShaderGLES3::USE_RADIANCE_MAP, false);
+-			state.scene_shader.set_conditional(SceneShaderGLES3::USE_RADIANCE_MAP_ARRAY, false);
+ 		}
+ 	} else {
+ 		state.scene_shader.set_conditional(SceneShaderGLES3::USE_RADIANCE_MAP, false);
+-		state.scene_shader.set_conditional(SceneShaderGLES3::USE_RADIANCE_MAP_ARRAY, false);
+ 	}
+ 
+ 	state.cull_front = false;
+@@ -5219,6 +5220,17 @@ void RasterizerSceneGLES3::initialize() {
+ 		state.scene_shader.add_custom_define("#define MAX_SKELETON_BONES " + itos(state.max_skeleton_bones) + "\n");
+ 	}
+ 
++	// Both of these decide which sampler uniforms the scene shader declares at all.
++	// They are settled once here, before any shader is built, because they are global
++	// for the session -- and every sampler the shader declares is a texture image unit
++	// the material cannot use (texunit:-N resolves to max_image_units - N).
++	if (storage->config.use_texture_array_environment) {
++		state.scene_shader.add_custom_define("#define RADIANCE_MAP_ARRAY_AVAILABLE\n");
++	}
++	if (bool(GLOBAL_GET("rendering/quality/gi_probes/enabled"))) {
++		state.scene_shader.add_custom_define("#define GI_PROBES_AVAILABLE\n");
++	}
++
+ 	shadow_filter_mode = SHADOW_FILTER_NEAREST;
+ 
+ 	{ //reflection cubemaps
+diff --git a/drivers/gles3/shaders/scene.glsl b/drivers/gles3/shaders/scene.glsl
+index 5759d55..604fdf1 100644
+--- a/drivers/gles3/shaders/scene.glsl
++++ b/drivers/gles3/shaders/scene.glsl
+@@ -718,7 +718,13 @@ layout(std140) uniform Radiance { // ubo:2
+ 
+ uniform sampler2D irradiance_map; // texunit:-7
+ 
+-#ifdef USE_RADIANCE_MAP_ARRAY //ubershader-skip
++// Which of the two radiance samplers exists is decided once per session by
++// rendering/quality/reflections/texture_array_reflections, not per material, so it
++// is resolved by the preprocessor. Skipping the guard instead (//ubershader-skip)
++// made the ubershader declare BOTH, burning a texture image unit that no draw can
++// ever use. Units are scarce: the engine takes them from the top (texunit:-N maps
++// to max_image_units - N), so every one it holds is one the material cannot have.
++#ifdef RADIANCE_MAP_ARRAY_AVAILABLE
+ 
+ uniform sampler2DArray radiance_map_array; // texunit:-3
+ 
+@@ -745,7 +751,7 @@ vec3 textureDualParaboloidArray(sampler2DArray p_tex, vec3 p_vec, float p_roughn
+ 	return mix(base, next, float(indexi % 256) / 256.0);
+ }
+ 
+-#else //ubershader-skip
++#else
+ 
+ uniform sampler2D radiance_map; // texunit:-2
+ 
+@@ -759,7 +765,7 @@ vec3 textureDualParaboloid(sampler2D p_tex, vec3 p_vec, float p_roughness) {
+ 	return textureLod(p_tex, norm.xy, p_roughness * RADIANCE_MAX_LOD).xyz;
+ }
+ 
+-#endif //ubershader-skip
++#endif // RADIANCE_MAP_ARRAY_AVAILABLE
+ 
+ #endif //ubershader-skip
+ 
+@@ -1658,6 +1664,12 @@ vec4 textureArray_bicubic(sampler2DArray tex, vec3 uv) {
+ uniform mediump vec4[12] lightmap_captures;
+ #endif //ubershader-skip
+ 
++// A project with no GIProbe still paid for these two sampler3D units in every
++// ubershader, because //ubershader-skip drops the guard and leaves the declarations
++// unconditional. rendering/quality/gi_probes/enabled lets such a project hand the
++// units back to its materials.
++#ifdef GI_PROBES_AVAILABLE
++
+ #ifdef USE_GI_PROBES //ubershader-skip
+ 
+ #if !defined(UBERSHADER_COMPAT)
+@@ -1826,6 +1838,8 @@ void gi_probes_compute(vec3 pos, vec3 normal, float roughness, inout vec3 out_sp
+ 
+ #endif //ubershader-skip
+ 
++#endif // GI_PROBES_AVAILABLE
++
+ void main() {
+ #ifdef RENDER_DEPTH_DUAL_PARABOLOID //ubershader-runtime
+ 
+@@ -1992,11 +2006,11 @@ FRAGMENT_SHADER_CODE
+ 		float horizon = min(1.0 + dot(ref_vec, normal), 1.0);
+ 		ref_vec = normalize((radiance_inverse_xform * vec4(ref_vec, 0.0)).xyz);
+ 		vec3 radiance;
+-#ifdef USE_RADIANCE_MAP_ARRAY //ubershader-runtime
++#ifdef RADIANCE_MAP_ARRAY_AVAILABLE
+ 		radiance = textureDualParaboloidArray(radiance_map_array, ref_vec, roughness) * bg_energy;
+-#else //ubershader-runtime
++#else
+ 		radiance = textureDualParaboloid(radiance_map, ref_vec, roughness) * bg_energy;
+-#endif //ubershader-runtime
++#endif
+ 		env_reflection_light = radiance;
+ 		env_reflection_light *= horizon * horizon;
+ 	}
+@@ -2037,10 +2051,12 @@ FRAGMENT_SHADER_CODE
+ 	specular_blob_intensity *= specular * 2.0;
+ #endif
+ 
++#ifdef GI_PROBES_AVAILABLE
+ #ifdef USE_GI_PROBES //ubershader-runtime
+ 	gi_probes_compute(vertex, normal, roughness, env_reflection_light, ambient_light);
+ 
+ #endif //ubershader-runtime
++#endif // GI_PROBES_AVAILABLE
+ 
+ #ifdef USE_LIGHTMAP //ubershader-runtime
+ #ifdef USE_LIGHTMAP_LAYERED //ubershader-runtime
+diff --git a/servers/visual_server.cpp b/servers/visual_server.cpp
+index a9399e3..ec085c9 100644
+--- a/servers/visual_server.cpp
++++ b/servers/visual_server.cpp
+@@ -2698,6 +2698,11 @@ VisualServer::VisualServer() {
+ 
+ 	GLOBAL_DEF("rendering/quality/reflections/texture_array_reflections", true);
+ 	GLOBAL_DEF("rendering/quality/reflections/texture_array_reflections.mobile", false);
++	// The GI probe samplers are declared in every scene ubershader whether the project
++	// has a GIProbe or not, and on a 16-unit mobile GPU those two sampler3D units come
++	// straight out of the material's budget. A project that uses no GIProbe can turn
++	// them off and get the units back.
++	GLOBAL_DEF("rendering/quality/gi_probes/enabled", true);
+ 	GLOBAL_DEF("rendering/quality/reflections/high_quality_ggx", true);
+ 	GLOBAL_DEF("rendering/quality/reflections/high_quality_ggx.mobile", false);
+ 	GLOBAL_DEF("rendering/quality/reflections/irradiance_max_size", 128);
