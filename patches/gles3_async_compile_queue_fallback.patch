@@ -1,8 +1,50 @@
 diff --git a/drivers/gles3/shader_cache_gles3.cpp b/drivers/gles3/shader_cache_gles3.cpp
-index 32ab2b2..93a4054 100644
+index 32ab2b2..a73f575 100644
 --- a/drivers/gles3/shader_cache_gles3.cpp
 +++ b/drivers/gles3/shader_cache_gles3.cpp
-@@ -97,12 +97,28 @@ void ShaderCacheGLES3::store(const String &p_program_hash, uint32_t p_program_fo
+@@ -68,20 +68,34 @@ bool ShaderCacheGLES3::retrieve(const String &p_program_hash, uint32_t *r_format
+ 		return false;
+ 	}
+ 
++	// A store for this hash can still be landing. store() runs on the cache write
++	// thread while this runs on the render thread, and on Android every file
++	// operation goes through JNI, so the entry can be visible under its final name
++	// before its bytes are. Measured on a cold boot: 104 reads came back with a
++	// zero-length file, against 52 entries that were perfectly good by the end of
++	// the session.
++	//
++	// So an entry that does not read back is a miss, not a casualty. Deleting it
++	// threw away a program that was about to be valid and forced it to be compiled
++	// again on the next run -- which is most of why the cache never warmed up. The
++	// next store() for this hash rewrites the same path anyway (the name IS the
++	// content hash), and _purge_excess() evicts whatever goes stale, so nothing
++	// accumulates from leaving it alone.
++	uint64_t file_len = fa->get_len();
++	if (file_len < 8) {
++		return false;
++	}
+ 	*r_format = fa->get_32();
+ 	uint32_t binary_len = fa->get_32();
+-	if (binary_len <= 0 || binary_len > 0x10000000) {
+-		ERR_PRINT("Program binary cache file is corrupted. Ignoring and removing.");
+-		fa->close();
+-		storage_da->remove(p_program_hash);
++	if (binary_len == 0 || binary_len > file_len - 8) {
++		print_verbose(vformat("Shader cache entry not usable yet, ignoring. hash=%s file_len=%d binary_len=%d",
++				p_program_hash, (int64_t)file_len, (int64_t)binary_len));
+ 		return false;
+ 	}
+ 	r_data->resize(binary_len);
+ 	PoolByteArray::Write w = r_data->write();
+ 	if (fa->get_buffer(w.ptr(), binary_len) != static_cast<uint64_t>(binary_len)) {
+-		ERR_PRINT("Program binary cache file is truncated. Ignoring and removing.");
+-		fa->close();
+-		storage_da->remove(p_program_hash);
++		print_verbose("Shader cache entry is short, ignoring: " + p_program_hash);
+ 		return false;
+ 	}
+ 
+@@ -97,12 +111,31 @@ void ShaderCacheGLES3::store(const String &p_program_hash, uint32_t p_program_fo
  		return;
  	}
  
@@ -29,7 +71,10 @@ index 32ab2b2..93a4054 100644
 +		fa->store_32(p_program_data.size());
 +		PoolByteArray::Read r = p_program_data.read();
 +		fa->store_buffer(r.ptr(), p_program_data.size());
-+	} // Closed by FileAccessRef going out of scope, before the rename.
++		fa->flush();
++		fa->close();
++	} // Explicitly, rather than leaning on the destructor, so the bytes are down
++	  // before the rename publishes the final name.
 +
 +	if (storage_da->rename(tmp_path, final_path) != OK) {
 +		storage_da->remove(tmp_path);
