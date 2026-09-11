@@ -212,7 +212,10 @@ bool proxy_contact(const Box3DWorldProxy &p_ours, const b3ShapeProxy &p_theirs, 
 	// ponytail: the candidates are the world axes, exact for the axis-aligned
 	// boxes that level geometry is built from and an approximation elsewhere.
 	// A true minimum translation needs both shapes' face normals plus their
-	// edge cross products; add that if angled geometry starts trapping bodies.
+	// edge cross products; the mesh triangle's face normal is added below,
+	// which is the part angled level geometry (dome shell panels, ramps) was
+	// missing: against a 45-degree panel the shallowest world-axis escape ran
+	// straight down through the floor instead of along the wall.
 	const Vector3 axes[3] = { Vector3(1, 0, 0), Vector3(0, 1, 0), Vector3(0, 0, 1) };
 
 	real_t best_depth = 1e30;
@@ -259,6 +262,59 @@ bool proxy_contact(const Box3DWorldProxy &p_ours, const b3ShapeProxy &p_theirs, 
 		if (push_negative < best_depth) {
 			best_depth = push_negative;
 			best_normal = -axis;
+		}
+	}
+
+	// A triangle we interpenetrate face-on needs the face normal as an escape
+	// candidate: the world axes are exact for the boxes level geometry is
+	// mostly built from, but a diagonal panel's shortest world-axis escape can
+	// point through a floor. Scoring is monotonic -- adding a candidate can
+	// only lower best_depth -- so axis-aligned cases keep their old answer.
+	// The mirrored copy of the triangle has the negated normal, so both signs
+	// are evaluated.
+	if (p_theirs.count == 3) {
+		const Vector3 e1 = g_vec(p_theirs.points[1]) - g_vec(p_theirs.points[0]);
+		const Vector3 e2 = g_vec(p_theirs.points[2]) - g_vec(p_theirs.points[0]);
+		const Vector3 face = e1.cross(e2);
+		if (face.length_squared() > CMP_EPSILON) {
+			for (int s = 0; s < 2; s++) {
+				const Vector3 axis = s == 0 ? face.normalized() : -face.normalized();
+
+				real_t ours_min = 1e30, ours_max = -1e30;
+				for (int i = 0; i < p_ours.proxy.count; i++) {
+					const real_t d = axis.dot(g_vec(p_ours.points[i]));
+					ours_min = MIN(ours_min, d);
+					ours_max = MAX(ours_max, d);
+				}
+				ours_min -= p_ours.proxy.radius;
+				ours_max += p_ours.proxy.radius;
+
+				real_t theirs_min = 1e30, theirs_max = -1e30;
+				for (int i = 0; i < p_theirs.count; i++) {
+					const real_t d = axis.dot(g_vec(p_theirs.points[i]));
+					theirs_min = MIN(theirs_min, d);
+					theirs_max = MAX(theirs_max, d);
+				}
+				theirs_min -= p_theirs.radius;
+				theirs_max += p_theirs.radius;
+
+				const real_t push_positive = theirs_max - ours_min;
+				const real_t push_negative = ours_max - theirs_min;
+				// The pair already passed the world-axis overlap check, but a
+				// projected axis can still read as separating within slop;
+				// skip this axis rather than discarding the contact.
+				if (push_positive < 0.0 || push_negative < 0.0) {
+					continue;
+				}
+				if (push_positive < best_depth) {
+					best_depth = push_positive;
+					best_normal = axis;
+				}
+				if (push_negative < best_depth) {
+					best_depth = push_negative;
+					best_normal = -axis;
+				}
+			}
 		}
 	}
 
