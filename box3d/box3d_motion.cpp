@@ -23,6 +23,8 @@ namespace {
 // carries no normal and would clamp every motion to zero.
 const float MIN_MARGIN = 2.0f * B3_LINEAR_SLOP;
 const int RECOVER_CYCLES = 4;
+// Radio shaving used to disambiguate touching from buried in proxy_contact.
+const real_t SHRINK_EPS = 0.002;
 const float RECOVER_SCALE = 0.4f;
 
 Box3DBody *body_of(b3ShapeId p_shape) {
@@ -199,6 +201,39 @@ bool proxy_contact(const Box3DWorldProxy &p_ours, const b3ShapeProxy &p_theirs, 
 		r_point = g_vec(out.pointB);
 		r_depth = p_margin - out.distance;
 		return true;
+	}
+
+	// Interpenetrating -- or merely touching. GJK collapses to zero with no
+	// direction in both cases, and the world-axis escape below measures the
+	// whole cloud's span along a diagonal, so a shallow tangent contact
+	// (a capsule resting against a railing tube) reads as meters of
+	// "penetration" and ejects the character. Disambiguate by shaving the
+	// radius off in doubling steps and re-measuring: the smallest shave that
+	// separates the pair bounds the true penetration, and the separated
+	// pair's axis is the honest escape direction. Only a genuinely buried
+	// body (the cryo pod) falls through to the axis scoring.
+	{
+		real_t shaved = 0.0;
+		while (shaved < p_ours.proxy.radius) {
+			shaved = shaved == 0.0 ? (real_t)SHRINK_EPS : MIN(shaved * 2.0, (real_t)p_ours.proxy.radius);
+			b3ShapeProxy shrunk = p_ours.proxy;
+			shrunk.radius = MAX(shrunk.radius - (float)shaved, 0.0f);
+
+			b3DistanceInput shrunk_input = { 0 };
+			shrunk_input.proxyA = shrunk;
+			shrunk_input.proxyB = p_theirs;
+			shrunk_input.transform = b3Transform_identity;
+			shrunk_input.useRadii = true;
+
+			b3SimplexCache shrunk_cache = { 0 };
+			b3DistanceOutput shrunk_out = b3ShapeDistance(&shrunk_input, &shrunk_cache, nullptr, 0);
+			if (shrunk_out.distance > 0.0f) {
+				r_normal = -g_vec(shrunk_out.normal);
+				r_point = g_vec(shrunk_out.pointB);
+				r_depth = MAX((real_t)shaved - shrunk_out.distance, 0.0f) + p_margin;
+				return true;
+			}
+		}
 	}
 
 	// Interpenetrating. GJK gives no direction here, and shrinking our cloud
@@ -562,6 +597,19 @@ bool query_contacts(Box3DBody *p_body, const Transform &p_xform, real_t p_margin
 						continue;
 					}
 
+					Vector3 probe_normal = g_vec(probe_ctx.normal);
+					bool probe_faces_up = probe_normal.length_squared() < 0.5f || probe_normal.y > 0.3f;
+					if (!probe_faces_up) {
+						// The probe is vertical, so it can only measure
+						// penetration against surfaces that face roughly up.
+						// Against a near-vertical flank (a railing tube) the
+						// fraction reads as penetration no matter where the body
+						// moves horizontally, so the recovery never converges
+						// and cycles eject the body sideways. The triangle
+						// contact above already covers those flanks.
+						continue;
+					}
+
 					float penetration = (p_margin + ours.proxy.radius) - probe_ctx.fraction * probe_down;
 					if (penetration <= 0.0f && penetration > -p_margin) {
 						// Touching within the margin: resting contact, no recovery.
@@ -855,7 +903,6 @@ bool Box3DSpace::test_motion(Box3DBody *p_body, const Transform &p_from, const V
 		xform.origin += step;
 		recovered += step;
 	}
-
 	// Phase 2: sweep, clamping the motion at the first thing each shape hits.
 	// Ray shapes sweep too unless the caller excludes them (move_and_slide
 	// excludes, floor snapping does not).
