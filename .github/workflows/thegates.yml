@@ -1,0 +1,73 @@
+name: TheGates renderers
+
+# Compila solo los renderers de TheGates, sin publicar nada: lo que hace falta
+# para validar un cambio del module the_gates en una plataforma que no se tiene
+# a mano antes de moverlo a un release. Corre en ramas thegates/** y a mano.
+on:
+  push:
+    branches: ["thegates/**"]
+  workflow_dispatch:
+
+env:
+  GODOT_DIR_REL: godot-engine
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: thegates-renderer
+            os: ubuntu-22.04
+          - target: thegates-renderer-macos
+            os: macos-14
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install build dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential scons pkg-config libx11-dev libxcursor-dev \
+            libxinerama-dev libgl1-mesa-dev libglu1-mesa-dev libasound2-dev \
+            libpulse-dev libudev-dev libxi-dev libxrandr-dev yasm
+
+      - name: Install build dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: brew install scons
+
+      - name: Cache SCons objects
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.scons_cache
+          key: ${{ matrix.target }}-${{ hashFiles('box3d/**', 'patches/**', 'scripts/build.sh') }}
+          restore-keys: ${{ matrix.target }}-
+
+      - name: Build
+        env:
+          SCONS_CACHE: ${{ github.workspace }}/.scons_cache
+          SCONS_CACHE_LIMIT: 8192
+          GODOT_DIR: ${{ github.workspace }}/../${{ env.GODOT_DIR_REL }}
+        run: scripts/build.sh ${{ matrix.target }}
+
+      - name: Collect artifacts
+        env:
+          BIN: ${{ github.workspace }}/../${{ env.GODOT_DIR_REL }}/bin
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          case "${{ matrix.target }}" in
+            thegates-renderer) cp "$BIN/godot.x11.opt.64" out/godot.box3d.thegates.linux.x86_64 ;;
+            thegates-renderer-macos) cp "$BIN/godot.osx.opt.thegates.universal" out/godot.box3d.thegates.macos.universal ;;
+          esac
+          ls -lh out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: out/*
+          if-no-files-found: error
