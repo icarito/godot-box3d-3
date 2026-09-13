@@ -52,6 +52,8 @@ compile Godot:
 | `godot.box3d.thegates.linux.x86_64` | TheGates renderer: `platform=x11` template carrying the `the_gates` module (ZeroMQ IPC + shared-texture frame transport) alongside Box3D. The binary the TheGates launcher runs for gates declaring `godot_version = "3.6"` |
 | `godot.box3d.thegates.linux.x86_64.debug` | Same renderer, `release_debug` build, for debugging a gate |
 | `linux-3.6` | The renderer packaged the way TheGates' backend serves it: a zip whose archive root holds `Renderer-godot_v3.6.x86_64`, the exact file `/api/download_renderer/linux-3.6` returns |
+| `godot.box3d.thegates.macos.universal`, `godot.box3d.thegates.windows.x86_64.exe` | The same renderer for macOS (arm64 + x86_64) and Windows (MinGW). Compile-verified; not yet run against a launcher on either |
+| `macos-3.6`, `windows-3.6` | Their backend zips, holding `Renderer-godot_v3.6.universal` and `Renderer-godot_v3.6.exe` |
 | `Godot-Box3D-export-templates-*.tpz` | Export templates for every platform Godot 3.6 targets: Linux x86_64 and ARM64, Windows x86_64, macOS universal, iOS, Android, HTML5 (threaded and not) |
 
 Consuming them:
@@ -123,6 +125,8 @@ scripts/build.sh headless                  # server build, what CI runs
 scripts/build.sh linux-templates           # export templates, release and debug
 scripts/build.sh windows-templates         # cross-compiled, needs mingw-w64 (-posix)
 scripts/build.sh thegates-renderer         # TheGates browser renderer (x11 + the_gates)
+scripts/build.sh thegates-renderer-macos   # same, macOS universal (needs Xcode)
+scripts/build.sh thegates-renderer-windows # same, Windows (MinGW)
 scripts/build.sh html5-templates           # needs emsdk
 scripts/build.sh android-templates         # needs the SDK and NDK r23c
 scripts/build.sh macos-templates           # needs Xcode

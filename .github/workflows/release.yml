@@ -51,6 +51,12 @@ jobs:
           - target: thegates-renderer
             name: thegates-renderer
             os: ubuntu-22.04
+          - target: thegates-renderer-macos
+            name: thegates-renderer-macos
+            os: macos-14
+          - target: thegates-renderer-windows
+            name: thegates-renderer-windows
+            os: ubuntu-22.04
           - target: windows-templates
             name: windows-templates
             os: ubuntu-22.04
@@ -89,7 +95,7 @@ jobs:
       # no std::thread or std::mutex, so Godot's core/os/mutex.h does not
       # compile. The -posix variants are the ones that do.
       - name: Set up MinGW (POSIX threads)
-        if: matrix.target == 'windows-templates'
+        if: matrix.target == 'windows-templates' || matrix.target == 'thegates-renderer-windows'
         run: |
           sudo apt-get install -y --no-install-recommends mingw-w64
           sudo update-alternatives --set x86_64-w64-mingw32-gcc /usr/bin/x86_64-w64-mingw32-gcc-posix
@@ -206,6 +212,23 @@ jobs:
               chmod +x stage/Renderer-godot_v3.6.x86_64
               (cd stage && zip -q -r9 ../out/linux-3.6 Renderer-godot_v3.6.x86_64)
               ;;
+            thegates-renderer-macos)
+              # macos-3.6: el binario universal con el nombre que el launcher
+              # busca en macOS (Renderer-godot_v<version>.universal).
+              cp "$BIN/godot.osx.opt.thegates.universal" out/godot.box3d.thegates.macos.universal
+              mkdir -p stage
+              cp "$BIN/godot.osx.opt.thegates.universal" stage/Renderer-godot_v3.6.universal
+              chmod +x stage/Renderer-godot_v3.6.universal
+              (cd stage && zip -q -r9 ../out/macos-3.6 Renderer-godot_v3.6.universal)
+              ;;
+            thegates-renderer-windows)
+              # windows-3.6: el .exe con el nombre que el launcher busca en Windows.
+              x86_64-w64-mingw32-strip "$BIN/godot.windows.opt.64.exe" || true
+              cp "$BIN/godot.windows.opt.64.exe" out/godot.box3d.thegates.windows.x86_64.exe
+              mkdir -p stage
+              cp "$BIN/godot.windows.opt.64.exe" stage/Renderer-godot_v3.6.exe
+              (cd stage && zip -q -r9 ../out/windows-3.6 Renderer-godot_v3.6.exe)
+              ;;
             windows-templates)
               cp "$BIN/godot.windows.opt.64.exe" out/windows_64_release.exe
               cp "$BIN/godot.windows.opt.debug.64.exe" out/windows_64_debug.exe
@@ -293,5 +316,7 @@ jobs:
             artifacts/linux-headless/*
             artifacts/frt-arm64/*
             artifacts/thegates-renderer/*
+            artifacts/thegates-renderer-macos/*
+            artifacts/thegates-renderer-windows/*
             templates/*
             *.tpz
