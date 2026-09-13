@@ -21,6 +21,8 @@ jobs:
             os: ubuntu-22.04
           - target: thegates-renderer-macos
             os: macos-14
+          - target: thegates-renderer-windows
+            os: ubuntu-22.04
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -39,6 +41,15 @@ jobs:
       - name: Install build dependencies (macOS)
         if: runner.os == 'macOS'
         run: brew install scons
+
+      # Ubuntu's default MinGW uses the win32 thread model, whose libstdc++ has
+      # no std::thread or std::mutex; the -posix variants are the ones Godot builds with.
+      - name: Set up MinGW (POSIX threads)
+        if: matrix.target == 'thegates-renderer-windows'
+        run: |
+          sudo apt-get install -y --no-install-recommends mingw-w64
+          sudo update-alternatives --set x86_64-w64-mingw32-gcc /usr/bin/x86_64-w64-mingw32-gcc-posix
+          sudo update-alternatives --set x86_64-w64-mingw32-g++ /usr/bin/x86_64-w64-mingw32-g++-posix
 
       - name: Cache SCons objects
         uses: actions/cache@v4
@@ -63,6 +74,7 @@ jobs:
           case "${{ matrix.target }}" in
             thegates-renderer) cp "$BIN/godot.x11.opt.64" out/godot.box3d.thegates.linux.x86_64 ;;
             thegates-renderer-macos) cp "$BIN/godot.osx.opt.thegates.universal" out/godot.box3d.thegates.macos.universal ;;
+            thegates-renderer-windows) cp "$BIN/godot.windows.opt.64.exe" out/godot.box3d.thegates.windows.x86_64.exe ;;
           esac
           ls -lh out
 

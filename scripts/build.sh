@@ -10,6 +10,7 @@
 #   frt-arm64-templates    FRT/SDL2 ARM64 templates for PortMaster handhelds
 #   thegates-renderer      TheGates 3D browser renderer (x11 + the_gates module)
 #   thegates-renderer-macos  Same renderer for macOS, universal binary (needs Xcode)
+#   thegates-renderer-windows  Same renderer for Windows, cross-compiled with MinGW
 #   html5-templates   WebAssembly templates, threaded and not (needs emsdk)
 #   android-templates Android templates, all four ABIs (needs SDK + NDK)
 #   macos-templates   macOS universal template (needs Xcode)
@@ -187,6 +188,12 @@ for target in "$@"; do
 				custom_modules="$here,$gates_modules"
 			lipo -create "$GODOT_DIR/bin/godot.osx.opt.x86_64" "$GODOT_DIR/bin/godot.osx.opt.arm64" \
 				-output "$GODOT_DIR/bin/godot.osx.opt.thegates.universal"
+			;;
+		thegates-renderer-windows)
+			"$here/scripts/thegates_env.sh" >/dev/null
+			gates_modules="$THEGATES_ENV_DIR/modules/the_gates"
+			build platform=windows target=release tools=no disable_exceptions=no \
+				custom_modules="$here,$gates_modules"
 			;;
 		windows-templates)
 			build platform=windows target=release tools=no

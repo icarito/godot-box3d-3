@@ -26,7 +26,7 @@ env_dir="${THEGATES_ENV_DIR:-$here/.thegates-env}"
 # Pins: moverlos cambia el binario y con el el protocolo de frames que habla
 # el launcher. THEGATES_REF es el head del PR que agrego el runtime Godot 3.6;
 # THEGATES_GODOT_REF es la cabeza de tg-4.5, de donde salen los thirdparty.
-THEGATES_REF="${THEGATES_REF:-224e6fd32021a1a2bdc1274c81ef7699994b87a8}"
+THEGATES_REF="${THEGATES_REF:-ecf9f2c41047c7e3c630f05a0ab859682a39ca56}"
 THEGATES_URL="${THEGATES_URL:-https://github.com/icarito/thegates.git}"
 THEGATES_GODOT_REF="${THEGATES_GODOT_REF:-aa5805a19e99bd2670cb05b2906962fa3fdb47a6}"
 THEGATES_GODOT_URL="${THEGATES_GODOT_URL:-https://github.com/thegatesbrowser/godot.git}"
