@@ -15,7 +15,7 @@
 #
 # Directorio que deja armado (SCsub de the_gates lo consume):
 #   <env>/modules/the_gates/               el modulo out-of-tree
-#   <env>/godot/thirdparty/{libzmq,cppzmq,flingfd}
+#   <env>/godot/thirdparty/{libzmq,cppzmq,flingfd,vulkan/include}
 #
 # THEGATES_ENV_DIR donde vive todo (default: <fork>/.thegates-env, gitignored).
 set -euo pipefail
@@ -26,7 +26,7 @@ env_dir="${THEGATES_ENV_DIR:-$here/.thegates-env}"
 # Pins: moverlos cambia el binario y con el el protocolo de frames que habla
 # el launcher. THEGATES_REF es el head del PR que agrego el runtime Godot 3.6;
 # THEGATES_GODOT_REF es la cabeza de tg-4.5, de donde salen los thirdparty.
-THEGATES_REF="${THEGATES_REF:-ecf9f2c41047c7e3c630f05a0ab859682a39ca56}"
+THEGATES_REF="${THEGATES_REF:-93b9f55a7bbf519673799fb221876842531c8147}"
 THEGATES_URL="${THEGATES_URL:-https://github.com/icarito/thegates.git}"
 THEGATES_GODOT_REF="${THEGATES_GODOT_REF:-aa5805a19e99bd2670cb05b2906962fa3fdb47a6}"
 THEGATES_GODOT_URL="${THEGATES_GODOT_URL:-https://github.com/thegatesbrowser/godot.git}"
@@ -68,8 +68,17 @@ if [ ! -d "$thirdparty/libzmq" ] || [ ! -d "$thirdparty/cppzmq" ] \
 		thirdparty/libzmq thirdparty/cppzmq thirdparty/flingfd
 fi
 
+# Los headers de Vulkan los usa el module para medir la asignacion compartida
+# (Windows, y Linux cuando el fd no informa su tamano).
+if [ ! -d "$thirdparty/vulkan/include" ]; then
+	echo "==> TheGates fork Vulkan headers $THEGATES_GODOT_REF" >&2
+	extract "$THEGATES_GODOT_URL" "$THEGATES_GODOT_REF" "$thirdparty/vulkan" \
+		thirdparty/vulkan/include
+fi
+
 if [ ! -f "$module/SCsub" ] || [ ! -d "$thirdparty/libzmq" ] \
-	|| [ ! -d "$thirdparty/cppzmq" ] || [ ! -d "$thirdparty/flingfd" ]; then
+	|| [ ! -d "$thirdparty/cppzmq" ] || [ ! -d "$thirdparty/flingfd" ] \
+	|| [ ! -d "$thirdparty/vulkan/include" ]; then
 	echo "!!! entorno thegates incompleto: faltan piezas en $env_dir" >&2
 	exit 1
 fi
