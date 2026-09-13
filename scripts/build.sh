@@ -8,6 +8,7 @@
 #   windows-templates Windows x86_64 export templates, cross-compiled with MinGW
 #   linux-arm64-templates  Linux ARM64 templates, built on an ARM64 host
 #   frt-arm64-templates    FRT/SDL2 ARM64 templates for PortMaster handhelds
+#   thegates-renderer      TheGates 3D browser renderer (x11 + the_gates module)
 #   html5-templates   WebAssembly templates, threaded and not (needs emsdk)
 #   android-templates Android templates, all four ABIs (needs SDK + NDK)
 #   macos-templates   macOS universal template (needs Xcode)
@@ -28,12 +29,17 @@ GODOT_URL="${GODOT_URL:-https://github.com/godotengine/godot.git}"
 # en patches/frt_platform_hooks.patch (6 archivos, todos inertes sin platform=frt).
 FRT_REF="${FRT_REF:-01e53178e8aabd515bf327b27f847e3bb8b15251}"
 FRT_URL="${FRT_URL:-https://github.com/efornara/frt.git}"
+# El runtime de TheGates no es un platform sino un custom module (the_gates)
+# que viajo como PR thegatesbrowser/thegates#1 sobre godot upstream sin
+# parchear. Sus pins viven en scripts/thegates_env.sh, que arma el directorio
+# .thegates-env/ que este target compila junto al modulo Box3D.
 here="$(cd "$(dirname "$0")/.." && pwd)"
+THEGATES_ENV_DIR="${THEGATES_ENV_DIR:-$here/.thegates-env}"
 GODOT_DIR="${GODOT_DIR:-$(dirname "$here")/godot}"
 JOBS="${JOBS:-$(nproc 2>/dev/null || echo 4)}"
 
 if [ $# -eq 0 ]; then
-	sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'
+	sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'
 	exit 1
 fi
 
@@ -104,7 +110,8 @@ PRODUCTION="${PRODUCTION:-yes}"
 
 build() { # build <scons args...>
 	echo "==> scons $*"
-	(cd "$GODOT_DIR" && scons -j"$JOBS" custom_modules="$here" progress=no \
+	(cd "$GODOT_DIR" && scons -j"$JOBS" \
+		custom_modules="${CUSTOM_MODULES:-$here}" progress=no \
 		production="$PRODUCTION" lto=none "$@")
 }
 
@@ -152,6 +159,20 @@ for target in "$@"; do
 				build platform=frt arch=arm64 target=release tools=no LINKFLAGS=-s
 				build platform=frt arch=arm64 target=release_debug tools=no LINKFLAGS=-s
 			)
+			;;
+		thegates-renderer)
+			# El renderer que el launcher de TheGates baja del backend para los
+			# gates que declaran godot_version = "3.6": un template x11 con el
+			# module the_gates (IPC ZeroMQ + textura compartida via
+			# GL_EXT_memory_object_fd) ademas de Box3D, mas los thirdparty que
+			# el modulo compila desde .thegates-env/godot/thirdparty. libzmq
+			# necesita excepciones, que Godot desactiva por defecto.
+			"$here/scripts/thegates_env.sh" >/dev/null
+			gates_modules="$THEGATES_ENV_DIR/modules/the_gates"
+			build platform=x11 target=release tools=no disable_exceptions=no \
+				custom_modules="$here,$gates_modules"
+			build platform=x11 target=release_debug tools=no disable_exceptions=no \
+				custom_modules="$here,$gates_modules"
 			;;
 		windows-templates)
 			build platform=windows target=release tools=no

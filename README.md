@@ -49,6 +49,9 @@ compile Godot:
 |----------|------------|
 | `godot.box3d.linux.x86_64.headless` | `platform=server` build, links no X11 — the one a CI runner should call as `GODOT_BIN` |
 | `godot.box3d.linux.x86_64.editor` | X11 editor binary, for working locally |
+| `godot.box3d.thegates.linux.x86_64` | TheGates renderer: `platform=x11` template carrying the `the_gates` module (ZeroMQ IPC + shared-texture frame transport) alongside Box3D. The binary the TheGates launcher runs for gates declaring `godot_version = "3.6"` |
+| `godot.box3d.thegates.linux.x86_64.debug` | Same renderer, `release_debug` build, for debugging a gate |
+| `linux-3.6` | The renderer packaged the way TheGates' backend serves it: a zip whose archive root holds `Renderer-godot_v3.6.x86_64`, the exact file `/api/download_renderer/linux-3.6` returns |
 | `Godot-Box3D-export-templates-*.tpz` | Export templates for every platform Godot 3.6 targets: Linux x86_64 and ARM64, Windows x86_64, macOS universal, iOS, Android, HTML5 (threaded and not) |
 
 Consuming them:
@@ -119,6 +122,7 @@ scripts/build.sh editor                    # X11 editor, for scripts/test.sh loc
 scripts/build.sh headless                  # server build, what CI runs
 scripts/build.sh linux-templates           # export templates, release and debug
 scripts/build.sh windows-templates         # cross-compiled, needs mingw-w64 (-posix)
+scripts/build.sh thegates-renderer         # TheGates browser renderer (x11 + the_gates)
 scripts/build.sh html5-templates           # needs emsdk
 scripts/build.sh android-templates         # needs the SDK and NDK r23c
 scripts/build.sh macos-templates           # needs Xcode
@@ -145,6 +149,37 @@ Note: the build writes `*.o` objects next to the submodule sources
 (Godot's standard thirdparty layout); add `*.o` to
 `.git/modules/box3d/thirdparty/box3d/info/exclude` to keep the submodule
 status clean on fresh clones.
+
+## TheGates runtime
+
+[TheGates](https://thegates.io) is a 3D internet browser whose launcher runs
+each gate in a separate renderer process. Its Godot 3 support travelled as
+[thegatesbrowser/thegates#1](https://github.com/thegatesbrowser/thegates/pull/1)
+and — that was the point of the PR — it needs **no engine patches**: the
+runtime is an out-of-tree custom module (`the_gates`) built with Godot 3's
+`custom_modules=` option over pristine upstream Godot 3.6. The launcher picks
+the renderer binary from the gate's `godot_version` field and the backend
+serves it at `/api/download_renderer/<platform>-<version>`, so our renderer
+slots in without TheGates knowing anything about this fork.
+
+`thegates-renderer` compiles both modules into one x11 template:
+
+```bash
+scripts/build.sh thegates-renderer
+```
+
+`scripts/thegates_env.sh` assembles the sources first, pinned: the `the_gates`
+module from the PR head, plus the `libzmq`/`cppzmq`/`flingfd` thirdparty the
+module compiles, taken from TheGates' Godot 4.5 fork so both engines speak
+the same wire protocol. libzmq needs exceptions, which Godot disables by
+default, so this target also passes `disable_exceptions=no`.
+
+What a gate needs from a project is its pack: export the project with these
+templates as usual, publish the `.pck` as the gate's `resource_pack`, and the
+launcher runs it on the downloaded renderer — with `physics_engine = "Box3D"`
+it runs on this backend's physics. The renderer stays a plain Godot 3 binary
+when no launcher IPC directory is present, so it can be smoke-tested
+directly.
 
 ## Tests
 

@@ -44,6 +44,13 @@ jobs:
           - target: frt-arm64-templates
             name: frt-arm64
             os: ubuntu-22.04
+          # El renderer que el launcher de TheGates baja del backend para los
+          # gates godot_version = "3.6": template x11 con los modules Box3D y
+          # the_gates. Como con FRT, el nombre NO termina en "templates" a
+          # proposito: no es un slot de template, es un asset suelto.
+          - target: thegates-renderer
+            name: thegates-renderer
+            os: ubuntu-22.04
           - target: windows-templates
             name: windows-templates
             os: ubuntu-22.04
@@ -186,6 +193,19 @@ jobs:
               cp "$BIN/godot.frt.opt.arm64" out/godot.box3d.frt.arm64.release
               cp "$BIN/godot.frt.opt.debug.arm64" out/godot.box3d.frt.arm64.debug
               ;;
+            thegates-renderer)
+              # Binarios con nombre godot.box3d.<plataforma>.<flavor> y, aparte,
+              # el zip con el contrato del backend de TheGates:
+              # /api/download_renderer/linux-3.6 es un zip cuyo root trae el
+              # binario con el nombre que renderer_executable.tres deriva
+              # (Renderer-godot_v<version>.x86_64).
+              cp "$BIN/godot.x11.opt.64" out/godot.box3d.thegates.linux.x86_64
+              cp "$BIN/godot.x11.opt.debug.64" out/godot.box3d.thegates.linux.x86_64.debug
+              mkdir -p stage
+              cp "$BIN/godot.x11.opt.64" stage/Renderer-godot_v3.6.x86_64
+              chmod +x stage/Renderer-godot_v3.6.x86_64
+              (cd stage && zip -q -r9 ../out/linux-3.6 Renderer-godot_v3.6.x86_64)
+              ;;
             windows-templates)
               cp "$BIN/godot.windows.opt.64.exe" out/windows_64_release.exe
               cp "$BIN/godot.windows.opt.debug.64.exe" out/windows_64_debug.exe
@@ -213,6 +233,8 @@ jobs:
           case "${{ matrix.target }}" in
             windows-templates) x86_64-w64-mingw32-strip out/* || true ;;
             editor|headless|linux-templates|linux-arm64-templates|frt-arm64-templates) strip out/* || true ;;
+            # El zip linux-3.6 no se toca: strip no distingue un zip de un ELF.
+            thegates-renderer) strip out/godot.* || true ;;
           esac
           ls -lh out
 
@@ -270,5 +292,6 @@ jobs:
             artifacts/linux-editor/*
             artifacts/linux-headless/*
             artifacts/frt-arm64/*
+            artifacts/thegates-renderer/*
             templates/*
             *.tpz

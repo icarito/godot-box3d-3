@@ -6,3 +6,5 @@
 
 # Toolchain local de frt_env.sh (SDK buildroot + SDL2 arm64)
 /.frt-env/
+# Fuentes del runtime TheGates de thegates_env.sh (modulo the_gates + thirdparty)
+/.thegates-env/
