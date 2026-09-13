@@ -36,6 +36,14 @@ jobs:
           - target: linux-arm64-templates
             name: linux-arm64-templates
             os: ubuntu-22.04-arm
+          # Cross-compilado en un runner x86_64: el binario sale de
+          # scripts/build.sh frt-arm64-templates, que pide GODOT_SDK_LINUX_ARM64
+          # y SDL2_ARM64. El nombre NO termina en "templates" a proposito: el job
+          # de publish empaqueta en el .tpz todo artifact/*-templates, y los
+          # binarios FRT no son slots de template, son assets sueltos del release.
+          - target: frt-arm64-templates
+            name: frt-arm64
+            os: ubuntu-22.04
           - target: windows-templates
             name: windows-templates
             os: ubuntu-22.04
@@ -118,6 +126,22 @@ jobs:
           key: ${{ matrix.name }}-${{ hashFiles('box3d/**', 'patches/**', 'scripts/build.sh') }}
           restore-keys: ${{ matrix.name }}-
 
+      # El toolchain (SDK buildroot + SDL2 arm64) vale ~500 MB y tarda minutos en
+      # preparar; cacheado por el hash del script que lo arma.
+      - name: Cache FRT cross toolchain
+        if: matrix.target == 'frt-arm64-templates'
+        uses: actions/cache@v4
+        with:
+          path: .frt-env
+          key: frt-env-${{ hashFiles('scripts/frt_env.sh') }}
+
+      - name: Set up FRT cross toolchain
+        if: matrix.target == 'frt-arm64-templates'
+        run: |
+          scripts/frt_env.sh
+          echo "GODOT_SDK_LINUX_ARM64=$GITHUB_WORKSPACE/.frt-env/aarch64-godot-linux-gnu_sdk-buildroot" >> "$GITHUB_ENV"
+          echo "SDL2_ARM64=$GITHUB_WORKSPACE/.frt-env/sdl2/arm64" >> "$GITHUB_ENV"
+
       - name: Build
         env:
           SCONS_CACHE: ${{ github.workspace }}/.scons_cache
@@ -156,6 +180,12 @@ jobs:
               cp "$BIN/godot.x11.opt.64" out/linux_x11_arm64_release
               cp "$BIN/godot.x11.opt.debug.64" out/linux_x11_arm64_debug
               ;;
+            frt-arm64-templates)
+              # Nombres en la linea de godot.box3d.<plataforma>.<flavor>: lo que
+              # un consumidor (PortMaster, godot_bin.sh) baja del release.
+              cp "$BIN/godot.frt.opt.arm64" out/godot.box3d.frt.arm64.release
+              cp "$BIN/godot.frt.opt.debug.arm64" out/godot.box3d.frt.arm64.debug
+              ;;
             windows-templates)
               cp "$BIN/godot.windows.opt.64.exe" out/windows_64_release.exe
               cp "$BIN/godot.windows.opt.debug.64.exe" out/windows_64_debug.exe
@@ -182,7 +212,7 @@ jobs:
           # symbol table costs hundreds of megabytes on every CI download.
           case "${{ matrix.target }}" in
             windows-templates) x86_64-w64-mingw32-strip out/* || true ;;
-            editor|headless|linux-templates|linux-arm64-templates) strip out/* || true ;;
+            editor|headless|linux-templates|linux-arm64-templates|frt-arm64-templates) strip out/* || true ;;
           esac
           ls -lh out
 
@@ -239,5 +269,6 @@ jobs:
           files: |
             artifacts/linux-editor/*
             artifacts/linux-headless/*
+            artifacts/frt-arm64/*
             templates/*
             *.tpz

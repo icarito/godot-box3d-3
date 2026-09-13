@@ -7,6 +7,7 @@
 #   linux-templates   Linux x86_64 export templates (release and debug)
 #   windows-templates Windows x86_64 export templates, cross-compiled with MinGW
 #   linux-arm64-templates  Linux ARM64 templates, built on an ARM64 host
+#   frt-arm64-templates    FRT/SDL2 ARM64 templates for PortMaster handhelds
 #   html5-templates   WebAssembly templates, threaded and not (needs emsdk)
 #   android-templates Android templates, all four ABIs (needs SDK + NDK)
 #   macos-templates   macOS universal template (needs Xcode)
@@ -21,6 +22,12 @@ set -euo pipefail
 # install; see the README's release notes.
 GODOT_REF="${GODOT_REF:-6371881f6742425cc14eaa367f18dd95955bf5e5}"
 GODOT_URL="${GODOT_URL:-https://github.com/godotengine/godot.git}"
+# FRT es un "platform" out-of-tree (efornara/frt) que se clona en platform/frt.
+# Pineado por la misma razon que el engine: un binario publicable tiene que ser
+# reproducible. Los hooks que el engine necesita para conocer la plataforma van
+# en patches/frt_platform_hooks.patch (6 archivos, todos inertes sin platform=frt).
+FRT_REF="${FRT_REF:-01e53178e8aabd515bf327b27f847e3bb8b15251}"
+FRT_URL="${FRT_URL:-https://github.com/efornara/frt.git}"
 here="$(cd "$(dirname "$0")/.." && pwd)"
 GODOT_DIR="${GODOT_DIR:-$(dirname "$here")/godot}"
 JOBS="${JOBS:-$(nproc 2>/dev/null || echo 4)}"
@@ -37,7 +44,11 @@ if [ ! -d "$GODOT_DIR/.git" ]; then
 	# Blobless: the full 3.6 history is large and only one commit is built.
 	git clone --filter=blob:none "$GODOT_URL" "$GODOT_DIR"
 fi
-git -C "$GODOT_DIR" fetch --quiet origin "$GODOT_REF" 2>/dev/null || git -C "$GODOT_DIR" fetch --quiet origin
+# Only reach the network when the pinned commit is not here yet: a rebuild after
+# touching a patch has no reason to fail offline.
+if ! git -C "$GODOT_DIR" cat-file -e "$GODOT_REF^{commit}" 2>/dev/null; then
+	git -C "$GODOT_DIR" fetch --quiet origin "$GODOT_REF" 2>/dev/null || git -C "$GODOT_DIR" fetch --quiet origin
+fi
 git -C "$GODOT_DIR" checkout --quiet --detach "$GODOT_REF"
 
 # Patches are reapplied from a clean checkout each time, so a build never
@@ -116,6 +127,31 @@ for target in "$@"; do
 			# width, so the artifact step is what tells the arm64 slot apart.
 			build platform=x11 target=release tools=no
 			build platform=x11 target=release_debug tools=no
+			;;
+		frt-arm64-templates)
+			# FRT usa SDL2 en vez de X11, que es lo que hace falta en los handhelds
+			# de PortMaster: ROCKNIX no tiene GL de escritorio (su libGL.so.1 es un
+			# stub) y el template x11 no arranca ahi. Cross-compilado con el
+			# buildroot SDK de Godot, no con el toolchain del host: su glibc vieja
+			# es lo que hace que el binario corra en cualquier CFW.
+			: "${GODOT_SDK_LINUX_ARM64:?falta el SDK arm64 -- correr dentro de la imagen de build}"
+			: "${SDL2_ARM64:?falta SDL2 arm64 -- correr dentro de la imagen de build}"
+			frt_dir="$GODOT_DIR/platform/frt"
+			if [ ! -d "$frt_dir/.git" ]; then
+				git clone --quiet "$FRT_URL" "$frt_dir"
+			fi
+			if ! git -C "$frt_dir" cat-file -e "$FRT_REF^{commit}" 2>/dev/null; then
+				git -C "$frt_dir" fetch --quiet origin
+			fi
+			git -C "$frt_dir" checkout --quiet --detach "$FRT_REF"
+			echo "==> FRT     $frt_dir @ $FRT_REF"
+			(
+				export PATH="$GODOT_SDK_LINUX_ARM64/bin:$SDL2_ARM64/bin:$PATH"
+				# LINKFLAGS=-s es lo que usa el release de upstream FRT: production=yes
+				# no strippea, y los simbolos son 7 MB de los 42 en una tarjeta SD.
+				build platform=frt arch=arm64 target=release tools=no LINKFLAGS=-s
+				build platform=frt arch=arm64 target=release_debug tools=no LINKFLAGS=-s
+			)
 			;;
 		windows-templates)
 			build platform=windows target=release tools=no

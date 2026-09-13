@@ -1,5 +1,8 @@
 *.pyc
 .sconsign.dblite
 *.os
-*.o
+**/*.o
 *.obj
+
+# Toolchain local de frt_env.sh (SDK buildroot + SDL2 arm64)
+/.frt-env/

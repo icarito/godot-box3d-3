@@ -1,0 +1,73 @@
+--- a/.gitignore
++++ b/.gitignore
+@@ -341,6 +341,9 @@ ServiceFabricBackup/
+ # Hint file for IntelliSense
+ cpp.hint
+ 
++### FRT ##
++platform/frt
++
+ ###################
+ ### OS specific ###
+ ###################
+--- a/core/SCsub
++++ b/core/SCsub
+@@ -133,7 +133,7 @@ if env["builtin_zstd"]:
+         "decompress/zstd_decompress_block.c",
+         "decompress/zstd_decompress.c",
+     ]
+-    if env["platform"] in ["android", "iphone", "osx", "server", "x11"]:
++    if env["platform"] in ["android", "iphone", "osx", "server", "x11", "frt"]:
+         # Match platforms with ZSTD_ASM_SUPPORTED in common/portability_macros.h
+         thirdparty_zstd_sources.append("decompress/huf_decompress_amd64.S")
+     thirdparty_zstd_sources = [thirdparty_zstd_dir + file for file in thirdparty_zstd_sources]
+--- a/drivers/gles2/rasterizer_gles2.cpp
++++ b/drivers/gles2/rasterizer_gles2.cpp
+@@ -76,9 +76,14 @@
+ #include <GLES2/gl2ext.h>
+ #include <GLES2/gl2platform.h>
+ 
++#if defined(FRT_ENABLED)
++extern "C" void *SDL_GL_GetProcAddress(const char *);
++#define eglGetProcAddress(x) SDL_GL_GetProcAddress(x)
++#else
+ #include <EGL/egl.h>
+ #include <EGL/eglext.h>
+ #endif
++#endif
+ 
+ #if defined(MINGW_ENABLED) || defined(_MSC_VER)
+ #define strcpy strcpy_s
+--- a/main/main_builders.py
++++ b/main/main_builders.py
+@@ -106,7 +106,7 @@ def make_default_controller_mappings(target, source, env):
+                 platform_mappings[current_platform][guid] = line
+ 
+     platform_variables = {
+-        "Linux": "#ifdef X11_ENABLED",
++        "Linux": "#if defined(X11_ENABLED) || defined(FRT_ENABLED)",
+         "Windows": "#ifdef WINDOWS_ENABLED",
+         "Mac OS X": "#ifdef OSX_ENABLED",
+         "Android": "#ifdef ANDROID_ENABLED",
+--- a/modules/webm/config.py
++++ b/modules/webm/config.py
+@@ -5,7 +5,7 @@ def can_build(env, platform):
+         return False
+     # Can work in theory but our libvpx/SCsub is too broken to compile NEON .s
+     # files properly on Linux arm32. Could be fixed by someone motivated.
+-    if platform in ["x11", "server"] and env["arch"] in ["arm", "arm32"]:
++    if platform in ["x11", "server", "frt"] and env["arch"] in ["arm", "arm32"]:
+         return False
+     return True
+ 
+--- a/modules/webm/libvpx/SCsub
++++ b/modules/webm/libvpx/SCsub
+@@ -227,7 +227,7 @@ if env["platform"] == "uwp":
+ elif env["platform"] != "windows":  # Disable for Windows, yasm SIMD optimizations trigger crash (GH-50862).
+     import platform
+ 
+-    is_x11_or_server_arm = (env["platform"] == "x11" or env["platform"] == "server") and (
++    is_x11_or_server_arm = (env["platform"] == "x11" or env["platform"] == "server" or env["platform"] == "frt") and (
+         platform.machine().startswith("arm")
+         or platform.machine().startswith("aarch")
+         or ("arch" in env and env["arch"].startswith("arm"))
