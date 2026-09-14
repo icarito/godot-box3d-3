@@ -259,6 +259,10 @@ GODOT=../godot/bin/godot.x11.tools.64 scripts/test.sh
    - Optional tuning: `physics/3d/box3d_substeps` (default 2, range 1–8).
      More sub-steps cost time and buy accuracy; 1 is closest to what Godot's
      Bullet backend does per frame.
+   - Optional tuning: `physics/3d/box3d_warm_starting` (default off).
+     Box3D ships with warm starting disabled for determinism; enabling it
+     replays each contact's previous impulses into the solver, which
+     sharpens stacked bodies and long contact chains at a small step cost.
 
 ## Troubleshooting
 

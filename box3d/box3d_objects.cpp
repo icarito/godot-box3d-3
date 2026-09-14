@@ -980,6 +980,12 @@ Box3DSpace::Box3DSpace() {
 	def.workerCount = 1;
 	world = b3CreateWorld(&def);
 	b3World_SetCustomFilterCallback(world, godot_collision_filter, nullptr);
+	// Box3D ships warm starting off; it sharpens stacking convergence at the
+	// cost of replaying previous impulses. Opt-in through project settings so
+	// existing scenes keep their recorded behavior.
+	if (ProjectSettings::get_singleton()->has_setting("physics/3d/box3d_warm_starting")) {
+		b3World_EnableWarmStarting(world, (bool)ProjectSettings::get_singleton()->get_setting("physics/3d/box3d_warm_starting"));
+	}
 	direct_state = memnew(Box3DDirectSpaceState);
 	direct_state->space = this;
 	apply_gravity();
