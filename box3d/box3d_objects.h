@@ -86,6 +86,14 @@ public:
 		// on two bodies needs two of these, and the local transform is baked in.
 		b3MeshData *mesh_data = nullptr;
 		b3HeightFieldData *height_data = nullptr;
+
+		// Cached motion-path parameters, filled by create_shape(). Capsules ride
+		// the kinematic recovery loop and ray shapes the ray separation pass,
+		// both per tick; re-reading the shape Variant's Dictionary there costs
+		// more than the queries themselves.
+		float cached_radius = 0.0f;
+		float cached_height = 0.0f;
+		float cached_length = 0.0f;
 	};
 
 	RID self;

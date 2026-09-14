@@ -141,9 +141,8 @@ bool capsule_contact_callback(b3ShapeId p_shape, const b3PlaneResult *p_results,
 bool query_capsule_contacts(Box3DBody *p_body, const Box3DBody::ShapeInstance &p_instance,
 		const Transform &p_xform, real_t p_margin, const Set<RID> &p_exclude, Contact *r_deepest,
 		Vector<b3CollisionPlane> *r_planes) {
-	Dictionary data = p_instance.shape->data;
-	const float radius = data.has("radius") ? (float)(real_t)data["radius"] : 0.5f;
-	const float height = data.has("height") ? (float)(real_t)data["height"] : 1.0f;
+	const float radius = p_instance.cached_radius;
+	const float height = p_instance.cached_height;
 	const Transform shape_xform = p_xform * p_instance.xform;
 	const Vector3 scale = shape_xform.basis.get_scale_abs();
 	const float radius_scale = MAX(scale.x, MAX(scale.y, scale.z));
@@ -1044,11 +1043,10 @@ int Box3DSpace::test_ray_separation(Box3DBody *p_body, const Transform &p_transf
 				continue;
 			}
 
-			Dictionary d = si.shape->data;
-			float length = d.has("length") ? (float)(real_t)d["length"] : 1.0f;
-
 			Transform shape_xform = xform * si.xform;
 			shape_xform.origin += recover;
+
+			const float length = si.cached_length;
 
 			Vector3 origin = shape_xform.origin;
 			Vector3 tip = shape_xform.xform(Vector3(0, 0, length));

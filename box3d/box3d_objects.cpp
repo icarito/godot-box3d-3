@@ -485,6 +485,21 @@ void Box3DBody::destroy_shape(int p_idx) {
 void Box3DBody::create_shape(int p_idx) {
 	destroy_shape(p_idx);
 	_create_shape(p_idx);
+
+	ShapeInstance &si = shapes.write[p_idx];
+	si.cached_radius = 0.0f;
+	si.cached_height = 0.0f;
+	si.cached_length = 0.0f;
+	if (si.shape) {
+		if (si.shape->type == PhysicsServer::SHAPE_CAPSULE) {
+			Dictionary data = si.shape->data;
+			si.cached_radius = data.has("radius") ? (float)(real_t)data["radius"] : 0.5f;
+			si.cached_height = data.has("height") ? (float)(real_t)data["height"] : 1.0f;
+		} else if (si.shape->type == PhysicsServer::SHAPE_RAY) {
+			Dictionary data = si.shape->data;
+			si.cached_length = data.has("length") ? (float)(real_t)data["length"] : 1.0f;
+		}
+	}
 }
 
 void Box3DBody::rebuild_shapes() {
