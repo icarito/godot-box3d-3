@@ -45,8 +45,8 @@ jobs:
         if: matrix.target == 'thegates-renderer'
         run: |
           wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s -- 18
-          sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-18 100
-          sudo update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-18 100
+          sudo ln -sf /usr/bin/clang-18 /usr/bin/clang
+          sudo ln -sf /usr/bin/clang++-18 /usr/bin/clang++
           clang++ --version | head -1
 
       - name: Install build dependencies (macOS)
