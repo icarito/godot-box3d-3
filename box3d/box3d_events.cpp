@@ -78,6 +78,10 @@ static void pump_sensor_events(Box3DSpace *p_space) {
 
 	for (int i = 0; i < (int)begins.size(); i++) {
 		const b3SensorBeginTouchEvent &e = begins[i];
+		// Either shape may have been destroyed by a callback that already ran.
+		if (!b3Shape_IsValid(e.sensorShapeId) || !b3Shape_IsValid(e.visitorShapeId)) {
+			continue;
+		}
 		SensorLookup sensor = sensor_lookup(e.sensorShapeId);
 		SensorLookup visitor = sensor_lookup(e.visitorShapeId);
 		if (!sensor.area) {
