@@ -26,7 +26,7 @@ env_dir="${THEGATES_ENV_DIR:-$here/.thegates-env}"
 # Pins: moverlos cambia el binario y con el el protocolo de frames que habla
 # el launcher. THEGATES_REF es el head del PR que agrego el runtime Godot 3.6;
 # THEGATES_GODOT_REF es la cabeza de tg-4.5, de donde salen los thirdparty.
-THEGATES_REF="${THEGATES_REF:-73de9c10235f332b01221a89bd8903098d75b31a}"
+THEGATES_REF="${THEGATES_REF:-2b8ac773baff063c4ac12c2447b170df4ccd29c3}"
 THEGATES_URL="${THEGATES_URL:-https://github.com/icarito/thegates.git}"
 THEGATES_GODOT_REF="${THEGATES_GODOT_REF:-aa5805a19e99bd2670cb05b2906962fa3fdb47a6}"
 THEGATES_GODOT_URL="${THEGATES_GODOT_URL:-https://github.com/thegatesbrowser/godot.git}"
@@ -76,9 +76,23 @@ if [ ! -d "$thirdparty/vulkan/include" ]; then
 		thirdparty/vulkan/include
 fi
 
+# En Linux el renderer usa el broker de red y el lockdown del fork compilando sus
+# fuentes: el protocolo del broker, la politica de sandbox y el subconjunto del
+# sandbox de Chromium que esta ultima necesita.
+fork_module="$env_dir/godot/modules/the_gates"
+if [ ! -d "$fork_module/network" ] || [ ! -d "$fork_module/sandbox/linux" ] \
+	|| [ ! -d "$thirdparty/chromium-sandbox" ]; then
+	echo "==> TheGates fork broker + sandbox $THEGATES_GODOT_REF" >&2
+	extract "$THEGATES_GODOT_URL" "$THEGATES_GODOT_REF" "$fork_module" modules/the_gates/network
+	extract "$THEGATES_GODOT_URL" "$THEGATES_GODOT_REF" "$fork_module/sandbox" \
+		modules/the_gates/sandbox/linux modules/the_gates/sandbox/signal_safe_log.h
+	extract "$THEGATES_GODOT_URL" "$THEGATES_GODOT_REF" "$thirdparty" thirdparty/chromium-sandbox
+fi
+
 if [ ! -f "$module/SCsub" ] || [ ! -d "$thirdparty/libzmq" ] \
 	|| [ ! -d "$thirdparty/cppzmq" ] || [ ! -d "$thirdparty/flingfd" ] \
-	|| [ ! -d "$thirdparty/vulkan/include" ]; then
+	|| [ ! -d "$thirdparty/vulkan/include" ] || [ ! -d "$fork_module/network" ] \
+	|| [ ! -d "$fork_module/sandbox/linux" ] || [ ! -d "$thirdparty/chromium-sandbox" ]; then
 	echo "!!! entorno thegates incompleto: faltan piezas en $env_dir" >&2
 	exit 1
 fi
