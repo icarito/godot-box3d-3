@@ -190,6 +190,9 @@ void Box3DPhysicsServer::area_set_shape_transform(RID p_area, int p_shape_idx, c
 	ERR_FAIL_INDEX(p_shape_idx, area->shapes.size());
 	area->shapes.write[p_shape_idx].xform = p_transform;
 	area->create_shape(p_shape_idx);
+	if (area->in_world()) {
+		b3Body_ApplyMassFromShapes(area->id);
+	}
 }
 
 int Box3DPhysicsServer::area_get_shape_count(RID p_area) const {
@@ -246,6 +249,9 @@ void Box3DPhysicsServer::area_set_shape_disabled(RID p_area, int p_shape_idx, bo
 	}
 	area->shapes.write[p_shape_idx].disabled = p_disabled;
 	area->create_shape(p_shape_idx);
+	if (area->in_world()) {
+		b3Body_ApplyMassFromShapes(area->id);
+	}
 }
 
 void Box3DPhysicsServer::area_attach_object_instance_id(RID p_area, ObjectID p_id) {
