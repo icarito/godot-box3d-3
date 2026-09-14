@@ -87,6 +87,17 @@ jobs:
             libxinerama-dev libgl1-mesa-dev libglu1-mesa-dev libasound2-dev \
             libpulse-dev libudev-dev libxi-dev libxrandr-dev yasm
 
+      # The thegates module compiles the fork's Chromium sandbox subset with clang,
+      # whose C++20 needs clang 16+; ubuntu-22.04 ships 14. Installed from
+      # apt.llvm.org so the renderer keeps building against 22.04's glibc.
+      - name: Set up clang 18
+        if: matrix.target == 'thegates-renderer'
+        run: |
+          wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s -- 18
+          sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-18 100
+          sudo update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-18 100
+          clang++ --version | head -1
+
       - name: Install build dependencies (macOS)
         if: runner.os == 'macOS'
         run: brew install scons
