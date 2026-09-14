@@ -138,7 +138,9 @@ public:
 	Map<RID, b3JointId> exception_joints;
 
 	// Contacts gathered after the last step, only when reporting is on.
-	Vector<Box3DContact> contacts;
+	// LocalVector keeps its heap buffer across the per-step clear(); a Godot
+	// Vector would free and re-allocate every step for monitored bodies.
+	LocalVector<Box3DContact> contacts;
 
 	ObjectID fi_callback_id = 0;
 	StringName fi_callback_method;
@@ -171,6 +173,8 @@ public:
 	Vector3 get_linear_velocity() const;
 	Vector3 get_angular_velocity() const;
 	bool is_sleeping() const;
+	// Signed contact count for the direct state's index guards.
+	int contact_count() const { return (int)contacts.size(); }
 
 	void dispatch_force_integration(real_t p_delta);
 	void collect_contacts();

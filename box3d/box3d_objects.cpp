@@ -722,7 +722,8 @@ void Box3DBody::collect_contacts() {
 	b3Pos own_center = b3Body_GetWorldCenter(id);
 	Transform own_xform = get_transform();
 
-	for (int i = 0; i < count && contacts.size() < max_contacts_reported; i++) {
+	const int reported_max = max_contacts_reported;
+	for (int i = 0; i < count && (int)contacts.size() < reported_max; i++) {
 		const b3ContactData &cd = data[i];
 
 		// Identify which side of the pair we are on.
@@ -1191,51 +1192,51 @@ bool Box3DDirectBodyState::is_sleeping() const {
 
 int Box3DDirectBodyState::get_contact_count() const {
 	ERR_FAIL_COND_V(!body, 0);
-	return body->contacts.size();
+	return body->contact_count();
 }
 
 Vector3 Box3DDirectBodyState::get_contact_local_position(int p_contact_idx) const {
-	ERR_FAIL_COND_V(!body || p_contact_idx < 0 || p_contact_idx >= body->contacts.size(), Vector3());
+	ERR_FAIL_COND_V(!body || p_contact_idx < 0 || p_contact_idx >= body->contact_count(), Vector3());
 	return body->contacts[p_contact_idx].local_position;
 }
 
 Vector3 Box3DDirectBodyState::get_contact_local_normal(int p_contact_idx) const {
-	ERR_FAIL_COND_V(!body || p_contact_idx < 0 || p_contact_idx >= body->contacts.size(), Vector3());
+	ERR_FAIL_COND_V(!body || p_contact_idx < 0 || p_contact_idx >= body->contact_count(), Vector3());
 	return body->contacts[p_contact_idx].normal;
 }
 
 float Box3DDirectBodyState::get_contact_impulse(int p_contact_idx) const {
-	ERR_FAIL_COND_V(!body || p_contact_idx < 0 || p_contact_idx >= body->contacts.size(), 0);
+	ERR_FAIL_COND_V(!body || p_contact_idx < 0 || p_contact_idx >= body->contact_count(), 0);
 	return body->contacts[p_contact_idx].impulse;
 }
 
 int Box3DDirectBodyState::get_contact_local_shape(int p_contact_idx) const {
-	ERR_FAIL_COND_V(!body || p_contact_idx < 0 || p_contact_idx >= body->contacts.size(), 0);
+	ERR_FAIL_COND_V(!body || p_contact_idx < 0 || p_contact_idx >= body->contact_count(), 0);
 	return body->contacts[p_contact_idx].local_shape;
 }
 
 RID Box3DDirectBodyState::get_contact_collider(int p_contact_idx) const {
-	ERR_FAIL_COND_V(!body || p_contact_idx < 0 || p_contact_idx >= body->contacts.size(), RID());
+	ERR_FAIL_COND_V(!body || p_contact_idx < 0 || p_contact_idx >= body->contact_count(), RID());
 	return body->contacts[p_contact_idx].collider;
 }
 
 Vector3 Box3DDirectBodyState::get_contact_collider_position(int p_contact_idx) const {
-	ERR_FAIL_COND_V(!body || p_contact_idx < 0 || p_contact_idx >= body->contacts.size(), Vector3());
+	ERR_FAIL_COND_V(!body || p_contact_idx < 0 || p_contact_idx >= body->contact_count(), Vector3());
 	return body->contacts[p_contact_idx].world_position;
 }
 
 ObjectID Box3DDirectBodyState::get_contact_collider_id(int p_contact_idx) const {
-	ERR_FAIL_COND_V(!body || p_contact_idx < 0 || p_contact_idx >= body->contacts.size(), 0);
+	ERR_FAIL_COND_V(!body || p_contact_idx < 0 || p_contact_idx >= body->contact_count(), 0);
 	return body->contacts[p_contact_idx].collider_id;
 }
 
 int Box3DDirectBodyState::get_contact_collider_shape(int p_contact_idx) const {
-	ERR_FAIL_COND_V(!body || p_contact_idx < 0 || p_contact_idx >= body->contacts.size(), 0);
+	ERR_FAIL_COND_V(!body || p_contact_idx < 0 || p_contact_idx >= body->contact_count(), 0);
 	return body->contacts[p_contact_idx].collider_shape;
 }
 
 Vector3 Box3DDirectBodyState::get_contact_collider_velocity_at_position(int p_contact_idx) const {
-	ERR_FAIL_COND_V(!body || !body->space || p_contact_idx < 0 || p_contact_idx >= body->contacts.size(), Vector3());
+	ERR_FAIL_COND_V(!body || !body->space || p_contact_idx < 0 || p_contact_idx >= body->contact_count(), Vector3());
 	const Box3DContact &c = body->contacts[p_contact_idx];
 	// The collider RID names a body in this space; find its b3 id there.
 	Box3DBody *const *found = body->space->body_map.getptr(c.collider);

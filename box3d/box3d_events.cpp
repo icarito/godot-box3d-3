@@ -22,7 +22,8 @@ static void collect_debug_contacts(Box3DSpace *p_space) {
 		if (!body->in_world() || body->contacts.empty()) {
 			continue;
 		}
-		for (int i = 0; i < body->contacts.size(); i++) {
+		const int count = (int)body->contacts.size();
+		for (int i = 0; i < count; i++) {
 			if (p_space->debug_contacts.size() >= p_space->debug_contact_max) {
 				return;
 			}
