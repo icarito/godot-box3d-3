@@ -1,0 +1,269 @@
+diff --git a/platform/android/java/lib/src/org/godotengine/godot/Godot.java b/platform/android/java/lib/src/org/godotengine/godot/Godot.java
+index ea1e994..8fcf64d 100644
+--- a/platform/android/java/lib/src/org/godotengine/godot/Godot.java
++++ b/platform/android/java/lib/src/org/godotengine/godot/Godot.java
+@@ -544,6 +544,18 @@ public class Godot extends Fragment implements SensorEventListener, IDownloaderC
+ 		}
+ 	}
+ 
++	/**
++	 * Used by the native code (java_godot_lib_jni.cpp) to rumble a game controller.
++	 */
++	@Keep
++	private void vibrateJoypad(int godotJoyId, float weakMagnitude, float strongMagnitude, float durationSec) {
++		GodotView renderView = getRenderView();
++		GodotInputHandler inputHandler = renderView != null ? renderView.getInputHandler() : null;
++		if (inputHandler != null) {
++			inputHandler.vibrateJoypad(godotJoyId, weakMagnitude, strongMagnitude, durationSec);
++		}
++	}
++
+ 	public void restart() {
+ 		if (godotHost != null) {
+ 			godotHost.onGodotRestartRequested(this);
+diff --git a/platform/android/java/lib/src/org/godotengine/godot/input/GodotInputHandler.java b/platform/android/java/lib/src/org/godotengine/godot/input/GodotInputHandler.java
+index 8f29e1c..93a9031 100644
+--- a/platform/android/java/lib/src/org/godotengine/godot/input/GodotInputHandler.java
++++ b/platform/android/java/lib/src/org/godotengine/godot/input/GodotInputHandler.java
+@@ -360,6 +360,19 @@ public class GodotInputHandler implements InputManager.InputDeviceListener {
+ 		GodotLib.joyconnectionchanged(id, true, joystick.name);
+ 	}
+ 
++	/**
++	 * Rumble on the controller Godot knows as {@code godotJoyId} (Input.start_joy_vibration()).
++	 * Zero magnitudes stop it.
++	 */
++	public void vibrateJoypad(int godotJoyId, float weakMagnitude, float strongMagnitude, float durationSec) {
++		int index = mJoystickIds.indexOfValue(godotJoyId);
++		if (index < 0) {
++			return;
++		}
++		InputDevice device = inputManager.getInputDevice(mJoystickIds.keyAt(index));
++		JoypadVibrator.vibrate(device, weakMagnitude, strongMagnitude, durationSec);
++	}
++
+ 	@Override
+ 	public void onInputDeviceRemoved(int deviceId) {
+ 		// Check if the device has not been already removed
+diff --git a/platform/android/java/lib/src/org/godotengine/godot/input/JoypadVibrator.java b/platform/android/java/lib/src/org/godotengine/godot/input/JoypadVibrator.java
+new file mode 100644
+index 0000000..ce5f5b2
+--- /dev/null
++++ b/platform/android/java/lib/src/org/godotengine/godot/input/JoypadVibrator.java
+@@ -0,0 +1,117 @@
++/**************************************************************************/
++/*  JoypadVibrator.java                                                   */
++/**************************************************************************/
++/*                         This file is part of:                          */
++/*                             GODOT ENGINE                               */
++/*                        https://godotengine.org                         */
++/**************************************************************************/
++/* Copyright (c) 2014-present Godot Engine contributors (see AUTHORS.md). */
++/* Copyright (c) 2007-2014 Juan Linietsky, Ariel Manzur.                  */
++/*                                                                        */
++/* Permission is hereby granted, free of charge, to any person obtaining  */
++/* a copy of this software and associated documentation files (the        */
++/* "Software"), to deal in the Software without restriction, including    */
++/* without limitation the rights to use, copy, modify, merge, publish,    */
++/* distribute, sublicense, and/or sell copies of the Software, and to     */
++/* permit persons to whom the Software is furnished to do so, subject to  */
++/* the following conditions:                                              */
++/*                                                                        */
++/* The above copyright notice and this permission notice shall be         */
++/* included in all copies or substantial portions of the Software.        */
++/*                                                                        */
++/* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,        */
++/* EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF     */
++/* MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. */
++/* IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY   */
++/* CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,   */
++/* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE      */
++/* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                 */
++/**************************************************************************/
++
++package org.godotengine.godot.input;
++
++import android.annotation.SuppressLint;
++import android.os.Build;
++import android.os.CombinedVibration;
++import android.os.VibrationEffect;
++import android.os.Vibrator;
++import android.os.VibratorManager;
++import android.view.InputDevice;
++
++/**
++ * Plays Input.start_joy_vibration() on a game controller's own motors (not the phone's).
++ *
++ * Android 12+ exposes each motor through the device's VibratorManager, so Godot's two
++ * magnitudes drive two motors when the controller has them: the first vibrator gets the strong
++ * (low-frequency) magnitude and the second the weak one, the usual left/right layout of a
++ * gamepad. Older versions only have InputDevice.getVibrator(), a single motor that gets the
++ * stronger of the two.
++ */
++public final class JoypadVibrator {
++	// Godot's duration 0 means "until stop_joy_vibration()".
++	private static final long UNTIL_STOPPED_MS = 60_000;
++
++	private JoypadVibrator() {}
++
++	@SuppressLint("MissingPermission")
++	@SuppressWarnings("deprecation") // InputDevice.getVibrator() is the only way below Android 12
++	public static void vibrate(InputDevice device, float weakMagnitude, float strongMagnitude, float durationSec) {
++		if (device == null) {
++			return;
++		}
++		boolean stop = weakMagnitude <= 0f && strongMagnitude <= 0f;
++		long durationMs = durationSec > 0f ? Math.max(1, Math.round(durationSec * 1000f)) : UNTIL_STOPPED_MS;
++
++		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
++			VibratorManager manager = device.getVibratorManager();
++			int[] ids = manager.getVibratorIds();
++			if (ids.length == 0) {
++				return;
++			}
++			if (stop) {
++				manager.cancel();
++				return;
++			}
++			CombinedVibration.ParallelCombination motors = CombinedVibration.startParallel();
++			if (ids.length >= 2) {
++				boolean any = false;
++				if (strongMagnitude > 0f) {
++					motors.addVibrator(ids[0], VibrationEffect.createOneShot(durationMs, amplitude(strongMagnitude)));
++					any = true;
++				}
++				if (weakMagnitude > 0f) {
++					motors.addVibrator(ids[1], VibrationEffect.createOneShot(durationMs, amplitude(weakMagnitude)));
++					any = true;
++				}
++				if (!any) {
++					return;
++				}
++			} else {
++				float magnitude = Math.max(weakMagnitude, strongMagnitude);
++				motors.addVibrator(ids[0], VibrationEffect.createOneShot(durationMs, amplitude(magnitude)));
++			}
++			manager.vibrate(motors.combine());
++			return;
++		}
++
++		Vibrator vibrator = device.getVibrator();
++		if (vibrator == null || !vibrator.hasVibrator()) {
++			return;
++		}
++		if (stop) {
++			vibrator.cancel();
++			return;
++		}
++		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
++			int amp = vibrator.hasAmplitudeControl() ? amplitude(Math.max(weakMagnitude, strongMagnitude)) : VibrationEffect.DEFAULT_AMPLITUDE;
++			vibrator.vibrate(VibrationEffect.createOneShot(durationMs, amp));
++		} else {
++			vibrator.vibrate(durationMs);
++		}
++	}
++
++	// VibrationEffect amplitudes run 1-255; 0 is not a valid one-shot amplitude.
++	private static int amplitude(float magnitude) {
++		return Math.max(1, Math.min(255, Math.round(magnitude * 255f)));
++	}
++}
+diff --git a/platform/android/java_godot_lib_jni.cpp b/platform/android/java_godot_lib_jni.cpp
+index 9ca1238..e0bb79f 100644
+--- a/platform/android/java_godot_lib_jni.cpp
++++ b/platform/android/java_godot_lib_jni.cpp
+@@ -37,6 +37,7 @@
+ #include "api/java_class_wrapper.h"
+ #include "api/jni_singleton.h"
+ #include "core/engine.h"
++#include "core/hash_map.h"
+ #include "core/project_settings.h"
+ #include "dir_access_jandroid.h"
+ #include "file_access_android.h"
+@@ -63,6 +64,31 @@ static AndroidInputHandler *input_handler = nullptr;
+ static GodotJavaWrapper *godot_java = nullptr;
+ static GodotIOJavaWrapper *godot_io_java = nullptr;
+ 
++// Last Input.start_joy_vibration() timestamp handed to Java, per joypad.
++static HashMap<int, uint64_t> joy_vibration_applied;
++
++static void _process_joy_vibration() {
++	InputDefault *input = (InputDefault *)Input::get_singleton();
++	if (!input) {
++		return;
++	}
++	Array joypads = input->get_connected_joypads();
++	for (int i = 0; i < joypads.size(); i++) {
++		int device = joypads[i];
++		uint64_t timestamp = input->get_joy_vibration_timestamp(device);
++		uint64_t *applied = joy_vibration_applied.getptr(device);
++		if (applied && timestamp <= *applied) {
++			continue;
++		}
++		if (!applied && timestamp == 0) {
++			continue;
++		}
++		joy_vibration_applied[device] = timestamp;
++		Vector2 strength = input->get_joy_vibration_strength(device);
++		godot_java->vibrate_joypad(device, strength.x, strength.y, input->get_joy_vibration_duration(device));
++	}
++}
++
+ static SafeNumeric<int> step; // Shared between UI and render threads
+ 
+ static Size2 new_size;
+@@ -293,6 +319,7 @@ JNIEXPORT jboolean JNICALL Java_org_godotengine_godot_GodotLib_step(JNIEnv *env,
+ 	os_android->process_gravity(gravity);
+ 	os_android->process_magnetometer(magnetometer);
+ 	os_android->process_gyroscope(gyroscope);
++	_process_joy_vibration();
+ 
+ 	bool should_swap_buffers = false;
+ 	if (os_android->main_loop_iterate(&should_swap_buffers)) {
+diff --git a/platform/android/java_godot_wrapper.cpp b/platform/android/java_godot_wrapper.cpp
+index c04dc67..a4eda68 100644
+--- a/platform/android/java_godot_wrapper.cpp
++++ b/platform/android/java_godot_wrapper.cpp
+@@ -77,6 +77,7 @@ GodotJavaWrapper::GodotJavaWrapper(JNIEnv *p_env, jobject p_activity, jobject p_
+ 	_get_surface = p_env->GetMethodID(godot_class, "getSurface", "()Landroid/view/Surface;");
+ 	_is_activity_resumed = p_env->GetMethodID(godot_class, "isActivityResumed", "()Z");
+ 	_vibrate = p_env->GetMethodID(godot_class, "vibrate", "(I)V");
++	_vibrate_joypad = p_env->GetMethodID(godot_class, "vibrateJoypad", "(IFFF)V");
+ 	_get_input_fallback_mapping = p_env->GetMethodID(godot_class, "getInputFallbackMapping", "()Ljava/lang/String;");
+ 	_on_godot_setup_completed = p_env->GetMethodID(godot_class, "onGodotSetupCompleted", "()V");
+ 	_on_godot_main_loop_started = p_env->GetMethodID(godot_class, "onGodotMainLoopStarted", "()V");
+@@ -376,6 +377,14 @@ void GodotJavaWrapper::vibrate(int p_duration_ms) {
+ 	}
+ }
+ 
++void GodotJavaWrapper::vibrate_joypad(int p_device, float p_weak_magnitude, float p_strong_magnitude, float p_duration) {
++	if (_vibrate_joypad) {
++		JNIEnv *env = get_jni_env();
++		ERR_FAIL_NULL(env);
++		env->CallVoidMethod(godot_instance, _vibrate_joypad, p_device, p_weak_magnitude, p_strong_magnitude, p_duration);
++	}
++}
++
+ int GodotJavaWrapper::create_new_godot_instance(List<String> args) {
+ 	if (_create_new_godot_instance) {
+ 		JNIEnv *env = get_jni_env();
+diff --git a/platform/android/java_godot_wrapper.h b/platform/android/java_godot_wrapper.h
+index 5e49074..4c1afbe 100644
+--- a/platform/android/java_godot_wrapper.h
++++ b/platform/android/java_godot_wrapper.h
+@@ -70,6 +70,7 @@ private:
+ 	jmethodID _get_surface = nullptr;
+ 	jmethodID _is_activity_resumed = nullptr;
+ 	jmethodID _vibrate = nullptr;
++	jmethodID _vibrate_joypad = nullptr;
+ 	jmethodID _get_input_fallback_mapping = nullptr;
+ 	jmethodID _on_godot_setup_completed = nullptr;
+ 	jmethodID _on_godot_main_loop_started = nullptr;
+@@ -114,6 +115,7 @@ public:
+ 	jobject get_surface();
+ 	bool is_activity_resumed();
+ 	void vibrate(int p_duration_ms);
++	void vibrate_joypad(int p_device, float p_weak_magnitude, float p_strong_magnitude, float p_duration);
+ 	String get_input_fallback_mapping();
+ 	int create_new_godot_instance(List<String> args);
+ 	void begin_benchmark_measure(const String &p_label);

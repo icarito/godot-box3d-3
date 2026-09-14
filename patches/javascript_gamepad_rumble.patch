@@ -1,0 +1,91 @@
+diff --git a/platform/javascript/godot_js.h b/platform/javascript/godot_js.h
+index 3d6d324..3fc45bf 100644
+--- a/platform/javascript/godot_js.h
++++ b/platform/javascript/godot_js.h
+@@ -72,6 +72,7 @@ extern void godot_js_input_gamepad_cb(void (*p_on_change)(int p_index, int p_con
+ extern int godot_js_input_gamepad_sample();
+ extern int godot_js_input_gamepad_sample_count();
+ extern int godot_js_input_gamepad_sample_get(int p_idx, float r_btns[16], int32_t *r_btns_num, float r_axes[10], int32_t *r_axes_num, int32_t *r_standard);
++extern void godot_js_input_gamepad_vibrate(int p_idx, float p_weak_magnitude, float p_strong_magnitude, float p_duration);
+ extern void godot_js_input_paste_cb(void (*p_callback)(const char *p_text));
+ extern void godot_js_input_drop_files_cb(void (*p_callback)(char **p_filev, int p_filec));
+ 
+diff --git a/platform/javascript/js/libs/library_godot_input.js b/platform/javascript/js/libs/library_godot_input.js
+index cd46048..05fe9a2 100644
+--- a/platform/javascript/js/libs/library_godot_input.js
++++ b/platform/javascript/js/libs/library_godot_input.js
+@@ -618,6 +618,41 @@ const GodotInput = {
+ 		return 0;
+ 	},
+ 
++	// Input.start_joy_vibration() through the Gamepad API's vibrationActuator ("dual-rumble",
++	// Chromium and Firefox with a rumble-capable pad; Safari has no actuator and this does nothing).
++	godot_js_input_gamepad_vibrate__sig: 'vifff',
++	godot_js_input_gamepad_vibrate: function (p_index, p_weak, p_strong, p_duration) {
++		const pad = GodotInputGamepads.get_pads()[p_index];
++		const actuator = pad ? pad.vibrationActuator : null;
++		if (!actuator) {
++			return;
++		}
++		try {
++			if (p_weak <= 0 && p_strong <= 0) {
++				if (actuator.reset) {
++					actuator.reset();
++				}
++				return;
++			}
++			if (!actuator.playEffect) {
++				return;
++			}
++			// Godot's duration 0 means "until stopped"; browsers cap an effect at 5 s.
++			const duration = p_duration > 0 ? Math.min(p_duration * 1000, 5000) : 5000;
++			const result = actuator.playEffect('dual-rumble', {
++				startDelay: 0,
++				duration: duration,
++				weakMagnitude: p_weak,
++				strongMagnitude: p_strong,
++			});
++			if (result && result.catch) {
++				result.catch(function () {});
++			}
++		} catch (e) {
++			// A pad without dual-rumble rejects the effect type: nothing to do.
++		}
++	},
++
+ 	godot_js_input_gamepad_sample_get__sig: 'iiiiiii',
+ 	godot_js_input_gamepad_sample_get: function (p_index, r_btns, r_btns_num, r_axes, r_axes_num, r_standard) {
+ 		const sample = GodotInputGamepads.get_sample(p_index);
+diff --git a/platform/javascript/os_javascript.cpp b/platform/javascript/os_javascript.cpp
+index c0bf721..709fee1 100644
+--- a/platform/javascript/os_javascript.cpp
++++ b/platform/javascript/os_javascript.cpp
+@@ -827,6 +827,14 @@ void OS_JavaScript::process_joypads() {
+ 		for (int a = 0; a < s_axes_num; a++) {
+ 			input->joy_axis(idx, a, s_axes[a]);
+ 		}
++		if (idx < JOYPADS_MAX) {
++			uint64_t timestamp = input->get_joy_vibration_timestamp(idx);
++			if (timestamp > joy_vibration_applied[idx]) {
++				joy_vibration_applied[idx] = timestamp;
++				Vector2 strength = input->get_joy_vibration_strength(idx);
++				godot_js_input_gamepad_vibrate(idx, strength.x, strength.y, input->get_joy_vibration_duration(idx));
++			}
++		}
+ 	}
+ }
+ 
+diff --git a/platform/javascript/os_javascript.h b/platform/javascript/os_javascript.h
+index b37f602..16f9b76 100644
+--- a/platform/javascript/os_javascript.h
++++ b/platform/javascript/os_javascript.h
+@@ -78,6 +78,9 @@ private:
+ 	EMSCRIPTEN_WEBGL_CONTEXT_HANDLE webgl_ctx;
+ 
+ 	InputDefault *input;
++	// Last Input.start_joy_vibration() timestamp sent to each gamepad's vibrationActuator.
++	enum { JOYPADS_MAX = 16 };
++	uint64_t joy_vibration_applied[JOYPADS_MAX] = {};
+ 	CursorShape cursor_shape;
+ 	Point2 touches[32];
+ 

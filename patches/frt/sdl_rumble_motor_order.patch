@@ -1,0 +1,17 @@
+diff --git a/sdl2_adapter.h b/sdl2_adapter.h
+index 033e344..1f9e47c 100644
+--- a/sdl2_adapter.h
++++ b/sdl2_adapter.h
+@@ -613,8 +613,10 @@ public:
+ 		return 72;
+ 	}
+ 	void js_vibra(int id, float x, float y, float duration, uint64_t timestamp) {
+-		int low = (int)(x * 0xffff);
+-		int high = (int)(y * 0xffff);
++		// x is Godot's weak magnitude and y the strong one. SDL's low-frequency motor is the big,
++		// strong one (left on an XInput pad), so the strong magnitude goes there.
++		int low = (int)(y * 0xffff);
++		int high = (int)(x * 0xffff);
+ 		int ms = (int)(duration * 1000);
+ 		rumble_timestamp_[id] = timestamp;
+ 		if (SDL_JoystickRumble(js_[id], low, high, ms))

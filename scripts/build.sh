@@ -154,6 +154,12 @@ for target in "$@"; do
 			fi
 			git -C "$frt_dir" checkout --quiet --detach "$FRT_REF"
 			echo "==> FRT     $frt_dir @ $FRT_REF"
+			# Igual que el engine: los parches de FRT se reaplican sobre un checkout limpio.
+			git -C "$frt_dir" checkout --quiet -- .
+			for patch in "$here"/patches/frt/*.patch; do
+				echo "==> Patch   frt/$(basename "$patch")"
+				git -C "$frt_dir" apply "$patch"
+			done
 			(
 				export PATH="$GODOT_SDK_LINUX_ARM64/bin:$SDL2_ARM64/bin:$PATH"
 				# LINKFLAGS=-s es lo que usa el release de upstream FRT: production=yes
