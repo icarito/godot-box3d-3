@@ -212,10 +212,11 @@ int Box3DDirectSpaceState::intersect_shape(const RID &p_shape, const Transform &
 	Box3DShape *shape = Box3DPhysicsServer::shape_from_rid(p_shape);
 	ERR_FAIL_COND_V(!shape, 0);
 
-	// Proxy points relative to the query origin keep the query exact; scale in
-	// the basis is dropped, Box3D has no shape scale.
+	// Proxy points relative to the query origin keep the query exact; the full
+	// basis rides in so scaled CollisionShapes query at their real size, the
+	// same way b3_create_godot_shape bakes scale into body shapes.
 	Box3DWorldProxy proxy;
-	if (!box3d_build_godot_proxy(shape, Transform(p_xform.basis.orthonormalized(), Vector3()), proxy)) {
+	if (!box3d_build_godot_proxy(shape, Transform(p_xform.basis, Vector3()), proxy)) {
 		ERR_PRINT("Box3D: shape type " + itos(shape->type) + " is not supported for shape queries.");
 		return 0;
 	}
@@ -275,7 +276,7 @@ bool Box3DDirectSpaceState::cast_motion(const RID &p_shape, const Transform &p_x
 	ERR_FAIL_COND_V(!shape, false);
 
 	Box3DWorldProxy proxy;
-	if (!box3d_build_godot_proxy(shape, Transform(p_xform.basis.orthonormalized(), Vector3()), proxy)) {
+	if (!box3d_build_godot_proxy(shape, Transform(p_xform.basis, Vector3()), proxy)) {
 		ERR_PRINT("Box3D: shape type " + itos(shape->type) + " is not supported for motion casts.");
 		return false;
 	}
@@ -353,7 +354,7 @@ static ClosestHit find_closest(Box3DSpace *p_space, Box3DShape *p_shape, const T
 	ClosestHit best;
 
 	Box3DWorldProxy ours;
-	if (!box3d_build_godot_proxy(p_shape, Transform(p_xform.basis.orthonormalized(), p_xform.origin), ours)) {
+	if (!box3d_build_godot_proxy(p_shape, Transform(p_xform.basis, p_xform.origin), ours)) {
 		return best;
 	}
 	ours.proxy.radius += p_margin;

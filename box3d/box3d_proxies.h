@@ -20,7 +20,13 @@ struct Box3DWorldProxy {
 // A Godot shape definition, as a world space point cloud. Rays become
 // one-segment proxies (origin, origin + local Z * length); meshes, height
 // fields and planes have no point cloud form and are rejected.
+//
+// The full basis rides in p_xform, scale included: point-based shapes bake it
+// in through xform(), and round shapes take the uniform factor into their
+// radius, exactly like b3_create_godot_shape does for body shapes.
 inline bool box3d_build_godot_proxy(const Box3DShape *p_shape, const Transform &p_xform, Box3DWorldProxy &r_proxy) {
+	const Vector3 basis_scale = p_xform.basis.get_scale();
+	const float uniform_scale = MAX(Math::abs(basis_scale.x), MAX(Math::abs(basis_scale.y), Math::abs(basis_scale.z)));
 	switch (p_shape->type) {
 		case PhysicsServer::SHAPE_BOX: {
 			Vector3 he = p_shape->data;
@@ -35,7 +41,7 @@ inline bool box3d_build_godot_proxy(const Box3DShape *p_shape, const Transform &
 			float radius = p_shape->data;
 			r_proxy.points[0] = b3_vec(p_xform.origin);
 			r_proxy.proxy.count = 1;
-			r_proxy.proxy.radius = radius;
+			r_proxy.proxy.radius = radius * uniform_scale;
 		} break;
 		case PhysicsServer::SHAPE_CAPSULE: {
 			Dictionary d = p_shape->data;
@@ -46,7 +52,7 @@ inline bool box3d_build_godot_proxy(const Box3DShape *p_shape, const Transform &
 			r_proxy.points[0] = b3_vec(p_xform.xform(Vector3(0, 0, -height * 0.5)));
 			r_proxy.points[1] = b3_vec(p_xform.xform(Vector3(0, 0, height * 0.5)));
 			r_proxy.proxy.count = 2;
-			r_proxy.proxy.radius = radius;
+			r_proxy.proxy.radius = MAX(radius * uniform_scale, (float)B3_LINEAR_SLOP);
 		} break;
 		case PhysicsServer::SHAPE_CYLINDER: {
 			Dictionary d = p_shape->data;
