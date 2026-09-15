@@ -1,0 +1,92 @@
+diff --git a/sdl2_adapter.h b/sdl2_adapter.h
+index cf85e16..22c4e51 100644
+--- a/sdl2_adapter.h
++++ b/sdl2_adapter.h
+@@ -174,6 +174,8 @@ struct EventHandler {
+ 	virtual void handle_js_vibra_event(int id, uint64_t timestamp) = 0;
+ 	virtual void handle_quit_event() = 0;
+ 	virtual void handle_flush_events() = 0;
++	virtual void handle_focus_event(bool p_gained) = 0;
++	virtual void handle_mouse_enter_leave_event(bool p_entered) = 0;
+ };
+ 
+ EventHandler::~EventHandler() {
+@@ -467,10 +469,25 @@ public:
+ 		SDL_Event ev;
+ 		while (SDL_PollEvent(&ev)) {
+ 			switch (ev.type) {
+-			case SDL_WINDOWEVENT:
+-				if (ev.window.event == SDL_WINDOWEVENT_SIZE_CHANGED)
+-					resize_event(ev);
++		case SDL_WINDOWEVENT:
++			switch (ev.window.event) {
++			case SDL_WINDOWEVENT_SIZE_CHANGED:
++				resize_event(ev);
+ 				break;
++			case SDL_WINDOWEVENT_FOCUS_GAINED:
++				handler_->handle_focus_event(true);
++				break;
++			case SDL_WINDOWEVENT_FOCUS_LOST:
++				handler_->handle_focus_event(false);
++				break;
++			case SDL_WINDOWEVENT_ENTER:
++				handler_->handle_mouse_enter_leave_event(true);
++				break;
++			case SDL_WINDOWEVENT_LEAVE:
++				handler_->handle_mouse_enter_leave_event(false);
++				break;
++			}
++			break;
+ 			case SDL_TEXTINPUT:
+ 				text_event(ev.text);
+ 				break;
+@@ -574,16 +591,18 @@ public:
+ 	void set_mouse_mode(MouseMode mouse_mode) {
+ 		switch (mouse_mode) {
+ 		case MouseVisible:
+-			SDL_CaptureMouse(SDL_FALSE);
+-			SDL_ShowCursor(1);
+-			break;
+ 		case MouseHidden:
+-			SDL_CaptureMouse(SDL_FALSE);
+-			SDL_ShowCursor(0);
++			SDL_SetRelativeMouseMode(SDL_FALSE);
++			SDL_SetWindowGrab(window_, SDL_FALSE);
++			SDL_ShowCursor(mouse_mode == MouseVisible ? 1 : 0);
+ 			break;
+ 		case MouseCaptured:
++			// Godot's MOUSE_MODE_CAPTURED: lock the cursor to the window and
++			// deliver relative motion. SDL_CaptureMouse alone only keeps the
++			// button pressed drags inside the window, it is not game capture.
++			SDL_SetRelativeMouseMode(SDL_TRUE);
++			SDL_SetWindowGrab(window_, SDL_TRUE);
+ 			SDL_ShowCursor(0);
+-			SDL_CaptureMouse(SDL_TRUE);
+ 			break;
+ 		}
+ 		mouse_mode_ = mouse_mode;
+diff --git a/frt_godot.cc b/frt_godot.cc
+index 34dd55f..e0a688d 100644
+--- a/frt_godot.cc
++++ b/frt_godot.cc
+@@ -423,6 +423,20 @@ public: // EventHandler
+ 	void handle_flush_events() override {
+ 		input_->flush_buffered_events();
+ 	}
++	void handle_focus_event(bool p_gained) override {
++		if (p_gained) {
++			if (main_loop_)
++				main_loop_->notification(MainLoop::NOTIFICATION_WM_FOCUS_IN);
++		} else {
++			input_->release_pressed_events();
++			if (main_loop_)
++				main_loop_->notification(MainLoop::NOTIFICATION_WM_FOCUS_OUT);
++		}
++	}
++	void handle_mouse_enter_leave_event(bool p_entered) override {
++		if (main_loop_)
++			main_loop_->notification(p_entered ? MainLoop::NOTIFICATION_WM_MOUSE_ENTER : MainLoop::NOTIFICATION_WM_MOUSE_EXIT);
++	}
+ };
+ 
+ } // namespace frt
