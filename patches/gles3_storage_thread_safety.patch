@@ -1,0 +1,114 @@
+diff --git a/tmp/kilo/stg-posbase.h b/tmp/kilo/stg-final.h
+index b30df6a..901802d 100644
+--- a/drivers/gles3/rasterizer_storage_gles3.h
++++ b/drivers/gles3/rasterizer_storage_gles3.h
+@@ -32,6 +32,7 @@
+ #define RASTERIZER_STORAGE_GLES3_H
+ 
+ #include "core/bitfield_dynamic.h"
++#include "core/os/mutex.h"
+ #include "core/self_list.h"
+ #include "drivers/gles_common/rasterizer_asserts.h"
+ #include "servers/visual/rasterizer.h"
+@@ -549,6 +550,18 @@ public:
+ 	mutable SelfList<Shader>::List _shader_dirty_list;
+ 	void _shader_make_dirty(Shader *p_shader);
+ 
++	// Serializes shader code storage and compilation between the main thread
++	// and the editor's preview / resource loader threads, which set shader
++	// properties while a resource is being loaded off the main thread.
++	// Mutex is recursive in 3.6, so nesting from call chains is safe.
++	mutable Mutex shader_dirty_mutex;
++
++	// RIDs queued by RasterizerStorageGLES3::free() when called off the main
++	// thread (the editor's preview and loader threads), drained by
++	// update_dirty_resources() on the main thread.
++	Mutex off_thread_free_mutex;
++	List<RID> off_thread_free_queue;
++
+ 	mutable RID_Owner<Shader> shader_owner;
+ 
+ 	virtual RID shader_create();
+diff --git a/tmp/kilo/stg-posbase.cpp b/tmp/kilo/stg-final.cpp
+index 283452e..611535a 100644
+--- a/drivers/gles3/rasterizer_storage_gles3.cpp
++++ b/drivers/gles3/rasterizer_storage_gles3.cpp
+@@ -32,6 +32,7 @@
+ 
+ #include "core/engine.h"
+ #include "core/os/os.h"
++#include "core/os/thread.h"
+ #include "core/project_settings.h"
+ #include "core/threaded_callable_queue.h"
+ #include "main/main.h"
+@@ -2129,6 +2130,8 @@ void RasterizerStorageGLES3::_shader_make_dirty(Shader *p_shader) {
+ 		return;
+ 	}
+ 
++	MutexLock lock(shader_dirty_mutex);
++
+ 	_shader_dirty_list.add(&p_shader->dirty_list);
+ }
+ 
+@@ -2136,6 +2139,8 @@ void RasterizerStorageGLES3::shader_set_code(RID p_shader, const String &p_code)
+ 	Shader *shader = shader_owner.get(p_shader);
+ 	ERR_FAIL_COND(!shader);
+ 
++	MutexLock lock(shader_dirty_mutex);
++
+ 	shader->code = p_code;
+ 
+ 	String mode_string = ShaderLanguage::get_shader_type(p_code);
+@@ -2357,6 +2362,11 @@ void RasterizerStorageGLES3::_update_shader(Shader *p_shader) const {
+ }
+ 
+ void RasterizerStorageGLES3::update_dirty_shaders() {
++	// Runs on the main thread; shader_set_code()/_shader_make_dirty() can be
++	// called from editor preview / loader threads, so walk and drain the list
++	// under the same lock.
++	MutexLock lock(shader_dirty_mutex);
++
+ 	while (_shader_dirty_list.first()) {
+ 		_update_shader(_shader_dirty_list.first()->self());
+ 	}
+@@ -2366,6 +2376,8 @@ void RasterizerStorageGLES3::shader_get_param_list(RID p_shader, List<PropertyIn
+ 	Shader *shader = shader_owner.get(p_shader);
+ 	ERR_FAIL_COND(!shader);
+ 
++	MutexLock lock(shader_dirty_mutex);
++
+ 	if (shader->dirty_list.in_list()) {
+ 		_update_shader(shader); // ok should be not anymore dirty
+ 	}
+@@ -7806,6 +7818,15 @@ VS::InstanceType RasterizerStorageGLES3::get_base_type(RID p_rid) const {
+ }
+ 
+ bool RasterizerStorageGLES3::free(RID p_rid) {
++	if (Thread::get_caller_id() != Thread::get_main_id()) {
++		// The editor's preview and loader threads drop the last reference to
++		// resources on their own thread, while the main thread walks the dirty
++		// lists in update_dirty_resources(). Defer the real teardown there.
++		off_thread_free_mutex.lock();
++		off_thread_free_queue.push_back(p_rid);
++		off_thread_free_mutex.unlock();
++		return true;
++	}
+ 	if (render_target_owner.owns(p_rid)) {
+ 		RenderTarget *rt = render_target_owner.getornull(p_rid);
+ 		_render_target_clear(rt);
+@@ -8561,6 +8582,15 @@ void RasterizerStorageGLES3::finalize() {
+ }
+ 
+ void RasterizerStorageGLES3::update_dirty_resources() {
++	if (off_thread_free_queue.size()) {
++		off_thread_free_mutex.lock();
++		List<RID> pending = off_thread_free_queue;
++		off_thread_free_queue.clear();
++		off_thread_free_mutex.unlock();
++		for (const List<RID>::Element *E = pending.front(); E; E = E->next()) {
++			free(E->get());
++		}
++	}
+ 	update_dirty_multimeshes();
+ 	update_dirty_skeletons();
+ 	update_dirty_shaders();
