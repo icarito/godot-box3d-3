@@ -64,9 +64,27 @@ git -C "$GODOT_DIR" checkout --quiet --detach "$GODOT_REF"
 # Patches are reapplied from a clean checkout each time, so a build never
 # stacks them or silently skips one that stopped applying.
 git -C "$GODOT_DIR" checkout --quiet -- .
+
+# A patch that CREATES files leaves them behind as untracked after the reset,
+# and the next run's apply would fail with "already exists". Reversing the
+# patch first (which deletes those) makes local rebuilds idempotent.
+apply_patch() { # apply_patch <patch-path> <repo-dir>
+	# A patch that CREATES files leaves them behind as untracked after the
+	# reset, and the next run's apply would fail with "already exists". Delete
+	# those files (they are patch output, not user content) before applying.
+	local created
+	created=$(awk '/^diff --git/ { f="" } /^new file mode/ { n=1 } /^\+\+\+ b\// && n { sub(/^\+\+\+ b\//, ""); print; n=0 }' "$1")
+	if [ -n "$created" ]; then
+		while IFS= read -r f; do
+			rm -f "$2/$f"
+		done <<< "$created"
+	fi
+	git -C "$2" apply "$1"
+}
+
 for patch in "$here"/patches/*.patch; do
 	echo "==> Patch   $(basename "$patch")"
-	git -C "$GODOT_DIR" apply "$patch"
+	apply_patch "$patch" "$GODOT_DIR"
 done
 
 if [ ! -e "$here/box3d/thirdparty/box3d/include/box3d/box3d.h" ]; then
@@ -137,7 +155,7 @@ frte_prep() { # prepara platform/frt: clone pineado + patches/frt/*.patch
 	git -C "$frt_dir" checkout --quiet -- .
 	for patch in "$here"/patches/frt/*.patch; do
 		echo "==> Patch   frt/$(basename "$patch")"
-		git -C "$frt_dir" apply "$patch"
+		apply_patch "$patch" "$frt_dir"
 	done
 }
 
