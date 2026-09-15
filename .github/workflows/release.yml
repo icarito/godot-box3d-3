@@ -132,6 +132,10 @@ jobs:
       - name: Set up Android SDK
         if: matrix.target == 'android-templates'
         uses: android-actions/setup-android@v3
+        with:
+          # Its default also asks for the legacy "tools" package, which Google's
+          # repository no longer serves: sdkmanager exits 1 and the job dies here.
+          packages: platform-tools
 
       - name: Set up Android NDK
         if: matrix.target == 'android-templates'
