@@ -1,0 +1,59 @@
+diff --git a/sdl2_adapter.h b/sdl2_adapter.h
+index 1f9e47c..cf85e16 100644
+--- a/sdl2_adapter.h
++++ b/sdl2_adapter.h
+@@ -422,11 +422,11 @@ public:
+ 		context_ = SDL_GL_CreateContext(window_);
+ 		SDL_GL_MakeCurrent(window_, context_);
+ 	}
+-	void init_window(GraphicsAPI api, int width, int height, bool resizable, bool borderless, bool always_on_top) {
++	void init_window(GraphicsAPI api, int width, int height, bool resizable, bool borderless, bool always_on_top, bool hidden) {
+ 		setenv("SDL_VIDEO_RPI_OPTIONS", "gravity=center,scale=letterbox,background=1", 0);
+ 		if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_JOYSTICK) < 0)
+ 			fatal("SDL_Init failed: %s.", SDL_GetError());
+-		int flags = SDL_WINDOW_SHOWN | SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_OPENGL;
++		int flags = (hidden ? SDL_WINDOW_HIDDEN : SDL_WINDOW_SHOWN) | SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_OPENGL;
+ 		SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+ 		SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, api == API_OpenGL_ES2 ? 2 : 3);
+ 		SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
+@@ -440,8 +440,8 @@ public:
+ 		if (!(window_ = SDL_CreateWindow("frt2", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, width, height, flags)))
+ 			fatal("SDL_CreateWindow failed: %s.", SDL_GetError());
+ 	}
+-	void init_gl(GraphicsAPI api, int width, int height, bool resizable, bool borderless, bool always_on_top) {
+-		init_window(api, width, height, resizable, borderless, always_on_top);
++	void init_gl(GraphicsAPI api, int width, int height, bool resizable, bool borderless, bool always_on_top, bool hidden) {
++		init_window(api, width, height, resizable, borderless, always_on_top, hidden);
+ 		init_context_gl();
+ 	}
+ 	void cleanup() {
+diff --git a/frt_godot.cc b/frt_godot.cc
+index 3cd90b7..34dd55f 100644
+--- a/frt_godot.cc
++++ b/frt_godot.cc
+@@ -206,7 +206,7 @@ public: // OS
+ 		video_mode_ = desired;
+ 		video_driver_ = video_driver;
+ 		const GraphicsAPI api = video_driver == VIDEO_DRIVER_GLES3 ? API_OpenGL_ES3 : API_OpenGL_ES2;
+-		os_.init_gl(api, video_mode_.width, video_mode_.height, video_mode_.resizable, video_mode_.borderless_window, video_mode_.always_on_top);
++		os_.init_gl(api, video_mode_.width, video_mode_.height, video_mode_.resizable, video_mode_.borderless_window, video_mode_.always_on_top, OS::get_singleton()->is_no_window_mode_enabled());
+ 		_set_use_vsync(video_mode_.use_vsync);
+ 		init_video();
+ 		init_audio(audio_driver);
+@@ -289,12 +289,16 @@ public: // OS
+ 		return os_.is_resizable();
+ 	}
+ 	void set_window_maximized(bool enable) override {
++		if (OS::get_singleton()->is_no_window_mode_enabled())
++			return;
+ 		os_.set_maximized(enable);
+ 	}
+ 	bool is_window_maximized() const override {
+ 		return os_.is_maximized();
+ 	}
+ 	void set_window_minimized(bool enable) override {
++		if (OS::get_singleton()->is_no_window_mode_enabled())
++			return;
+ 		os_.set_minimized(enable);
+ 	}
+ 	bool is_window_minimized() const override {

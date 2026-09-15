@@ -44,6 +44,12 @@ jobs:
           - target: frt-arm64-templates
             name: frt-arm64
             os: ubuntu-22.04
+          # Editor sobre la plataforma FRT/SDL2: video por SDL2, que en sesiones
+          # Wayland corre nativo (su driver wayland + EGL, sin XWayland). Mismo
+          # engine y modulo Box3D que el editor x11.
+          - target: frt-editor
+            name: frt-linux-editor
+            os: ubuntu-22.04
           # El renderer que el launcher de TheGates baja del backend para los
           # gates godot_version = "3.6": template x11 con los modules Box3D y
           # the_gates. Como con FRT, el nombre NO termina en "templates" a
@@ -85,7 +91,8 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             build-essential scons pkg-config libx11-dev libxcursor-dev \
             libxinerama-dev libgl1-mesa-dev libglu1-mesa-dev libasound2-dev \
-            libpulse-dev libudev-dev libxi-dev libxrandr-dev yasm
+            libpulse-dev libudev-dev libxi-dev libxrandr-dev yasm \
+            libsdl2-dev
 
       # The thegates module compiles the fork's Chromium sandbox subset with clang.
       # That snapshot tracks current Chromium and needs a current clang (14 and 18
@@ -215,6 +222,9 @@ jobs:
               cp "$BIN/godot.frt.opt.arm64" out/godot.box3d.frt.arm64.release
               cp "$BIN/godot.frt.opt.debug.arm64" out/godot.box3d.frt.arm64.debug
               ;;
+            frt-editor)
+              cp "$BIN/godot.frt.opt.tools.x86_64" out/godot.box3d.frt.linux.x86_64.editor
+              ;;
             thegates-renderer)
               # Binarios con nombre godot.box3d.<plataforma>.<flavor> y, aparte,
               # el zip con el contrato del backend de TheGates:
@@ -271,7 +281,7 @@ jobs:
           # symbol table costs hundreds of megabytes on every CI download.
           case "${{ matrix.target }}" in
             windows-templates) x86_64-w64-mingw32-strip out/* || true ;;
-            editor|headless|linux-templates|linux-arm64-templates|frt-arm64-templates) strip out/* || true ;;
+            editor|headless|linux-templates|linux-arm64-templates|frt-arm64-templates|frt-editor) strip out/* || true ;;
             # El zip linux-3.6 no se toca: strip no distingue un zip de un ELF.
             thegates-renderer) strip out/godot.* || true ;;
           esac
@@ -329,6 +339,7 @@ jobs:
           # kind of thing that quietly doubles a pipeline's runtime.
           files: |
             artifacts/linux-editor/*
+            artifacts/frt-linux-editor/*
             artifacts/linux-headless/*
             artifacts/frt-arm64/*
             artifacts/thegates-renderer/*

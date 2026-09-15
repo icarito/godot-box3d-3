@@ -8,6 +8,8 @@
 #   windows-templates Windows x86_64 export templates, cross-compiled with MinGW
 #   linux-arm64-templates  Linux ARM64 templates, built on an ARM64 host
 #   frt-arm64-templates    FRT/SDL2 ARM64 templates for PortMaster handhelds
+#   frt-editor        FRT/SDL2 x86_64 editor binary: same engine, SDL2 video
+#                     (native Wayland where SDL2 picks its wayland driver)
 #   thegates-renderer      TheGates 3D browser renderer (x11 + the_gates module)
 #   thegates-renderer-macos  Same renderer for macOS, universal binary (needs Xcode)
 #   thegates-renderer-windows  Same renderer for Windows, cross-compiled with MinGW
@@ -41,7 +43,7 @@ GODOT_DIR="${GODOT_DIR:-$(dirname "$here")/godot}"
 JOBS="${JOBS:-$(nproc 2>/dev/null || echo 4)}"
 
 if [ $# -eq 0 ]; then
-	sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'
+	sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'
 	exit 1
 fi
 
@@ -117,6 +119,28 @@ build() { # build <scons args...>
 		production="$PRODUCTION" lto=none "$@")
 }
 
+frte_prep() { # prepara platform/frt: clone pineado + patches/frt/*.patch
+	# La plataforma frt es un "platform" out-of-tree (efornara/frt) clonado en
+	# platform/frt y pineado igual que el engine; los hooks del engine van en
+	# patches/frt_platform_hooks.patch y los de FRT en patches/frt/*.patch.
+	# Compartido entre frt-editor y frt-arm64-templates.
+	frt_dir="$GODOT_DIR/platform/frt"
+	if [ ! -d "$frt_dir/.git" ]; then
+		git clone --quiet "$FRT_URL" "$frt_dir"
+	fi
+	if ! git -C "$frt_dir" cat-file -e "$FRT_REF^{commit}" 2>/dev/null; then
+		git -C "$frt_dir" fetch --quiet origin
+	fi
+	git -C "$frt_dir" checkout --quiet --detach "$FRT_REF"
+	echo "==> FRT     $frt_dir @ $FRT_REF"
+	# Igual que el engine: los parches de FRT se reaplican sobre un checkout limpio.
+	git -C "$frt_dir" checkout --quiet -- .
+	for patch in "$here"/patches/frt/*.patch; do
+		echo "==> Patch   frt/$(basename "$patch")"
+		git -C "$frt_dir" apply "$patch"
+	done
+}
+
 for target in "$@"; do
 	case "$target" in
 		editor)
@@ -137,6 +161,14 @@ for target in "$@"; do
 			build platform=x11 target=release tools=no
 			build platform=x11 target=release_debug tools=no
 			;;
+		frt-editor)
+			# Editor FRT/SDL2 x86_64: el mismo engine y modulo, con video SDL2.
+			# SDL2 del sistema elige su driver wayland en sesiones Wayland, asi
+			# que este binario corre Wayland nativo (contexto ES por EGL) sin
+			# pasar por XWayland. Tambien implementa --no-window.
+			frte_prep
+			build platform=frt arch=x86_64 target=release_debug tools=yes
+			;;
 		frt-arm64-templates)
 			# FRT usa SDL2 en vez de X11, que es lo que hace falta en los handhelds
 			# de PortMaster: ROCKNIX no tiene GL de escritorio (su libGL.so.1 es un
@@ -145,21 +177,7 @@ for target in "$@"; do
 			# es lo que hace que el binario corra en cualquier CFW.
 			: "${GODOT_SDK_LINUX_ARM64:?falta el SDK arm64 -- correr dentro de la imagen de build}"
 			: "${SDL2_ARM64:?falta SDL2 arm64 -- correr dentro de la imagen de build}"
-			frt_dir="$GODOT_DIR/platform/frt"
-			if [ ! -d "$frt_dir/.git" ]; then
-				git clone --quiet "$FRT_URL" "$frt_dir"
-			fi
-			if ! git -C "$frt_dir" cat-file -e "$FRT_REF^{commit}" 2>/dev/null; then
-				git -C "$frt_dir" fetch --quiet origin
-			fi
-			git -C "$frt_dir" checkout --quiet --detach "$FRT_REF"
-			echo "==> FRT     $frt_dir @ $FRT_REF"
-			# Igual que el engine: los parches de FRT se reaplican sobre un checkout limpio.
-			git -C "$frt_dir" checkout --quiet -- .
-			for patch in "$here"/patches/frt/*.patch; do
-				echo "==> Patch   frt/$(basename "$patch")"
-				git -C "$frt_dir" apply "$patch"
-			done
+			frte_prep
 			(
 				export PATH="$GODOT_SDK_LINUX_ARM64/bin:$SDL2_ARM64/bin:$PATH"
 				# LINKFLAGS=-s es lo que usa el release de upstream FRT: production=yes

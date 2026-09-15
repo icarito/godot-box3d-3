@@ -49,6 +49,7 @@ compile Godot:
 |----------|------------|
 | `godot.box3d.linux.x86_64.headless` | `platform=server` build, links no X11 — the one a CI runner should call as `GODOT_BIN` |
 | `godot.box3d.linux.x86_64.editor` | X11 editor binary, for working locally |
+| `godot.box3d.frt.linux.x86_64.editor` | FRT/SDL2 editor binary: same engine and module, SDL2 video. On a Wayland session SDL2 picks its native wayland driver (EGL/ES context, no XWayland); on X11 or the handheld CFWs it falls back to SDL2's x11/other backends. Implements `--no-window`. |
 | `godot.box3d.thegates.linux.x86_64` | TheGates renderer: `platform=x11` template carrying the `the_gates` module (ZeroMQ IPC + shared-texture frame transport) alongside Box3D. The binary the TheGates launcher runs for gates declaring `godot_version = "3.6"` |
 | `godot.box3d.thegates.linux.x86_64.debug` | Same renderer, `release_debug` build, for debugging a gate |
 | `linux-3.6` | The renderer packaged the way TheGates' backend serves it: a zip whose archive root holds `Renderer-godot_v3.6.x86_64`, the exact file `/api/download_renderer/linux-3.6` returns |
@@ -122,6 +123,7 @@ publishes.
 ```bash
 scripts/build.sh editor                    # X11 editor, for scripts/test.sh locally
 scripts/build.sh headless                  # server build, what CI runs
+scripts/build.sh frt-editor                # FRT/SDL2 editor (Wayland nativo via SDL2)
 scripts/build.sh linux-templates           # export templates, release and debug
 scripts/build.sh windows-templates         # cross-compiled, needs mingw-w64 (-posix)
 scripts/build.sh thegates-renderer         # TheGates browser renderer (x11 + the_gates)
