@@ -21,6 +21,8 @@ func _init():
 		return
 	var scene = packed.instance()
 	get_root().add_child(scene)
+	if OS.get_environment("CAPTURE_PAUSE") == "1":
+		paused = true
 	connect("idle_frame", self, "_on_frame")
 
 func _on_frame():

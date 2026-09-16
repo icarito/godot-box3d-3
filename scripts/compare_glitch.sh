@@ -6,11 +6,12 @@
 #
 # uso: scripts/compare_glitch.sh [escena-res] [frames] [out-dir]
 #   GODOT_ES / GODOT_GL sobreescriben los binarios.
-#   La escena debe existir en test_project (se corre con --path test_project).
+#   CAPTURE_PROJECT sobreescribe el proyecto (default test_project).
 
 here=$(cd "$(dirname "$0")/.." && pwd)
 ES="${GODOT_ES:-$here/../godot/bin/godot.frt.opt.tools.es}"
 GL="${GODOT_GL:-$here/../godot/bin/godot.frt.opt.tools.x86_64}"
+PROJ="${CAPTURE_PROJECT:-$here/test_project}"
 SCENE="${1:-res://demo/demo.tscn}"
 FRAMES="${2:-90}"
 OUT="${3:-/tmp/kilo/compare}"
@@ -20,9 +21,9 @@ mkdir -p "$OUT"
 run_one() {
 	local bin="$1" out="$2" name="$3"
 	(
-		cd "$here/test_project" && \
-		CAPTURE_SCENE="$SCENE" CAPTURE_OUT="$out" CAPTURE_FRAMES="$FRAMES" \
-		SDL_VIDEODRIVER=wayland "$bin" --path . --no-window -s res://capture_scene.gd
+		cd "$PROJ" && \
+		CAPTURE_SCENE="$SCENE" CAPTURE_OUT="$out" CAPTURE_FRAMES="$FRAMES" CAPTURE_PAUSE="${CAPTURE_PAUSE:-1}" \
+		SDL_VIDEODRIVER=wayland "$bin" --path . --no-window -s "$here/test_project/capture_scene.gd"
 	) > "$out.log" 2>&1
 	if [ ! -f "$out" ]; then
 		echo "FALLO $name:" >&2
