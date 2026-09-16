@@ -7,6 +7,11 @@
 # uso: scripts/compare_glitch.sh [escena-res] [frames] [out-dir]
 #   GODOT_ES / GODOT_GL sobreescriben los binarios.
 #   CAPTURE_PROJECT sobreescribe el proyecto (default test_project).
+#   PARITY_OVERRIDE=0 deja de forzar la config del device en el proyecto de
+#   captura (ver test_project/override_mobile_parity.cfg). Por defecto se
+#   instala `override.cfg` durante la corrida y se restaura al salir: sin eso
+#   el build desktop-GL no reporta `mobile` y renderiza con `depth/hdr=true`,
+#   asi que la comparación mide configuración, no el driver.
 
 here=$(cd "$(dirname "$0")/.." && pwd)
 ES="${GODOT_ES:-$here/../godot/bin/godot.frt.opt.tools.es}"
@@ -17,6 +22,27 @@ FRAMES="${2:-90}"
 OUT="${3:-/tmp/kilo/compare}"
 SLUG=$(echo "$SCENE" | sed 's|res://||; s|[/_.]|_|g')
 mkdir -p "$OUT"
+
+PARITY_SRC="$here/test_project/override_mobile_parity.cfg"
+OVR_DST="$PROJ/override.cfg"
+OVR_SAVED=""
+
+cleanup_override() {
+	rm -f "$OVR_DST"
+	if [ -n "$OVR_SAVED" ]; then
+		mv -f "$OVR_SAVED" "$OVR_DST"
+	fi
+}
+
+if [ "${PARITY_OVERRIDE:-1}" != "0" ] && [ -f "$PARITY_SRC" ]; then
+	if [ -e "$OVR_DST" ]; then
+		OVR_SAVED="$OVR_DST.parity-save.$$"
+		mv -f "$OVR_DST" "$OVR_SAVED"
+	fi
+	cp "$PARITY_SRC" "$OVR_DST"
+	echo "parity: override.cfg instalado en $PROJ (PARITY_OVERRIDE=0 lo desactiva)"
+	trap cleanup_override EXIT INT TERM
+fi
 
 run_one() {
 	local bin="$1" out="$2" name="$3"

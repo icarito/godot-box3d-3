@@ -48,6 +48,23 @@ Verificados contra el árbol, no de memoria:
    rompe en un contenedor o en una Mesa sin glvnd — exactamente el caso ROCKNIX que ya documenta
    `scripts/build.sh`. Hay que usar `gladLoadGLLoader(SDL_GL_GetProcAddress)`.
 
+6. **El build desktop-GL ya no renderiza como el device, y eso hay que decidirlo.** La Fase 2
+   (`_check_internal_feature_support()` sin `mobile` bajo `GLES_OVER_GL`) no es cosmética: apaga los
+   overrides `.mobile` de ProjectSettings, y el que cambia el render de verdad es
+   `rendering/quality/depth/hdr`. El build ES resuelve `false`; el desktop-GL, `true`, o sea un render
+   target HDR (RGBA16F) distinto. Medido en `CoverScene` (Odisea) contra el build ES, con la misma pose
+   congelada (`CAPTURE_ANIMATION_TIME=1.0`): el diff baja de **mean 8.78 / 13479 px>30 a
+   mean 0.89 / 4895 px** con *sólo* `hdr=false`; el fondo `PanoramaSky` pasa de 0.964 a 0.305 contra
+   0.308 del build ES, y la región de la malla de 9.14 a 0.27. `texture_array_reflections`,
+   `shadows/filter_mode` y `directional_shadow/size` (2048 vs 4096) no aportan diferencia medible acá.
+   Consecuencia práctica: **cualquier comparación ES vs desktop-GL sin igualar `depth/hdr` mide
+   configuración, no el driver** — y ahí se gastó una tanda larga de caza de fantasma (malla
+   fragmentada, cielo/textura barridos). El harness lo neutraliza solo:
+   `test_project/override_mobile_parity.cfg` se instala como `override.cfg` del proyecto de captura
+   mientras dura la corrida (`PARITY_OVERRIDE=0` lo desactiva). Falta la decisión de producto: si el
+   frt-editor tiene que ser un preview honesto del target arm64, la Fase 2 se revierte (o se acota a
+   lo que no toque `depth/hdr`).
+
 ---
 
 ## Dónde viven los cambios
