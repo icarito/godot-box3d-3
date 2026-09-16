@@ -1,0 +1,57 @@
+diff --git a/drivers/gl_context/SCsub b/drivers/gl_context/SCsub
+index 3084ddd..8788270 100644
+--- a/drivers/gl_context/SCsub
++++ b/drivers/gl_context/SCsub
+@@ -4,7 +4,7 @@ Import("env")
+ 
+ thirdparty_obj = []
+ 
+-if env["platform"] in ["haiku", "osx", "windows", "x11"]:
++if env["platform"] in ["haiku", "osx", "windows", "x11"] or env.get("frt_desktop_gl", False):
+     # Thirdparty source files
+     thirdparty_dir = "#thirdparty/glad/"
+     thirdparty_sources = [
+diff --git a/drivers/gles3/rasterizer_gles3.cpp b/drivers/gles3/rasterizer_gles3.cpp
+index 4ecd179..e1b4ba7 100644
+--- a/drivers/gles3/rasterizer_gles3.cpp
++++ b/drivers/gles3/rasterizer_gles3.cpp
+@@ -135,9 +135,16 @@ typedef void (*DEBUGPROCARB)(GLenum source,
+ 
+ typedef void (*DebugMessageCallbackARB)(DEBUGPROCARB callback, const void *userParam);
+ 
++#if defined(FRT_ENABLED) && defined(GLAD_ENABLED)
++extern "C" void *SDL_GL_GetProcAddress(const char *);
++#define frt_glad_load() gladLoadGLLoader((GLADloadproc)SDL_GL_GetProcAddress)
++#else
++#define frt_glad_load() gladLoadGL()
++#endif
++
+ Error RasterizerGLES3::is_viable() {
+ #ifdef GLAD_ENABLED
+-	if (!gladLoadGL()) {
++	if (!frt_glad_load()) {
+ 		ERR_PRINT("Error initializing GLAD");
+ 		return ERR_UNAVAILABLE;
+ 	}
+diff --git a/drivers/gles2/rasterizer_gles2.cpp b/drivers/gles2/rasterizer_gles2.cpp
+index 4ceab48..753a006 100644
+--- a/drivers/gles2/rasterizer_gles2.cpp
++++ b/drivers/gles2/rasterizer_gles2.cpp
+@@ -165,9 +165,16 @@ RasterizerScene *RasterizerGLES2::get_scene() {
+ 	return scene;
+ }
+ 
++#if defined(FRT_ENABLED) && defined(GLAD_ENABLED)
++extern "C" void *SDL_GL_GetProcAddress(const char *);
++#define frt_glad_load() gladLoadGLLoader((GLADloadproc)SDL_GL_GetProcAddress)
++#else
++#define frt_glad_load() gladLoadGL()
++#endif
++
+ Error RasterizerGLES2::is_viable() {
+ #ifdef GLAD_ENABLED
+-	if (!gladLoadGL()) {
++	if (!frt_glad_load()) {
+ 		ERR_PRINT("Error initializing GLAD");
+ 		return ERR_UNAVAILABLE;
+ 	}

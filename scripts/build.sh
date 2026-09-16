@@ -182,10 +182,12 @@ for target in "$@"; do
 		frt-editor)
 			# Editor FRT/SDL2 x86_64: el mismo engine y modulo, con video SDL2.
 			# SDL2 del sistema elige su driver wayland en sesiones Wayland, asi
-			# que este binario corre Wayland nativo (contexto ES por EGL) sin
-			# pasar por XWayland. Tambien implementa --no-window.
+			# que este binario corre Wayland nativo (contexto desktop GL 3.3
+			# core por EGL) sin pasar por XWayland. Tambien implementa
+			# --no-window. frt_desktop_gl enciende glad + GLES_OVER_GL y deja el
+			# camino ES para los arm64-templates.
 			frte_prep
-			build platform=frt arch=x86_64 target=release_debug tools=yes
+			build platform=frt arch=x86_64 target=release_debug tools=yes frt_desktop_gl=yes
 			;;
 		frt-arm64-templates)
 			# FRT usa SDL2 en vez de X11, que es lo que hace falta en los handhelds

@@ -1,0 +1,110 @@
+diff --git a/detect.py b/detect.py
+index 3ab1558..06ace41 100644
+--- a/detect.py
++++ b/detect.py
+@@ -28,6 +28,7 @@ def get_opts():
+ 		('triple', 'Cross-compilation triple (e.g. arm-linux-gnueabihf) or none', 'none'),
+ 		BoolVariable('use_llvm', 'Use llvm compiler', False),
+ 		BoolVariable('use_static_cpp', 'Link libgcc and libstdc++ statically', False),
++		BoolVariable('frt_desktop_gl', 'Build against desktop OpenGL 3.3 core via glad (desktop targets), instead of GLES via the dl/ wrappers', False),
+ 	]
+ 
+ def get_flags():
+@@ -69,6 +70,11 @@ def configure_misc(env):
+ 	env.Append(CPPPATH=['#platform/frt'])
+ 	env.Append(CPPFLAGS=['-DUNIX_ENABLED', '-DGLES_ENABLED', '-DJOYDEV_ENABLED'])
+ 	env.Append(CPPFLAGS=['-DFRT_ENABLED'])
++	if env['frt_desktop_gl']:
++		# Tells is_viable() to enforce the desktop version floors (GL 3.3 for
++		# the GLES3 driver) instead of the ES ones. GLES_OVER_GL and GLAD_ENABLED
++		# come from drivers/gl_context/SCsub, which reads this same option.
++		env.Append(CPPFLAGS=['-DOPENGL_ENABLED'])
+ 	env.Append(LIBS=['pthread', 'z', 'dl'])
+ 	if env['use_static_cpp']:
+ 		env.Append(LINKFLAGS=['-static-libgcc', '-static-libstdc++'])
+diff --git a/platform_config.h b/platform_config.h
+index 112192a..a7bee2e 100644
+--- a/platform_config.h
++++ b/platform_config.h
+@@ -7,5 +7,12 @@
+ 
+ #include <alloca.h>
+ 
++#ifdef GLAD_ENABLED
++// Desktop build (frt_desktop_gl): the GLES2/GLES3 drivers run over glad and a
++// desktop GL context, exactly like platform/x11.
++#define GLES2_INCLUDE_H "thirdparty/glad/glad/glad.h"
++#define GLES3_INCLUDE_H "thirdparty/glad/glad/glad.h"
++#else
+ #define GLES2_INCLUDE_H "dl/gles2.gen.h"
+ #define GLES3_INCLUDE_H "dl/gles3.gen.h"
++#endif
+diff --git a/frt_godot.cc b/frt_godot.cc
+index e0a688d..150e0c4 100644
+--- a/frt_godot.cc
++++ b/frt_godot.cc
+@@ -97,11 +97,25 @@ private:
+ 	VisualServer *visual_server_;
+ 	void init_video() {
+ 		if (video_driver_ == VIDEO_DRIVER_GLES2) {
++#ifdef GLAD_ENABLED
++			Error err = RasterizerGLES2::is_viable();
++			if (err != OK)
++				fatal("GLES2 renderer is not viable on this context.");
++			print_verbose(vformat("GL_VERSION: %s", (const char *)glGetString(GL_VERSION)));
++#else
+ 			frt_resolve_symbols_gles2(get_proc_address);
++#endif
+ 			RasterizerGLES2::register_config();
+ 			RasterizerGLES2::make_current();
+ 		} else {
++#ifdef GLAD_ENABLED
++			Error err = RasterizerGLES3::is_viable();
++			if (err != OK)
++				fatal("GLES3 renderer is not viable on this context.");
++			print_verbose(vformat("GL_VERSION: %s", (const char *)glGetString(GL_VERSION)));
++#else
+ 			frt_resolve_symbols_gles3(get_proc_address);
++#endif
+ 			RasterizerGLES3::register_config();
+ 			RasterizerGLES3::make_current();
+ 		}
+diff --git a/sdl2_adapter.h b/sdl2_adapter.h
+index 22c4e51..6e46df3 100644
+--- a/sdl2_adapter.h
++++ b/sdl2_adapter.h
+@@ -422,6 +422,8 @@ public:
+ 	}
+ 	void init_context_gl() {
+ 		context_ = SDL_GL_CreateContext(window_);
++		if (!context_)
++			fatal("SDL_GL_CreateContext failed: %s.", SDL_GetError());
+ 		SDL_GL_MakeCurrent(window_, context_);
+ 	}
+ 	void init_window(GraphicsAPI api, int width, int height, bool resizable, bool borderless, bool always_on_top, bool hidden) {
+@@ -429,10 +431,25 @@ public:
+ 		if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_JOYSTICK) < 0)
+ 			fatal("SDL_Init failed: %s.", SDL_GetError());
+ 		int flags = (hidden ? SDL_WINDOW_HIDDEN : SDL_WINDOW_SHOWN) | SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_OPENGL;
++#ifdef GLES_OVER_GL
++		// Desktop context, the same split platform/x11 makes (context_gl_x11.cpp,
++		// GLES_2_0_COMPATIBLE / GLES_3_0_COMPATIBLE): the GLES2 renderer gets a
++		// legacy 2.1 context, the GLES3 renderer a 3.3 core one.
++		if (api == API_OpenGL_ES2) {
++			SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
++			SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
++		} else {
++			SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
++			SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
++			SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
++			SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG);
++		}
++#else
+ 		SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+ 		SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, api == API_OpenGL_ES2 ? 2 : 3);
+ 		SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
+ 		SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
++#endif
+ 		if (resizable)
+ 			flags |= SDL_WINDOW_RESIZABLE;
+ 		if (borderless)
