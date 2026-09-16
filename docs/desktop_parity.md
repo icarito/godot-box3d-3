@@ -48,22 +48,17 @@ Verificados contra el árbol, no de memoria:
    rompe en un contenedor o en una Mesa sin glvnd — exactamente el caso ROCKNIX que ya documenta
    `scripts/build.sh`. Hay que usar `gladLoadGLLoader(SDL_GL_GetProcAddress)`.
 
-6. **El build desktop-GL ya no renderiza como el device, y eso hay que decidirlo.** La Fase 2
-   (`_check_internal_feature_support()` sin `mobile` bajo `GLES_OVER_GL`) no es cosmética: apaga los
-   overrides `.mobile` de ProjectSettings, y el que cambia el render de verdad es
-   `rendering/quality/depth/hdr`. El build ES resuelve `false`; el desktop-GL, `true`, o sea un render
-   target HDR (RGBA16F) distinto. Medido en `CoverScene` (Odisea) contra el build ES, con la misma pose
-   congelada (`CAPTURE_ANIMATION_TIME=1.0`): el diff baja de **mean 8.78 / 13479 px>30 a
-   mean 0.89 / 4895 px** con *sólo* `hdr=false`; el fondo `PanoramaSky` pasa de 0.964 a 0.305 contra
-   0.308 del build ES, y la región de la malla de 9.14 a 0.27. `texture_array_reflections`,
-   `shadows/filter_mode` y `directional_shadow/size` (2048 vs 4096) no aportan diferencia medible acá.
-   Consecuencia práctica: **cualquier comparación ES vs desktop-GL sin igualar `depth/hdr` mide
-   configuración, no el driver** — y ahí se gastó una tanda larga de caza de fantasma (malla
-   fragmentada, cielo/textura barridos). El harness lo neutraliza solo:
-   `test_project/override_mobile_parity.cfg` se instala como `override.cfg` del proyecto de captura
-   mientras dura la corrida (`PARITY_OVERRIDE=0` lo desactiva). Falta la decisión de producto: si el
-   frt-editor tiene que ser un preview honesto del target arm64, la Fase 2 se revierte (o se acota a
-   lo que no toque `depth/hdr`).
+6. **La Fase 2 se implementó y se revirtió: el desktop-GL tiene que renderizar como el device.** El
+   `_check_internal_feature_support()` sin `mobile` bajo `GLES_OVER_GL` no es cosmético: apaga los
+   overrides `.mobile` de ProjectSettings, y ahí `rendering/quality/depth/hdr` pasa de `false` a `true`,
+   o sea otro render target (RGBA16F). Medido en `CoverScene` (Odisea) contra el build ES con la misma
+   pose congelada: **mean 8.78 / 13479 px>30**, malla del Pilot 9.140 / 1794 px. Con la Fase 2 revertida
+   la comparación queda en el piso de ruido del harness (ES vs ES: 0.035 / 190 px>30; ES vs GL:
+   0.037 / 221 px>30; malla: 0.025 / 46 px). O sea: **la "malla fragmentada" y el "cielo/textura
+   barridos" eran configuración, no driver** — y ahí se gastó una tanda larga de caza de fantasma.
+   Detalle y verificación repetible: sección Fase 2. El harness además fija los 13 valores del device en
+   el proyecto de captura (`test_project/override_mobile_parity.cfg`, `PARITY_OVERRIDE=0` lo apaga) por
+   si el reporte de features vuelve a divergir.
 
 ---
 
@@ -264,36 +259,40 @@ CI: no agregar nada. `.github/workflows/release.yml:44-51` ya construye los dos 
 
 ---
 
-# Fase 2 — `has_feature("mobile")` = false en desktop
+# Fase 2 — `has_feature("mobile")` en desktop: **REVERTIDA**
 
-**Commit separado de la fase 1, deliberadamente.** Decisión tuya, tomada: el frt-editor debe comportarse
-como escritorio.
+Se implementó (envolver en `#ifdef GLES_OVER_GL` el `return feature == "mobile" || feature == "etc";`
+y devolver las features de escritorio) y se revirtió al medir el efecto. La decisión original era "el
+frt-editor debe comportarse como escritorio"; la medición la dio vuelta.
 
-`frt_godot.cc:166-172` — envolver en `#ifndef GLES_OVER_GL` el `return feature == "mobile" || feature == "etc";`
-y la línea de `"etc2"`. En desktop devolver las features de escritorio.
+El análisis que la justificaba sigue valiendo y es útil: **ningún C++ lee
+`has_feature("mobile"/"etc"/"etc2"/"s3tc")`** — el único call site de `has_feature("` en
+`core scene servers main editor drivers modules` es `"primary_clipboard"`. El formato de textura lo
+decide `GLES_OVER_GL` directamente en `rasterizer_storage_gles3.cpp:8213-8224`
+(`etc2_supported=false; s3tc_supported=true; rgtc_supported=true`), sin consultar al OS. El efecto
+**único** son los overrides `.mobile` de ProjectSettings (`core/project_settings.cpp:200-211`), 13
+settings: `directional_shadow/size` y `shadow_atlas/size` 2048, `shadows/filter_mode` 0,
+`reflections/texture_array_reflections` false, `reflections/high_quality_ggx` false,
+`shading/force_vertex_shading` true, `force_lambert_over_burley` true, `force_blinn_over_ggx` true,
+`depth/hdr` false, `intended_usage/framebuffer_allocation` 3, y los tres de `gles3/shaders/`.
 
-Qué cambia realmente (verificado): **ningún C++ lee `has_feature("mobile"/"etc"/"etc2"/"s3tc")`** — el
-único call site de `has_feature("` en `core scene servers main editor drivers modules` es
-`"primary_clipboard"`. El formato de textura lo decide `GLES_OVER_GL` directamente en
-`rasterizer_storage_gles3.cpp:8213-8224` (`etc2_supported=false; s3tc_supported=true; rgtc_supported=true`),
-sin consultar al OS. El efecto **único** son los overrides `.mobile` de ProjectSettings
-(`core/project_settings.cpp:200-211`), 13 settings: `directional_shadow/size` y `shadow_atlas/size` 2048,
-`shadows/filter_mode` 0, `reflections/texture_array_reflections` false, `reflections/high_quality_ggx`
-false, `shading/force_vertex_shading` true, `force_lambert_over_burley` true, `force_blinn_over_ggx` true,
-`depth/hdr` false, `intended_usage/framebuffer_allocation` 3, y los tres de
-`gles3/shaders/` (`shader_compilation_mode` 0, `max_simultaneous_compiles` 1, `shader_cache_size_mb` 128).
+Por qué se revirtió: entre esos 13 está `rendering/quality/depth/hdr`, así que el build desktop-GL
+pasaba a dibujar en un render target HDR (RGBA16F). En `CoverScene` (Odisea), misma pose congelada,
+contra el build ES: **mean 8.783 / 13479 px>30**, con la malla del Pilot aportando 9.140 / 1794 px.
+Igualar sólo `depth/hdr` no alcanza: baja a 0.894 / 4895, porque el resto de los overrides sigue
+divergiendo.
 
-**Por eso va en commit aparte:** activa `texture_array_reflections` y `high_quality_ggx` por primera vez
-en FRT — que es justo la combinación que toca `gles3_ubershader_sampler_budget.patch` (§1.6) — y cambia
-los tres knobs que el stack de async-compile existe para afinar. Si algo se ve mal, con el commit aislado
-sabés cuál cambio fue.
+Estado tras revertir: el build desktop-GL resuelve los mismos valores que el ES (verificado con el
+probe: `mobile=True`, `depth/hdr=false`, `filter_mode=1`, `directional_shadow/size=2048`,
+`max_simultaneous_compiles=1`) y la comparación queda **en el piso de ruido del harness** — mismo
+binario dos veces: 0.035 / 190 px>30; ES vs desktop-GL: 0.037 / 221 px>30. La malla del Pilot coincide
+salvo 46 px (por debajo del piso de ruido: 127 px). O sea: la "malla fragmentada" y el "cielo/textura
+barridos" que se venían persiguiendo eran configuración, no driver.
 
-Contrapartida a documentar en `patches/README.md`: el editor deja de ser un preview honesto del template
-arm64 (`force_vertex_shading`, `hdr=false`, `framebuffer_allocation=3` eran lo que lo hacía parecerse a la
-consola).
-
-Verificación: correr Odisea en el editor antes y después de este commit, comparando el viewport.
-Es el punto exacto donde una diferencia visual es esperable y hay que juzgarla, no arreglarla a ciegas.
+Verificación (repetible): `CAPTURE_ANIMATION_TIME=1.0 scripts/compare_glitch.sh res://scenes/CoverScene.tscn 180 <out>`
+con `CAPTURE_PROJECT` apuntando a Odisea; el piso de ruido se mide con `GODOT_GL=<binario ES>`.
+`test_project/override_mobile_parity.cfg` queda como cinturón: fija los 13 valores del device en el
+proyecto de captura mientras dura la corrida, por si el reporte de features vuelve a divergir.
 
 ---
 
@@ -371,6 +370,6 @@ recordando que SDL entrega **un archivo por evento** (hay que batchear entre `SD
 ## Orden de ejecución
 
 1. Fase 1 (M0 → M1 → M2 → M3) — **parar en M1 y confirmar que el crash desapareció antes de seguir.**
-2. Fase 2, commit aparte, con comparación visual de Odisea antes/después.
+2. Fase 2 — **revertida**: se midió y el desktop-GL tiene que renderizar como el device (ver Fase 2).
 3. Fase 3 (clipboard) — independiente de todo lo anterior, se puede adelantar si la fase 1 se atasca.
 4. Fase 4 (IME).

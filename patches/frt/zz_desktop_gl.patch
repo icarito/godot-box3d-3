@@ -1,5 +1,26 @@
-diff --git a/tmp/kilo/b2-frt_godot.cc b/run/media/icarito/DATA/icarito/Proyectos/godot3-box3d/godot/platform/frt/frt_godot.cc
-index e0a688d..c6bf56c 100644
+diff --git a/detect.py b/detect.py
+index 3ab1558..4775193 100644
+--- a/detect.py
++++ b/detect.py
+@@ -26,6 +26,7 @@ def get_opts():
+ 	from SCons.Variables import BoolVariable
+ 	return [
+ 		('triple', 'Cross-compilation triple (e.g. arm-linux-gnueabihf) or none', 'none'),
++		BoolVariable('frt_desktop_gl', 'Use a desktop OpenGL context instead of OpenGL ES', False),
+ 		BoolVariable('use_llvm', 'Use llvm compiler', False),
+ 		BoolVariable('use_static_cpp', 'Link libgcc and libstdc++ statically', False),
+ 	]
+@@ -69,6 +70,8 @@ def configure_misc(env):
+ 	env.Append(CPPPATH=['#platform/frt'])
+ 	env.Append(CPPFLAGS=['-DUNIX_ENABLED', '-DGLES_ENABLED', '-DJOYDEV_ENABLED'])
+ 	env.Append(CPPFLAGS=['-DFRT_ENABLED'])
++	if env['frt_desktop_gl']:
++		env.Append(CPPDEFINES=['OPENGL_ENABLED', 'GLAD_ENABLED', 'GLES_OVER_GL'])
+ 	env.Append(LIBS=['pthread', 'z', 'dl'])
+ 	if env['use_static_cpp']:
+ 		env.Append(LINKFLAGS=['-static-libgcc', '-static-libstdc++'])
+diff --git a/frt_godot.cc b/frt_godot.cc
+index e0a688d..150e0c4 100644
 --- a/frt_godot.cc
 +++ b/frt_godot.cc
 @@ -97,11 +97,25 @@ private:
@@ -28,25 +49,22 @@ index e0a688d..c6bf56c 100644
  			RasterizerGLES3::register_config();
  			RasterizerGLES3::make_current();
  		}
-@@ -166,9 +180,16 @@ public: // OS
- 	bool _check_internal_feature_support(const String &feature) override {
- 		if (feature == "X11" || feature == "FRT")
- 			return true;
-+#ifdef GLES_OVER_GL
-+		// Desktop build: the same texture features platform/x11 advertises.
-+		// NOTE: this also enables the .desktop overrides of ProjectSettings,
-+		// so the editor stops being a faithful preview of the arm64 template.
-+		return feature == "pc" || feature == "s3tc" || feature == "rgtc";
+diff --git a/platform_config.h b/platform_config.h
+index 112192a..a70ef59 100644
+--- a/platform_config.h
++++ b/platform_config.h
+@@ -7,5 +7,10 @@
+ 
+ #include <alloca.h>
+ 
++#ifdef GLAD_ENABLED
++#define GLES2_INCLUDE_H "thirdparty/glad/glad/glad.h"
++#define GLES3_INCLUDE_H "thirdparty/glad/glad/glad.h"
 +#else
- 		if (video_driver_ == VIDEO_DRIVER_GLES3 && feature == "etc2")
- 			return true;
- 		return feature == "mobile" || feature == "etc";
+ #define GLES2_INCLUDE_H "dl/gles2.gen.h"
+ #define GLES3_INCLUDE_H "dl/gles3.gen.h"
 +#endif
- 	}
- 	String get_config_path() const override {
- 		if (has_environment("XDG_CONFIG_HOME"))
-
-diff --git a/tmp/kilo/b2-sdl2_adapter.h b/run/media/icarito/DATA/icarito/Proyectos/godot3-box3d/godot/platform/frt/sdl2_adapter.h
+diff --git a/sdl2_adapter.h b/sdl2_adapter.h
 index 22c4e51..30da79e 100644
 --- a/sdl2_adapter.h
 +++ b/sdl2_adapter.h
@@ -121,39 +139,3 @@ index 22c4e51..30da79e 100644
  	void set_use_vsync_gl(bool enable) {
  		SDL_GL_SetSwapInterval(enable ? 1 : 0);
  	}
-
-diff --git a/detect.py b/detect.py
---- a/detect.py
-+++ b/detect.py
-@@ -28,6 +28,7 @@ def get_opts():
- 	return [
- 		('triple', 'Cross-compilation triple (e.g. arm-linux-gnueabihf) or none', 'none'),
-+		BoolVariable('frt_desktop_gl', 'Use a desktop OpenGL context instead of OpenGL ES', False),
- 		BoolVariable('use_llvm', 'Use llvm compiler', False),
- 		BoolVariable('use_static_cpp', 'Link libgcc and libstdc++ statically', False),
- 	]
-@@ -68,6 +69,8 @@ def configure_misc(env):
- 	env.Append(CPPPATH=['#platform/frt'])
- 	env.Append(CPPFLAGS=['-DUNIX_ENABLED', '-DGLES_ENABLED', '-DJOYDEV_ENABLED'])
- 	env.Append(CPPFLAGS=['-DFRT_ENABLED'])
-+	if env['frt_desktop_gl']:
-+		env.Append(CPPDEFINES=['OPENGL_ENABLED', 'GLAD_ENABLED', 'GLES_OVER_GL'])
- 	env.Append(LIBS=['pthread', 'z', 'dl'])
- 	if env['use_static_cpp']:
- 		env.Append(LINKFLAGS=['-static-libgcc', '-static-libstdc++'])
-
-diff --git a/platform_config.h b/platform_config.h
---- a/platform_config.h
-+++ b/platform_config.h
-@@ -8,5 +8,10 @@
- 
- #include <alloca.h>
- 
-+#ifdef GLAD_ENABLED
-+#define GLES2_INCLUDE_H "thirdparty/glad/glad/glad.h"
-+#define GLES3_INCLUDE_H "thirdparty/glad/glad/glad.h"
-+#else
- #define GLES2_INCLUDE_H "dl/gles2.gen.h"
- #define GLES3_INCLUDE_H "dl/gles3.gen.h"
-+#endif
-

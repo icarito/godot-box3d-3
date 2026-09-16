@@ -7,11 +7,12 @@
 # uso: scripts/compare_glitch.sh [escena-res] [frames] [out-dir]
 #   GODOT_ES / GODOT_GL sobreescriben los binarios.
 #   CAPTURE_PROJECT sobreescribe el proyecto (default test_project).
-#   PARITY_OVERRIDE=0 deja de forzar la config del device en el proyecto de
-#   captura (ver test_project/override_mobile_parity.cfg). Por defecto se
-#   instala `override.cfg` durante la corrida y se restaura al salir: sin eso
-#   el build desktop-GL no reporta `mobile` y renderiza con `depth/hdr=true`,
-#   asi que la comparación mide configuración, no el driver.
+#   PARITY_OVERRIDE=0 deja de fijar la config del device en el proyecto de
+#   captura (ver test_project/override_mobile_parity.cfg). Con la Fase 2
+#   revertida el build desktop-GL ya reporta `mobile` como el arm64 y la
+#   comparación da piso de ruido sin nada; esto queda como cinturón, porque si
+#   el reporte de features vuelve a divergir el diff mide configuración
+#   (depth/hdr y los otros overrides .mobile), no el driver.
 
 here=$(cd "$(dirname "$0")/.." && pwd)
 ES="${GODOT_ES:-$here/../godot/bin/godot.frt.opt.tools.es}"
