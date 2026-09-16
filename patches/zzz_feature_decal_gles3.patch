@@ -747,35 +747,6 @@
  
 --- drivers/gles3/rasterizer_storage_gles3.cpp
 +++ b/drivers/gles3/rasterizer_storage_gles3.cpp
-@@ -2580,8 +2580,6 @@
- 		return;
- 	}
- 
--	MutexLock lock(shader_dirty_mutex);
--
- 	_material_dirty_list.add(&p_material->dirty_list);
- }
- 
-@@ -2625,8 +2623,6 @@
- 	Material *material = material_owner.get(p_material);
- 	ERR_FAIL_COND(!material);
- 
--	MutexLock lock(shader_dirty_mutex);
--
- 	if (p_value.get_type() == Variant::NIL) {
- 		material->params.erase(p_param);
- 	} else {
-@@ -3388,10 +3384,6 @@
- }
- 
- void RasterizerStorageGLES3::update_dirty_materials() {
--	// Same lock as update_dirty_shaders(): material_set_param() can be called
--	// from editor preview / loader threads while this walks the list.
--	MutexLock lock(shader_dirty_mutex);
--
- 	while (_material_dirty_list.first()) {
- 		Material *material = _material_dirty_list.first()->self();
- 
 @@ -5897,6 +5889,114 @@
  	return reflection_probe->max_distance;
  }
