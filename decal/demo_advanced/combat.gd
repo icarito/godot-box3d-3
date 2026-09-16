@@ -189,8 +189,8 @@ func _process(dt):
 		if frames % 300 == 0:
 			print("STRESS frames=", frames)
 			var fb := File.new()
-			if fb.open("/tmp/kilo/stress_beat.txt", File.READ_WRITE) == OK:
-				fb.seek_end()
+			# WRITE (y no READ_WRITE): crea el archivo si no existe.
+			if fb.open("/tmp/kilo/stress_beat.txt", File.WRITE) == OK:
 				fb.store_line("frames=%d" % frames)
 				fb.close()
 			if fb:
