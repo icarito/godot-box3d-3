@@ -1,0 +1,15 @@
+config_version=4
+
+[application]
+
+config/name="Decal Demo - Rango de Tiro"
+run/main_scene="res://demo.tscn"
+
+[display]
+
+window/size/width=1024
+window/height=600
+
+[rendering]
+
+quality/driver/driver_name="GLES3"
