@@ -1,8 +1,6 @@
-diff --git a/drivers/dummy/rasterizer_dummy.h b/drivers/dummy/rasterizer_dummy.h
-index cd9ec246aa..64e4f0b278 100644
---- a/drivers/dummy/rasterizer_dummy.h
+--- drivers/dummy/rasterizer_dummy.h
 +++ b/drivers/dummy/rasterizer_dummy.h
-@@ -106,7 +106,7 @@ public:
+@@ -106,7 +106,7 @@
  	void gi_probe_instance_set_transform_to_data(RID p_probe, const Transform &p_xform) {}
  	void gi_probe_instance_set_bounds(RID p_probe, const Vector3 &p_bounds) {}
  
@@ -11,7 +9,7 @@ index cd9ec246aa..64e4f0b278 100644
  	void render_shadow(RID p_light, RID p_shadow_atlas, int p_pass, InstanceBase **p_cull_result, int p_cull_count) {}
  
  	void set_scene_pass(uint64_t p_pass) {}
-@@ -555,6 +555,48 @@ public:
+@@ -555,6 +555,48 @@
  	float reflection_probe_get_origin_max_distance(RID p_probe) const { return 0.0; }
  	bool reflection_probe_renders_shadows(RID p_probe) const { return false; }
  
@@ -60,7 +58,7 @@ index cd9ec246aa..64e4f0b278 100644
  	void instance_add_skeleton(RID p_skeleton, RasterizerScene::InstanceBase *p_instance) {}
  	void instance_remove_skeleton(RID p_skeleton, RasterizerScene::InstanceBase *p_instance) {}
  
-@@ -737,6 +779,8 @@ public:
+@@ -737,6 +779,8 @@
  			return VS::INSTANCE_MESH;
  		} else if (lightmap_capture_data_owner.owns(p_rid)) {
  			return VS::INSTANCE_LIGHTMAP_CAPTURE;
@@ -69,7 +67,7 @@ index cd9ec246aa..64e4f0b278 100644
  		}
  
  		return VS::INSTANCE_NONE;
-@@ -758,6 +802,10 @@ public:
+@@ -758,6 +802,10 @@
  			LightmapCapture *lightmap_capture = lightmap_capture_data_owner.getornull(p_rid);
  			lightmap_capture_data_owner.free(p_rid);
  			memdelete(lightmap_capture);
@@ -80,11 +78,9 @@ index cd9ec246aa..64e4f0b278 100644
  		} else {
  			return false;
  		}
-diff --git a/drivers/gles2/rasterizer_scene_gles2.cpp b/drivers/gles2/rasterizer_scene_gles2.cpp
-index ca1efa0b1d..9917aa39e2 100644
---- a/drivers/gles2/rasterizer_scene_gles2.cpp
+--- drivers/gles2/rasterizer_scene_gles2.cpp
 +++ b/drivers/gles2/rasterizer_scene_gles2.cpp
-@@ -3257,7 +3257,7 @@ void RasterizerSceneGLES2::_post_process(Environment *env, const CameraMatrix &p
+@@ -3257,7 +3257,7 @@
  	state.tonemap_shader.set_conditional(TonemapShaderGLES2::DISABLE_ALPHA, false);
  }
  
@@ -93,11 +89,9 @@ index ca1efa0b1d..9917aa39e2 100644
  	Transform cam_transform = p_cam_transform;
  
  	storage->info.render.object_count += p_cull_count;
-diff --git a/drivers/gles2/rasterizer_scene_gles2.h b/drivers/gles2/rasterizer_scene_gles2.h
-index 3ab55c8ae9..d027c4c30d 100644
---- a/drivers/gles2/rasterizer_scene_gles2.h
+--- drivers/gles2/rasterizer_scene_gles2.h
 +++ b/drivers/gles2/rasterizer_scene_gles2.h
-@@ -767,7 +767,7 @@ public:
+@@ -767,7 +767,7 @@
  
  	void _post_process(Environment *env, const CameraMatrix &p_cam_projection);
  
@@ -106,11 +100,9 @@ index 3ab55c8ae9..d027c4c30d 100644
  	virtual void render_shadow(RID p_light, RID p_shadow_atlas, int p_pass, InstanceBase **p_cull_result, int p_cull_count);
  	virtual bool free(RID p_rid);
  
-diff --git a/drivers/gles2/rasterizer_storage_gles2.cpp b/drivers/gles2/rasterizer_storage_gles2.cpp
-index 5caae7cf2c..b6e003a495 100644
---- a/drivers/gles2/rasterizer_storage_gles2.cpp
+--- drivers/gles2/rasterizer_storage_gles2.cpp
 +++ b/drivers/gles2/rasterizer_storage_gles2.cpp
-@@ -4667,6 +4667,64 @@ int RasterizerStorageGLES2::reflection_probe_get_resolution(RID p_probe) const {
+@@ -4667,6 +4667,64 @@
  	return reflection_probe->resolution;
  }
  
@@ -175,7 +167,7 @@ index 5caae7cf2c..b6e003a495 100644
  RID RasterizerStorageGLES2::gi_probe_create() {
  	return RID();
  }
-@@ -5020,6 +5078,10 @@ void RasterizerStorageGLES2::instance_add_dependency(RID p_base, RasterizerScene
+@@ -5020,6 +5078,10 @@
  			inst = lightmap_capture_data_owner.getornull(p_base);
  			ERR_FAIL_COND(!inst);
  		} break;
@@ -186,7 +178,7 @@ index 5caae7cf2c..b6e003a495 100644
  		default: {
  			ERR_FAIL();
  		}
-@@ -5064,6 +5126,10 @@ void RasterizerStorageGLES2::instance_remove_dependency(RID p_base, RasterizerSc
+@@ -5064,6 +5126,10 @@
  			inst = lightmap_capture_data_owner.getornull(p_base);
  			ERR_FAIL_COND(!inst);
  		} break;
@@ -197,7 +189,7 @@ index 5caae7cf2c..b6e003a495 100644
  		default: {
  			ERR_FAIL();
  		}
-@@ -5970,6 +6036,8 @@ VS::InstanceType RasterizerStorageGLES2::get_base_type(RID p_rid) const {
+@@ -5970,6 +6036,8 @@
  		return VS::INSTANCE_REFLECTION_PROBE;
  	} else if (lightmap_capture_data_owner.owns(p_rid)) {
  		return VS::INSTANCE_LIGHTMAP_CAPTURE;
@@ -206,7 +198,7 @@ index 5caae7cf2c..b6e003a495 100644
  	} else {
  		return VS::INSTANCE_NONE;
  	}
-@@ -6169,6 +6237,14 @@ bool RasterizerStorageGLES2::free(RID p_rid) {
+@@ -6169,6 +6237,14 @@
  		memdelete(lightmap_capture);
  		return true;
  
@@ -221,11 +213,9 @@ index 5caae7cf2c..b6e003a495 100644
  	} else if (canvas_occluder_owner.owns(p_rid)) {
  		CanvasOccluder *co = canvas_occluder_owner.get(p_rid);
  		if (co->index_id) {
-diff --git a/drivers/gles2/rasterizer_storage_gles2.h b/drivers/gles2/rasterizer_storage_gles2.h
-index 52a9ffb55b..1b6eeafaa2 100644
---- a/drivers/gles2/rasterizer_storage_gles2.h
+--- drivers/gles2/rasterizer_storage_gles2.h
 +++ b/drivers/gles2/rasterizer_storage_gles2.h
-@@ -1055,6 +1055,29 @@ public:
+@@ -1055,6 +1055,29 @@
  	virtual float reflection_probe_get_origin_max_distance(RID p_probe) const;
  	virtual bool reflection_probe_renders_shadows(RID p_probe) const;
  
@@ -255,11 +245,9 @@ index 52a9ffb55b..1b6eeafaa2 100644
  	/* GI PROBE API */
  	virtual RID gi_probe_create();
  
-diff --git a/drivers/gles3/rasterizer_scene_gles3.cpp b/drivers/gles3/rasterizer_scene_gles3.cpp
-index fece82f0b8..3849476d1c 100644
---- a/drivers/gles3/rasterizer_scene_gles3.cpp
+--- drivers/gles3/rasterizer_scene_gles3.cpp
 +++ b/drivers/gles3/rasterizer_scene_gles3.cpp
-@@ -1828,6 +1828,35 @@ void RasterizerSceneGLES3::_setup_light(RenderList::Element *e, const Transform
+@@ -1828,6 +1828,35 @@
  		glUniform1iv(state.scene_shader.get_uniform(SceneShaderGLES3::SPOT_LIGHT_INDICES), spot_count, spot_indices);
  	}
  
@@ -295,7 +283,7 @@ index fece82f0b8..3849476d1c 100644
  	int rc = e->instance->reflection_probe_instances.size();
  
  	if (rc) {
-@@ -2053,6 +2082,7 @@ void RasterizerSceneGLES3::_render_list(RenderList::Element **p_elements, int p_
+@@ -2053,6 +2082,7 @@
  					state.scene_shader.set_conditional(SceneShaderGLES3::USE_LIGHTMAP_LAYERED, false);
  					state.scene_shader.set_conditional(SceneShaderGLES3::USE_RADIANCE_MAP, false);
  					state.scene_shader.set_conditional(SceneShaderGLES3::USE_CONTACT_SHADOWS, false);
@@ -303,7 +291,7 @@ index fece82f0b8..3849476d1c 100644
  
  					//state.scene_shader.set_conditional(SceneShaderGLES3::SHADELESS,true);
  				} else {
-@@ -2076,6 +2106,9 @@ void RasterizerSceneGLES3::_render_list(RenderList::Element **p_elements, int p_
+@@ -2076,6 +2106,9 @@
  					state.scene_shader.set_conditional(SceneShaderGLES3::SHADOW_MODE_PCF_13, shadow_filter_mode == SHADOW_FILTER_PCF13);
  					state.scene_shader.set_conditional(SceneShaderGLES3::USE_RADIANCE_MAP, use_radiance_map);
  					state.scene_shader.set_conditional(SceneShaderGLES3::USE_CONTACT_SHADOWS, state.used_contact_shadows);
@@ -313,7 +301,7 @@ index fece82f0b8..3849476d1c 100644
  
  					if (use_directional) {
  						if (p_directional_shadows && directional_light->light_ptr->shadow) {
-@@ -3259,6 +3292,277 @@ void RasterizerSceneGLES3::_blur_effect_buffer() {
+@@ -3259,6 +3292,277 @@
  	}
  }
  
@@ -591,7 +579,7 @@ index fece82f0b8..3849476d1c 100644
  void RasterizerSceneGLES3::_prepare_depth_texture() {
  	if (!state.prepared_depth_texture) {
  		//resolve depth buffer
-@@ -4118,7 +4422,7 @@ bool RasterizerSceneGLES3::_element_needs_directional_add(RenderList::Element *e
+@@ -4118,7 +4422,7 @@
  	return false; // no visible unbaked light
  }
  
@@ -600,7 +588,7 @@ index fece82f0b8..3849476d1c 100644
  	//first of all, make a new render pass
  	render_pass++;
  
-@@ -4248,6 +4552,7 @@ void RasterizerSceneGLES3::render_scene(const Transform &p_cam_transform, const
+@@ -4248,6 +4552,7 @@
  
  	_setup_lights(p_light_cull_result, p_light_cull_count, p_cam_transform.affine_inverse(), p_cam_projection, p_shadow_atlas);
  	_setup_reflections(p_reflection_probe_cull_result, p_reflection_probe_cull_count, p_cam_transform.affine_inverse(), p_cam_projection, p_reflection_atlas, env);
@@ -608,7 +596,7 @@ index fece82f0b8..3849476d1c 100644
  
  	bool use_mrt = false;
  
-@@ -5216,6 +5521,21 @@ void RasterizerSceneGLES3::initialize() {
+@@ -5216,6 +5521,21 @@
  
  		state.scene_shader.add_custom_define("#define MAX_REFLECTION_DATA_STRUCTS " + itos(state.max_ubo_reflections) + "\n");
  
@@ -630,7 +618,7 @@ index fece82f0b8..3849476d1c 100644
  		state.max_skeleton_bones = MIN(2048, max_ubo_size / (12 * sizeof(float)));
  		state.scene_shader.add_custom_define("#define MAX_SKELETON_BONES " + itos(state.max_skeleton_bones) + "\n");
  	}
-@@ -5390,10 +5710,14 @@ void RasterizerSceneGLES3::iteration() {
+@@ -5390,10 +5710,14 @@
  }
  
  void RasterizerSceneGLES3::finalize() {
@@ -645,15 +633,13 @@ index fece82f0b8..3849476d1c 100644
  }
  
  RasterizerSceneGLES3::~RasterizerSceneGLES3() {
-@@ -5423,4 +5747,5 @@ RasterizerSceneGLES3::~RasterizerSceneGLES3() {
+@@ -5423,4 +5747,5 @@
  	memfree(state.spot_array_tmp);
  	memfree(state.omni_array_tmp);
  	memfree(state.reflection_array_tmp);
 +	memfree(state.decal_array_tmp);
  }
-diff --git a/drivers/gles3/rasterizer_scene_gles3.h b/drivers/gles3/rasterizer_scene_gles3.h
-index d6ed5c447c..01250bf4be 100644
---- a/drivers/gles3/rasterizer_scene_gles3.h
+--- drivers/gles3/rasterizer_scene_gles3.h
 +++ b/drivers/gles3/rasterizer_scene_gles3.h
 @@ -46,6 +46,10 @@
  #include "drivers/gles3/shaders/subsurf_scattering.glsl.gen.h"
@@ -666,7 +652,7 @@ index d6ed5c447c..01250bf4be 100644
  class RasterizerSceneGLES3 : public RasterizerScene {
  public:
  	enum ShadowFilterMode {
-@@ -181,6 +185,7 @@ public:
+@@ -181,6 +185,7 @@
  		GLuint spot_array_ubo;
  		GLuint omni_array_ubo;
  		GLuint reflection_array_ubo;
@@ -674,7 +660,7 @@ index d6ed5c447c..01250bf4be 100644
  
  		GLuint immediate_buffer;
  		GLuint immediate_array;
-@@ -189,11 +194,13 @@ public:
+@@ -189,11 +194,13 @@
  		uint8_t *spot_array_tmp;
  		uint8_t *omni_array_tmp;
  		uint8_t *reflection_array_tmp;
@@ -688,7 +674,7 @@ index d6ed5c447c..01250bf4be 100644
  
  		bool used_contact_shadows;
  
-@@ -201,6 +208,11 @@ public:
+@@ -201,6 +208,11 @@
  		int omni_light_count;
  		int directional_light_count;
  		int reflection_probe_count;
@@ -700,7 +686,7 @@ index d6ed5c447c..01250bf4be 100644
  
  		bool cull_front;
  		bool cull_disabled;
-@@ -216,6 +228,27 @@ public:
+@@ -216,6 +228,27 @@
  		VS::ViewportDebugDraw debug_draw;
  	} state;
  
@@ -728,7 +714,7 @@ index d6ed5c447c..01250bf4be 100644
  	/* SHADOW ATLAS API */
  
  	struct ShadowAtlas : public RID_Data {
-@@ -350,6 +383,21 @@ public:
+@@ -350,6 +383,21 @@
  		//notes: for ambientblend, use distance to edge to blend between already existing global environment
  	};
  
@@ -750,7 +736,7 @@ index d6ed5c447c..01250bf4be 100644
  	mutable RID_Owner<ReflectionProbeInstance> reflection_probe_instance_owner;
  
  	virtual RID reflection_probe_instance_create(RID p_probe);
-@@ -859,7 +907,7 @@ public:
+@@ -859,7 +907,7 @@
  	void _bind_depth_texture();
  
  	bool _element_needs_directional_add(RenderList::Element *e);
@@ -759,11 +745,38 @@ index d6ed5c447c..01250bf4be 100644
  	virtual void render_shadow(RID p_light, RID p_shadow_atlas, int p_pass, InstanceBase **p_cull_result, int p_cull_count);
  	virtual bool free(RID p_rid);
  
-diff --git a/drivers/gles3/rasterizer_storage_gles3.cpp b/drivers/gles3/rasterizer_storage_gles3.cpp
-index 611535af8b..bef7cd2298 100644
---- a/drivers/gles3/rasterizer_storage_gles3.cpp
+--- drivers/gles3/rasterizer_storage_gles3.cpp
 +++ b/drivers/gles3/rasterizer_storage_gles3.cpp
-@@ -5889,6 +5889,114 @@ float RasterizerStorageGLES3::reflection_probe_get_origin_max_distance(RID p_pro
+@@ -2580,8 +2580,6 @@
+ 		return;
+ 	}
+ 
+-	MutexLock lock(shader_dirty_mutex);
+-
+ 	_material_dirty_list.add(&p_material->dirty_list);
+ }
+ 
+@@ -2625,8 +2623,6 @@
+ 	Material *material = material_owner.get(p_material);
+ 	ERR_FAIL_COND(!material);
+ 
+-	MutexLock lock(shader_dirty_mutex);
+-
+ 	if (p_value.get_type() == Variant::NIL) {
+ 		material->params.erase(p_param);
+ 	} else {
+@@ -3388,10 +3384,6 @@
+ }
+ 
+ void RasterizerStorageGLES3::update_dirty_materials() {
+-	// Same lock as update_dirty_shaders(): material_set_param() can be called
+-	// from editor preview / loader threads while this walks the list.
+-	MutexLock lock(shader_dirty_mutex);
+-
+ 	while (_material_dirty_list.first()) {
+ 		Material *material = _material_dirty_list.first()->self();
+ 
+@@ -5897,6 +5889,114 @@
  	return reflection_probe->max_distance;
  }
  
@@ -878,7 +891,7 @@ index 611535af8b..bef7cd2298 100644
  RID RasterizerStorageGLES3::gi_probe_create() {
  	GIProbe *gip = memnew(GIProbe);
  
-@@ -6877,6 +6985,10 @@ void RasterizerStorageGLES3::instance_add_dependency(RID p_base, RasterizerScene
+@@ -6885,6 +6985,10 @@
  			inst = lightmap_capture_data_owner.getornull(p_base);
  			ERR_FAIL_COND(!inst);
  		} break;
@@ -889,7 +902,7 @@ index 611535af8b..bef7cd2298 100644
  		default: {
  			ERR_FAIL();
  		}
-@@ -6921,6 +7033,10 @@ void RasterizerStorageGLES3::instance_remove_dependency(RID p_base, RasterizerSc
+@@ -6929,6 +7033,10 @@
  			inst = lightmap_capture_data_owner.getornull(p_base);
  			ERR_FAIL_COND(!inst);
  		} break;
@@ -900,7 +913,7 @@ index 611535af8b..bef7cd2298 100644
  		default: {
  			ERR_FAIL();
  		}
-@@ -7814,6 +7930,10 @@ VS::InstanceType RasterizerStorageGLES3::get_base_type(RID p_rid) const {
+@@ -7822,10 +7930,23 @@
  		return VS::INSTANCE_LIGHTMAP_CAPTURE;
  	}
  
@@ -911,7 +924,20 @@ index 611535af8b..bef7cd2298 100644
  	return VS::INSTANCE_NONE;
  }
  
-@@ -8023,6 +8143,13 @@ bool RasterizerStorageGLES3::free(RID p_rid) {
+ bool RasterizerStorageGLES3::free(RID p_rid) {
++	if (Thread::get_caller_id() != Thread::get_main_id()) {
++		// The editor's preview and loader threads drop the last reference to
++		// resources on their own thread, while the main thread walks the dirty
++		// lists in update_dirty_resources(). Defer the real teardown there.
++		off_thread_free_mutex.lock();
++		off_thread_free_queue.push_back(p_rid);
++		off_thread_free_mutex.unlock();
++		return true;
++	}
+ 	if (render_target_owner.owns(p_rid)) {
+ 		RenderTarget *rt = render_target_owner.getornull(p_rid);
+ 		_render_target_clear(rt);
+@@ -8022,6 +8143,13 @@
  		lightmap_capture_data_owner.free(p_rid);
  		memdelete(lightmap_capture);
  
@@ -925,11 +951,9 @@ index 611535af8b..bef7cd2298 100644
  	} else if (canvas_occluder_owner.owns(p_rid)) {
  		CanvasOccluder *co = canvas_occluder_owner.get(p_rid);
  		if (co->index_id) {
-diff --git a/drivers/gles3/rasterizer_storage_gles3.h b/drivers/gles3/rasterizer_storage_gles3.h
-index 901802d959..c055e7bb43 100644
---- a/drivers/gles3/rasterizer_storage_gles3.h
+--- drivers/gles3/rasterizer_storage_gles3.h
 +++ b/drivers/gles3/rasterizer_storage_gles3.h
-@@ -1081,6 +1081,41 @@ public:
+@@ -1081,6 +1081,41 @@
  	virtual float reflection_probe_get_origin_max_distance(RID p_probe) const;
  	virtual bool reflection_probe_renders_shadows(RID p_probe) const;
  
@@ -971,11 +995,9 @@ index 901802d959..c055e7bb43 100644
  	/* GI PROBE API */
  
  	struct GIProbe : public Instantiable {
-diff --git a/drivers/gles3/shaders/scene.glsl b/drivers/gles3/shaders/scene.glsl
-index 604fdf1e2a..f5e4f12cb3 100644
---- a/drivers/gles3/shaders/scene.glsl
+--- drivers/gles3/shaders/scene.glsl
 +++ b/drivers/gles3/shaders/scene.glsl
-@@ -1664,6 +1664,41 @@ vec4 textureArray_bicubic(sampler2DArray tex, vec3 uv) {
+@@ -1664,6 +1664,41 @@
  uniform mediump vec4[12] lightmap_captures;
  #endif //ubershader-skip
  
@@ -1017,7 +1039,7 @@ index 604fdf1e2a..f5e4f12cb3 100644
  // A project with no GIProbe still paid for these two sampler3D units in every
  // ubershader, because //ubershader-skip drops the guard and leaves the declarations
  // unconditional. rendering/quality/gi_probes/enabled lets such a project hand the
-@@ -1991,6 +2026,60 @@ FRAGMENT_SHADER_CODE
+@@ -1991,6 +2026,60 @@
  
  	vec3 eye_vec = view;
  
@@ -1078,11 +1100,9 @@ index 604fdf1e2a..f5e4f12cb3 100644
  	// IBL precalculations
  	float ndotv = clamp(dot(normal, eye_vec), 0.0, 1.0);
  	vec3 f0 = F0(metallic, specular, albedo);
-diff --git a/servers/visual/rasterizer.h b/servers/visual/rasterizer.h
-index 8c0cc7b3fa..a716fe90af 100644
---- a/servers/visual/rasterizer.h
+--- servers/visual/rasterizer.h
 +++ b/servers/visual/rasterizer.h
-@@ -122,6 +122,11 @@ public:
+@@ -122,6 +122,11 @@
  		bool baked_light : 1; //this flag is only to know if it actually did use baked light
  		bool redraw_if_visible : 1;
  
@@ -1094,7 +1114,7 @@ index 8c0cc7b3fa..a716fe90af 100644
  		bool on_interpolate_list : 1;
  		bool on_interpolate_transform_list : 1;
  		bool interpolated : 1;
-@@ -154,6 +159,7 @@ public:
+@@ -154,6 +159,7 @@
  			layer_mask = 1;
  			baked_light = false;
  			redraw_if_visible = false;
@@ -1102,7 +1122,7 @@ index 8c0cc7b3fa..a716fe90af 100644
  			lightmap_capture = nullptr;
  			lightmap_slice = -1;
  			lightmap_uv_rect = Rect2(0, 0, 1, 1);
-@@ -189,7 +195,7 @@ public:
+@@ -189,7 +195,7 @@
  	virtual void gi_probe_instance_set_transform_to_data(RID p_probe, const Transform &p_xform) = 0;
  	virtual void gi_probe_instance_set_bounds(RID p_probe, const Vector3 &p_bounds) = 0;
  
@@ -1111,7 +1131,7 @@ index 8c0cc7b3fa..a716fe90af 100644
  	virtual void render_shadow(RID p_light, RID p_shadow_atlas, int p_pass, InstanceBase **p_cull_result, int p_cull_count) = 0;
  
  	virtual void set_scene_pass(uint64_t p_pass) = 0;
-@@ -520,6 +526,22 @@ public:
+@@ -520,6 +526,22 @@
  	virtual float reflection_probe_get_origin_max_distance(RID p_probe) const = 0;
  	virtual bool reflection_probe_renders_shadows(RID p_probe) const = 0;
  
@@ -1134,11 +1154,9 @@ index 8c0cc7b3fa..a716fe90af 100644
  	virtual void instance_add_skeleton(RID p_skeleton, RasterizerScene::InstanceBase *p_instance) = 0;
  	virtual void instance_remove_skeleton(RID p_skeleton, RasterizerScene::InstanceBase *p_instance) = 0;
  
-diff --git a/servers/visual/visual_server_raster.h b/servers/visual/visual_server_raster.h
-index 86c9dd48da..f6115cde4a 100644
---- a/servers/visual/visual_server_raster.h
+--- servers/visual/visual_server_raster.h
 +++ b/servers/visual/visual_server_raster.h
-@@ -343,6 +343,22 @@ public:
+@@ -343,6 +343,22 @@
  	BIND2(light_directional_set_blend_splits, RID, bool)
  	BIND2(light_directional_set_shadow_depth_range_mode, RID, LightDirectionalShadowDepthRangeMode)
  
@@ -1161,22 +1179,20 @@ index 86c9dd48da..f6115cde4a 100644
  	/* PROBE API */
  
  	BIND0R(RID, reflection_probe_create)
-diff --git a/servers/visual/visual_server_scene.cpp b/servers/visual/visual_server_scene.cpp
-index bdea223d5c..9b562335d6 100644
---- a/servers/visual/visual_server_scene.cpp
+--- servers/visual/visual_server_scene.cpp
 +++ b/servers/visual/visual_server_scene.cpp
-@@ -2056,6 +2056,10 @@ void VisualServerScene::_update_instance_aabb(Instance *p_instance) {
- 		case VisualServer::INSTANCE_LIGHTMAP_CAPTURE: {
+@@ -2057,6 +2057,10 @@
  			new_aabb = VSG::storage->lightmap_capture_get_bounds(p_instance->base);
  
-+		} break;
+ 		} break;
 +		case VisualServer::INSTANCE_DECAL: {
 +			new_aabb = VSG::storage->decal_get_aabb(p_instance->base);
 +
- 		} break;
++		} break;
  		default: {
  		}
-@@ -2911,6 +2915,8 @@ void VisualServerScene::_prepare_scene(const Transform p_cam_transform, const Ca
+ 	}
+@@ -2911,6 +2915,8 @@
  
  	reflection_probe_cull_count = 0;
  
@@ -1185,7 +1201,7 @@ index bdea223d5c..9b562335d6 100644
  	//light_samplers_culled=0;
  
  	/*
-@@ -2980,6 +2986,12 @@ void VisualServerScene::_prepare_scene(const Transform p_cam_transform, const Ca
+@@ -2980,6 +2986,12 @@
  				gi_probe_update_list.add(&gi_probe->update_element);
  			}
  
@@ -1198,7 +1214,7 @@ index bdea223d5c..9b562335d6 100644
  		} else if (((1 << ins->base_type) & VS::INSTANCE_GEOMETRY_MASK) && ins->visible && ins->cast_shadows != VS::SHADOW_CASTING_SETTING_SHADOWS_ONLY) {
  			keep = true;
  
-@@ -3057,6 +3069,44 @@ void VisualServerScene::_prepare_scene(const Transform p_cam_transform, const Ca
+@@ -3057,6 +3069,44 @@
  		}
  	}
  
@@ -1243,7 +1259,7 @@ index bdea223d5c..9b562335d6 100644
  	/* STEP 5 - PROCESS LIGHTS */
  
  	RID *directional_light_ptr = &light_instance_cull_result[light_cull_count];
-@@ -3253,7 +3303,7 @@ void VisualServerScene::_render_scene(const Transform p_cam_transform, const Cam
+@@ -3253,7 +3303,7 @@
  
  	/* PROCESS GEOMETRY AND DRAW SCENE */
  
@@ -1252,7 +1268,7 @@ index bdea223d5c..9b562335d6 100644
  }
  
  void VisualServerScene::render_empty_scene(RID p_scenario, RID p_shadow_atlas) {
-@@ -3267,7 +3317,7 @@ void VisualServerScene::render_empty_scene(RID p_scenario, RID p_shadow_atlas) {
+@@ -3267,7 +3317,7 @@
  	} else {
  		environment = scenario->fallback_environment;
  	}
@@ -1261,11 +1277,9 @@ index bdea223d5c..9b562335d6 100644
  #endif
  }
  
-diff --git a/servers/visual/visual_server_scene.h b/servers/visual/visual_server_scene.h
-index 56b6ceb5b6..24906a014c 100644
---- a/servers/visual/visual_server_scene.h
+--- servers/visual/visual_server_scene.h
 +++ b/servers/visual/visual_server_scene.h
-@@ -52,6 +52,7 @@ public:
+@@ -52,6 +52,7 @@
  		MAX_INSTANCE_CULL = 65536,
  		MAX_LIGHTS_CULLED = 4096,
  		MAX_REFLECTION_PROBES_CULLED = 4096,
@@ -1273,7 +1287,7 @@ index 56b6ceb5b6..24906a014c 100644
  		MAX_ROOM_CULL = 32,
  		MAX_EXTERIOR_PORTALS = 128,
  	};
-@@ -652,6 +653,8 @@ public:
+@@ -652,6 +653,8 @@
  	VisualServerLightCuller *light_culler;
  	RID reflection_probe_instance_cull_result[MAX_REFLECTION_PROBES_CULLED];
  	int reflection_probe_cull_count;
@@ -1282,11 +1296,9 @@ index 56b6ceb5b6..24906a014c 100644
  
  	RID_Owner<Instance> instance_owner;
  
-diff --git a/servers/visual/visual_server_wrap_mt.h b/servers/visual/visual_server_wrap_mt.h
-index de49a98035..12fffd3ef0 100644
---- a/servers/visual/visual_server_wrap_mt.h
+--- servers/visual/visual_server_wrap_mt.h
 +++ b/servers/visual/visual_server_wrap_mt.h
-@@ -269,6 +269,22 @@ public:
+@@ -269,6 +269,22 @@
  	FUNC2(light_directional_set_blend_splits, RID, bool)
  	FUNC2(light_directional_set_shadow_depth_range_mode, RID, LightDirectionalShadowDepthRangeMode)
  
@@ -1309,11 +1321,9 @@ index de49a98035..12fffd3ef0 100644
  	/* PROBE API */
  
  	FUNCRID(reflection_probe)
-diff --git a/servers/visual_server.cpp b/servers/visual_server.cpp
-index eddb4e2264..094b03ee30 100644
---- a/servers/visual_server.cpp
+--- servers/visual_server.cpp
 +++ b/servers/visual_server.cpp
-@@ -2479,6 +2479,7 @@ void VisualServer::_bind_methods() {
+@@ -2479,6 +2479,7 @@
  	BIND_ENUM_CONSTANT(INSTANCE_REFLECTION_PROBE);
  	BIND_ENUM_CONSTANT(INSTANCE_GI_PROBE);
  	BIND_ENUM_CONSTANT(INSTANCE_LIGHTMAP_CAPTURE);
@@ -1321,11 +1331,9 @@ index eddb4e2264..094b03ee30 100644
  	BIND_ENUM_CONSTANT(INSTANCE_MAX);
  	BIND_ENUM_CONSTANT(INSTANCE_GEOMETRY_MASK);
  
-diff --git a/servers/visual_server.h b/servers/visual_server.h
-index 959d094ab0..c89da9c8bf 100644
---- a/servers/visual_server.h
+--- servers/visual_server.h
 +++ b/servers/visual_server.h
-@@ -854,6 +854,28 @@ public:
+@@ -854,6 +854,28 @@
  	virtual void scenario_set_reflection_atlas_size(RID p_scenario, int p_size, int p_subdiv) = 0;
  	virtual void scenario_set_fallback_environment(RID p_scenario, RID p_environment) = 0;
  
@@ -1354,7 +1362,7 @@ index 959d094ab0..c89da9c8bf 100644
  	/* INSTANCING API */
  
  	enum InstanceType {
-@@ -867,6 +889,7 @@ public:
+@@ -867,6 +889,7 @@
  		INSTANCE_REFLECTION_PROBE,
  		INSTANCE_GI_PROBE,
  		INSTANCE_LIGHTMAP_CAPTURE,
