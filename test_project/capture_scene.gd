@@ -21,6 +21,19 @@ func _init():
 		return
 	var scene = packed.instance()
 	get_root().add_child(scene)
+	var pose_seconds = OS.get_environment("CAPTURE_ANIMATION_TIME")
+	if pose_seconds != "":
+		var animation = scene.get_node_or_null("PilotModel/AnimationPlayer")
+		if animation:
+			animation.play("Swim_Idle_Loop")
+			animation.seek(float(pose_seconds), true)
+			animation.stop(false)
+			var skeleton = scene.get_node_or_null("PilotModel/Skinned_Mesh_0/Skeleton")
+			if skeleton:
+				var snapshot = ""
+				for bone in skeleton.get_bone_count():
+					snapshot += str(skeleton.get_bone_pose(bone))
+				print("CAPTURE_SKELETON_MD5 ", snapshot.md5_text())
 	if OS.get_environment("CAPTURE_PAUSE") == "1":
 		paused = true
 	connect("idle_frame", self, "_on_frame")

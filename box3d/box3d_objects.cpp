@@ -5,6 +5,7 @@
 #include "box3d_objects.h"
 
 #include "core/object.h"
+#include "core/os/os.h"
 #include "core/project_settings.h"
 
 static b3BodyType b3_body_type(PhysicsServer::BodyMode p_mode) {
@@ -1031,6 +1032,20 @@ void Box3DSpace::step(real_t p_delta) {
 	b3World_Step(world, p_delta, sub_steps);
 	pump_events(p_delta);
 	dispatch_force_integration(p_delta);
+	static bool memdiag = OS::get_singleton()->get_environment("BOX3D_MEMDIAG") != "";
+	if (memdiag) {
+		static int frame = 0;
+		if (++frame % 300 == 0) {
+			b3Counters c = b3World_GetCounters(world);
+			print_line(String("BOX3D_MEMDIAG frame ") + itos(frame) +
+					": static_mem " + itos(Memory::get_mem_usage() / 1024) + " KiB" +
+					", bodies " + itos(c.bodyCount) + ", shapes " + itos(c.shapeCount) +
+					", contacts " + itos(c.contactCount) + ", joints " + itos(c.jointCount) +
+					", islands " + itos(c.islandCount) +
+					", stack " + itos(c.stackUsed) + "/" + itos(c.arenaCapacity) +
+					", bytes " + itos(c.byteCount) + ", tasks " + itos(c.taskCount));
+		}
+	}
 }
 
 void Box3DSpace::dispatch_force_integration(real_t p_delta) {
