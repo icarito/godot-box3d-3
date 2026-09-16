@@ -1,5 +1,5 @@
-diff --git a/tmp/kilo/stg-posbase.h b/tmp/kilo/stg-final.h
-index b30df6a..901802d 100644
+diff --git a/drivers/gles3/rasterizer_storage_gles3.h b/drivers/gles3/rasterizer_storage_gles3.h
+index b30df6a..c055e7b 100644
 --- a/drivers/gles3/rasterizer_storage_gles3.h
 +++ b/drivers/gles3/rasterizer_storage_gles3.h
 @@ -32,6 +32,7 @@
@@ -29,8 +29,8 @@ index b30df6a..901802d 100644
  	mutable RID_Owner<Shader> shader_owner;
  
  	virtual RID shader_create();
-diff --git a/tmp/kilo/stg-posbase.cpp b/tmp/kilo/stg-final.cpp
-index 283452e..611535a 100644
+diff --git a/drivers/gles3/rasterizer_storage_gles3.cpp b/drivers/gles3/rasterizer_storage_gles3.cpp
+index 283452e..2e4829a 100644
 --- a/drivers/gles3/rasterizer_storage_gles3.cpp
 +++ b/drivers/gles3/rasterizer_storage_gles3.cpp
 @@ -32,6 +32,7 @@
@@ -80,23 +80,36 @@ index 283452e..611535a 100644
  	if (shader->dirty_list.in_list()) {
  		_update_shader(shader); // ok should be not anymore dirty
  	}
-@@ -7806,6 +7818,15 @@ VS::InstanceType RasterizerStorageGLES3::get_base_type(RID p_rid) const {
+@@ -2568,6 +2580,8 @@ void RasterizerStorageGLES3::_material_make_dirty(Material *p_material) const {
+ 		return;
+ 	}
+ 
++	MutexLock lock(shader_dirty_mutex);
++
+ 	_material_dirty_list.add(&p_material->dirty_list);
  }
  
- bool RasterizerStorageGLES3::free(RID p_rid) {
-+	if (Thread::get_caller_id() != Thread::get_main_id()) {
-+		// The editor's preview and loader threads drop the last reference to
-+		// resources on their own thread, while the main thread walks the dirty
-+		// lists in update_dirty_resources(). Defer the real teardown there.
-+		off_thread_free_mutex.lock();
-+		off_thread_free_queue.push_back(p_rid);
-+		off_thread_free_mutex.unlock();
-+		return true;
-+	}
- 	if (render_target_owner.owns(p_rid)) {
- 		RenderTarget *rt = render_target_owner.getornull(p_rid);
- 		_render_target_clear(rt);
-@@ -8561,6 +8582,15 @@ void RasterizerStorageGLES3::finalize() {
+@@ -2611,6 +2625,8 @@ void RasterizerStorageGLES3::material_set_param(RID p_material, const StringName
+ 	Material *material = material_owner.get(p_material);
+ 	ERR_FAIL_COND(!material);
+ 
++	MutexLock lock(shader_dirty_mutex);
++
+ 	if (p_value.get_type() == Variant::NIL) {
+ 		material->params.erase(p_param);
+ 	} else {
+@@ -3372,6 +3388,10 @@ void RasterizerStorageGLES3::_material_remove_geometry(RID p_material, Geometry
+ }
+ 
+ void RasterizerStorageGLES3::update_dirty_materials() {
++	// Same lock as update_dirty_shaders(): material_set_param() can be called
++	// from editor preview / loader threads while this walks the list.
++	MutexLock lock(shader_dirty_mutex);
++
+ 	while (_material_dirty_list.first()) {
+ 		Material *material = _material_dirty_list.first()->self();
+ 
+@@ -8561,6 +8717,15 @@ void RasterizerStorageGLES3::finalize() {
  }
  
  void RasterizerStorageGLES3::update_dirty_resources() {
