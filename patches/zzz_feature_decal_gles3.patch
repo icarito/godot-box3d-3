@@ -1055,7 +1055,7 @@
 +				vec3 decal_orm = textureLod(decal_atlas, uv_local.xz * decal_data_block.data[decal_index].orm_rect.zw + decal_data_block.data[decal_index].orm_rect.xy, 0.0).xyz;
 +				roughness = mix(float(roughness), decal_orm.g, decal_albedo.a);
 +				metallic = mix(float(metallic), decal_orm.b, decal_albedo.a);
-+#ifdef ENABLE_AO
++#if defined(ENABLE_AO)
 +				ao = mix(float(ao), decal_orm.r, decal_albedo.a);
 +#endif
 +			}

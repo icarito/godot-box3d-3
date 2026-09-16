@@ -60,6 +60,37 @@ Verificados contra el árbol, no de memoria:
    el proyecto de captura (`test_project/override_mobile_parity.cfg`, `PARITY_OVERRIDE=0` lo apaga) por
    si el reporte de features vuelve a divergir.
 
+7. **La "malla fragmentada" era el parche de decal desbordando el presupuesto de condicionales del
+   scene shader.** No era el camino Desktop-GL, ni el prepass per se, ni la configuración: era
+   `zzz_feature_decal_gles3.patch`. El loop de decal en `scene.glsl` usaba `#ifdef ENABLE_AO` donde
+   upstream escribe `#if defined(ENABLE_AO)`, y `gles_builders.py` convierte **todo** `#ifdef` en un
+   condicional del shader (`re.sub(r".*#ifdef (\S+).*")`, `gles_builders.py:72-87`). Eso dejaba **32**
+   condicionales y empujaba `SHADELESS` al **bit 31**, que es `VersionKey::UBERSHADER_FLAG`
+   (`shader_gles3.h:150`): el estado de variantes y el flag de ubershader se pisaban, `_bind()`
+   cortaba el rebind con el early-return "ubershader → ubershader" y la pasada de profundidad se
+   quedaba con el programa anterior, **sin skinning**. El prepass escribía entonces la profundidad de
+   la malla en pose de bind, y la pasada de color —ya skinneada— se auto-ocluye contra ella: por eso
+   el defecto **solo aparece animando** (en reposo bind pose y skinning coinciden) y por eso lo
+   escondían tanto `FRT_NO_DEPTH_PREPASS` como `FRT_SKIN_NO_DEPTH`. Afectaba a **todos** los builds
+   (x11, FRT/ES y por lo tanto también el target arm64), no solo al desktop.
+
+   Medición (CoverScene dentro del preview del menú de Odisea, pose congelada
+   `CAPTURE_ANIMATION_TIME=0.6`, mismo `CAPTURE_SKELETON_MD5` en todos los casos, contra el x11
+   `opt.tools.64s` de referencia sin el parche):
+
+   | build x11 | diff vs referencia |
+   |---|---|
+   | con el parche de decal (roto) | mean 8.044 / 2004 px>30 |
+   | sin el parche de decal | mean 0.144 / 17 px>30 |
+   | con el parche + `#if defined(ENABLE_AO)` | **mean 0.059 / 7 px>30** |
+
+   Consecuencia para lo anterior: la malla de esas capturas estaba rota **en los dos bins** que se
+   comparaban (ES y desktop-GL), así que los números de "paridad" del hallazgo 6 midieron dos renders
+   igual de rotos. La conclusión de `depth/hdr` sigue en pie como causa de la diferencia ES↔desktop-GL,
+   pero conviene re-verificarla con el fix aplicado. El scene shader queda **al límite**: 31
+   condicionales es el máximo, porque el bit 31 es de `UBERSHADER_FLAG`; el próximo que se agregue
+   necesita mudar ese flag o recortar condicionales.
+
 ---
 
 ## Dónde viven los cambios
