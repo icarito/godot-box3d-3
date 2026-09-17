@@ -44,6 +44,13 @@ jobs:
           - target: frt-arm64-templates
             name: frt-arm64
             os: ubuntu-22.04
+          # Plantillas FRT/SDL2 x86_64 (tools=no): el runtime Wayland nativo de
+          # los builds de escritorio. El nombre NO termina en "templates" a
+          # proposito: no es un slot del .tpz, es un asset suelto como el FRT
+          # arm64.
+          - target: frt-x86_64-templates
+            name: frt-x86_64
+            os: ubuntu-22.04
           # Editor sobre la plataforma FRT/SDL2: video por SDL2, que en sesiones
           # Wayland corre nativo (su driver wayland + EGL, sin XWayland). Mismo
           # engine y modulo Box3D que el editor x11.
@@ -222,6 +229,10 @@ jobs:
               cp "$BIN/godot.frt.opt.arm64" out/godot.box3d.frt.arm64.release
               cp "$BIN/godot.frt.opt.debug.arm64" out/godot.box3d.frt.arm64.debug
               ;;
+            frt-x86_64-templates)
+              cp "$BIN/godot.frt.opt.x86_64" out/godot.box3d.frt.x86_64.release
+              cp "$BIN/godot.frt.opt.debug.x86_64" out/godot.box3d.frt.x86_64.debug
+              ;;
             frt-editor)
               cp "$BIN/godot.frt.opt.tools.x86_64" out/godot.box3d.frt.linux.x86_64.editor
               ;;
@@ -281,7 +292,7 @@ jobs:
           # symbol table costs hundreds of megabytes on every CI download.
           case "${{ matrix.target }}" in
             windows-templates) x86_64-w64-mingw32-strip out/* || true ;;
-            editor|headless|linux-templates|linux-arm64-templates|frt-arm64-templates|frt-editor) strip out/* || true ;;
+            editor|headless|linux-templates|linux-arm64-templates|frt-arm64-templates|frt-x86_64-templates|frt-editor) strip out/* || true ;;
             # El zip linux-3.6 no se toca: strip no distingue un zip de un ELF.
             thegates-renderer) strip out/godot.* || true ;;
           esac
@@ -342,6 +353,7 @@ jobs:
             artifacts/frt-linux-editor/*
             artifacts/linux-headless/*
             artifacts/frt-arm64/*
+            artifacts/frt-x86_64/*
             artifacts/thegates-renderer/*
             artifacts/thegates-renderer-macos/*
             artifacts/thegates-renderer-windows/*

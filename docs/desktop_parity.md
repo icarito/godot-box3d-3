@@ -404,3 +404,25 @@ recordando que SDL entrega **un archivo por evento** (hay que batchear entre `SD
 2. Fase 2 — **revertida**: se midió y el desktop-GL tiene que renderizar como el device (ver Fase 2).
 3. Fase 3 (clipboard) — independiente de todo lo anterior, se puede adelantar si la fase 1 se atasca.
 4. Fase 4 (IME).
+
+---
+
+## Wayland: regresiones encontradas al probar en escritorio
+
+Dos defectos que sólo aparecen con el driver **wayland** de SDL2 (en x11/XWayland no se ven), ya arreglados:
+
+1. **"La aplicación no responde" durante el compilado de shaders.** El hilo principal se queda dentro de
+   `glCompileShader()`/`glLinkProgram()` (o esperando la cola async) sin servir la conexión Wayland; el
+   compositor manda `xdg_wm_base.ping` y al no recibir pong asume que el proceso colgó. Verificado en SDL
+   2.32: `SDL_PumpEvents()` alcanza para responder el ping — el listener registrado hace pong dentro de
+   `WAYLAND_PumpEvents` — y deja los eventos de input/resize encolados para el dispatch normal.
+   `OS::pump_events_keepalive()` + `zzz_frt_shader_compile_event_pump.patch` (engine) lo llaman,
+   throttled a 100 ms, desde la máquina de estados de compilado y desde `update_dirty_shaders()`;
+   `patches/frt/sdl_event_keepalive.patch` lo implementa con un `SDL_PumpEvents()` pelado.
+
+2. **Ventana sin decoraciones.** GNOME no expone `zxdg_decoration_manager_v1`, así que SDL2 cae en las
+   CSD de libdecor-gtk. Esas reservan los 37 px (`set_window_geometry(0,-37,...)`) pero no se pintan
+   sobre la ventana GL: queda una franja vacía y la ventana sin título ni botones.
+   `patches/frt/sdl_wayland_decorations.patch` setea `SDL_VIDEO_WAYLAND_ALLOW_LIBDECOR=0` antes de
+   `SDL_Init` para que las dibuje el compositor (SSD), igual que x11; quien quiera libdecor puede
+   forzarlo con `SDL_VIDEO_WAYLAND_ALLOW_LIBDECOR=1`.

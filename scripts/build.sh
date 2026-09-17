@@ -8,6 +8,8 @@
 #   windows-templates Windows x86_64 export templates, cross-compiled with MinGW
 #   linux-arm64-templates  Linux ARM64 templates, built on an ARM64 host
 #   frt-arm64-templates    FRT/SDL2 ARM64 templates for PortMaster handhelds
+#   frt-x86_64-templates   FRT/SDL2 x86_64 desktop-GL templates, the native
+#                          Wayland runtime for the Odisea desktop builds
 #   frt-editor        FRT/SDL2 x86_64 editor binary: same engine, SDL2 video
 #                     (native Wayland where SDL2 picks its wayland driver)
 #   thegates-renderer      TheGates 3D browser renderer (x11 + the_gates module)
@@ -205,6 +207,14 @@ for target in "$@"; do
 				build platform=frt arch=arm64 target=release tools=no LINKFLAGS=-s
 				build platform=frt arch=arm64 target=release_debug tools=no LINKFLAGS=-s
 			)
+			;;
+		frt-x86_64-templates)
+			# Plantillas FRT/SDL2 x86_64 para escritorio: el runtime Wayland nativo
+			# de los builds de Odisea. frt_desktop_gl pide el contexto desktop GL
+			# 3.3 core por EGL, el mismo camino que el frt-editor.
+			frte_prep
+			build platform=frt arch=x86_64 target=release tools=no frt_desktop_gl=yes
+			build platform=frt arch=x86_64 target=release_debug tools=no frt_desktop_gl=yes
 			;;
 		thegates-renderer)
 			# El renderer que el launcher de TheGates baja del backend para los

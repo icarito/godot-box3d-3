@@ -1,36 +1,60 @@
 # godot-box3d-3
 
-**Box3D** is a Godot 3.6.x custom module that integrates
-[Box3D](https://github.com/erincatto/box3d) — Erin Catto's 3D physics engine,
-the 3D sibling of Box2D — as an alternative 3D physics server, without forking
-Godot.
+This is the **Godot 3.6 fork Odisea ships on**: the engine, the platform
+backends and the modules the game's builds are compiled with, published as
+reproducible binaries so neither Odisea's CI nor a player has to compile Godot
+itself.
 
-The engine source stays untouched: this repo is only consumed through Godot's
-`custom_modules` build option.
+It started as a couple of engine bugfixes that upstream did not take — a std140
+layout fix for the GLES3 directional light UBO and an idempotent
+`make_dir_recursive()` on Android — and grew into the stack those builds need:
+
+- **Box3D physics** — a `Box3D` custom module: Erin Catto's
+  [box3d](https://github.com/erincatto/box3d) as an alternative Godot 3.6 3D
+  physics server, chosen per project without forking the engine.
+- **Native Wayland** — the out-of-tree **FRT/SDL2** platform built with a
+  desktop GL 3.3 core context, so a Wayland session runs the GLES3 renderer
+  natively (EGL, no XWayland), compositor decorations and shader-compile
+  keep-alive included.
+- **FRT for handhelds** — the same platform cross-compiled for ARM64 with SDL2
+  and OpenGL ES, which is what PortMaster handhelds (ROCKNIX and friends) can
+  actually run.
+- **Experimental GLES3 features** — the Godot 4 `Decal` node backported to the
+  GLES3 renderer (`decal/` module, with blob-shadow demos) and the shader
+  cache / asynchronous-compilation work the desktop editor leans on.
+
+Upstream Godot source stays untouched: every engine change lives in `patches/`
+applied over a pinned Godot commit, and the `box3d/` and `decal/` modules are
+consumed through Godot's `custom_modules` build option.
 
 ```text
-godotengine/godot        (development dependency, branch 3.6)
-icarito/godot-box3d-3    (this repo, evolves independently)
+godotengine/godot        (pinned dependency, branch 3.6)
+efornara/frt             (out-of-tree platform, cloned into platform/frt)
+icarito/godot-box3d-3    (this repo: modules + patches, evolves independently)
 ```
 
 ## Layout
 
 ```text
 godot-box3d-3/
-└── box3d/
-    ├── SCsub                     # build script
-    ├── config.py                 # module configuration
-    ├── register_types.*          # registers the "Box3D" physics server
-    ├── box3d_types.h             # math and type conversions
-    ├── box3d_objects.*           # spaces, bodies, areas, joints behind the RIDs
-    ├── box3d_physics_server.*    # Box3DPhysicsServer: PhysicsServer implementation
-    ├── box3d_motion.cpp          # body_test_motion(), the move_and_slide query
-    ├── box3d_queries.cpp         # PhysicsDirectSpaceState queries
-    ├── box3d_events.cpp          # contacts, area monitoring, space overrides
-    ├── box3d_joints.cpp          # Godot joints mapped onto Box3D joints
-    ├── box3d_proxies.h           # point-cloud proxies shared by motion and queries
-    └── thirdparty/box3d/         # git submodule: erincatto/box3d
+├── box3d/                       # Box3D physics server (custom module)
+│   ├── box3d_physics_server.*   # PhysicsServer implementation
+│   ├── box3d_objects.*          # spaces, bodies, areas, joints behind the RIDs
+│   ├── box3d_motion.cpp         # body_test_motion(), the move_and_slide query
+│   ├── box3d_queries.cpp        # PhysicsDirectSpaceState queries
+│   ├── box3d_events.cpp         # contacts, area monitoring, space overrides
+│   ├── box3d_joints.cpp         # Godot joints mapped onto Box3D joints
+│   └── thirdparty/box3d/        # git submodule: erincatto/box3d
+├── decal/                       # Godot 4 Decal node backported to GLES3
+│   ├── decal.cpp                # the node and its VisualServer wiring
+│   ├── decal_editor_plugin.cpp  # editor gizmo/dock
+│   └── demo_advanced/           # decal + blob-shadow demo scenes
+├── patches/                     # engine + FRT patches over the pinned Godot
+│   └── README.md                # what each patch does and why
+├── scripts/                     # build.sh, the FRT toolchain, test helpers
+└── test_project/                # headless acceptance scenes and benchmarks
 ```
+
 
 ## Requirements
 
@@ -50,6 +74,7 @@ compile Godot:
 | `godot.box3d.linux.x86_64.headless` | `platform=server` build, links no X11 — the one a CI runner should call as `GODOT_BIN` |
 | `godot.box3d.linux.x86_64.editor` | X11 editor binary, for working locally |
 | `godot.box3d.frt.linux.x86_64.editor` | FRT/SDL2 editor binary: same engine and module, SDL2 video. On a Wayland session SDL2 picks its native wayland driver (EGL/ES context, no XWayland); on X11 or the handheld CFWs it falls back to SDL2's x11/other backends. Implements `--no-window`. |
+| `godot.box3d.frt.x86_64.release`, `godot.box3d.frt.x86_64.debug` | FRT/SDL2 x86_64 **runtime** templates (`tools=no`, desktop GL 3.3 core via EGL): the engine Odisea's Wayland-native Linux builds embed, the x86_64 counterpart of the arm64 handheld templates |
 | `godot.box3d.thegates.linux.x86_64` | TheGates renderer: `platform=x11` template carrying the `the_gates` module (ZeroMQ IPC + shared-texture frame transport) alongside Box3D. The binary the TheGates launcher runs for gates declaring `godot_version = "3.6"` |
 | `godot.box3d.thegates.linux.x86_64.debug` | Same renderer, `release_debug` build, for debugging a gate |
 | `linux-3.6` | The renderer packaged the way TheGates' backend serves it: a zip whose archive root holds `Renderer-godot_v3.6.x86_64`, the exact file `/api/download_renderer/linux-3.6` returns |
@@ -87,10 +112,25 @@ necessarily replay bit-for-bit on the other.
 
 ## Engine patches
 
-The published binaries carry two fixes to Godot itself, applied by
-`scripts/build.sh` before compiling — a std140 layout fix for the GLES3
-directional light UBO, and an idempotent `make_dir_recursive()` on Android.
-Neither touches this module. See [`patches/README.md`](patches/README.md).
+Everything the fork changes in Godot lives in `patches/`, applied by
+`scripts/build.sh` over a pinned commit before compiling (and `patches/frt/`
+over the pinned FRT checkout). It is a mix of:
+
+- **Upstreamable fixes** that upstream did not take: the std140 GLES3
+  directional-light UBO layout, the idempotent `make_dir_recursive()` on
+  Android, a `dynamic_font` outline-atlas leak, procedural-sky thread safety,
+  and the GLES3 shader-cache / asynchronous-compilation and ubershader work.
+- **Platform hooks** that teach the engine about `platform=frt` (all inert
+  unless the target is FRT) and the desktop-GL build for `frt-editor`.
+- **Wayland keep-alive and decorations**: the FRT window answers the
+  compositor's pings while a synchronous shader compile blocks the main thread,
+  and gets window-manager decorations instead of empty libdecor chrome.
+- **`zzz_feature_decal_gles3.patch`**, a feature (not upstreamable): the Godot 4
+  `Decal` node backported into the GLES3 renderer, paired with the `decal/`
+  module. The scene shader sits at its 31-conditional limit, so custom defines
+  there must be written `#if defined(...)`.
+
+See [`patches/README.md`](patches/README.md) for the per-patch detail.
 
 ## Building
 
@@ -124,6 +164,7 @@ publishes.
 scripts/build.sh editor                    # X11 editor, for scripts/test.sh locally
 scripts/build.sh headless                  # server build, what CI runs
 scripts/build.sh frt-editor                # FRT/SDL2 editor (Wayland nativo via SDL2)
+scripts/build.sh frt-x86_64-templates      # FRT/SDL2 x86_64 runtime templates (Wayland)
 scripts/build.sh linux-templates           # export templates, release and debug
 scripts/build.sh windows-templates         # cross-compiled, needs mingw-w64 (-posix)
 scripts/build.sh thegates-renderer         # TheGates browser renderer (x11 + the_gates)
@@ -187,6 +228,21 @@ it runs on this backend's physics. The renderer stays a plain Godot 3 binary
 when no launcher IPC directory is present, so it can be smoke-tested
 directly.
 
+## Decals and blob shadows (experimental)
+
+`decal/` is a custom module that backports the Godot 4 `Decal` node to the
+GLES3 renderer, paired with `zzz_feature_decal_gles3.patch`: albedo and emission
+channels with fades and a cull mask, and a growing atlas for the decal
+textures. Godot 4 Compatibility semantics — the decal is not geometry, it only
+modifies the fragments inside its box. GLES2 and the dummy rasterizer ignore
+decals (the node still exists scene-side).
+
+`decal/demo_advanced/` is the acceptance demo: a decal over moving geometry and
+a blob shadow that follows a patrolling box. It is experimental; the scene
+shader is at its 31-conditional budget, so wiring more channels (normal/ORM
+rects are reserved) needs care. See
+[`docs/decal-backport-spec.md`](docs/decal-backport-spec.md).
+
 ## Tests
 
 Headless acceptance scenes run against a built engine binary:
@@ -226,6 +282,10 @@ GODOT=../godot/bin/godot.x11.tools.64 scripts/test.sh
 - **Odisea notes**: `docs/odisea-box3d.md` — what Odisea already gains from
   the migration, the low-hanging fruit on its side (fake shadows, bakes,
   culling, queries), and the module roadmap items that matter to it.
+- **Decal backport**: `docs/decal-backport-spec.md` — the Godot 4 `Decal` →
+  GLES3 design, channels and limits.
+- **FRT desktop parity / Wayland**: `docs/desktop_parity.md` — the desktop-GL
+  switch, the missing platform pieces and what remains.
 - **Box3D engine** (`box3d/thirdparty/box3d/docs/`): upstream's own guide —
   `overview.md`, `collision.md`, `simulation.md` (sub-steps, determinism),
   `character.md`, `large_worlds.md`, `faq.md`.
