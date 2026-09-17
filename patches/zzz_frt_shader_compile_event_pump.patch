@@ -1,0 +1,88 @@
+diff --git a/core/os/os.h b/core/os/os.h
+--- a/core/os/os.h
++++ b/core/os/os.h
+@@ -681,6 +681,14 @@
+ 	virtual void benchmark_dump();
+ 
+ 	virtual void process_and_drop_events() {}
++
++	// Serves whatever the platform's event loop has ready without dispatching it
++	// to the game. Long blocking operations (e.g. synchronous GLES3 shader
++	// compilation) call this periodically so the windowing system keeps seeing
++	// the process as alive -- under Wayland, answering xdg_wm_base.ping. Input
++	// and window events stay queued for the next regular dispatch. No-op by default.
++	virtual void pump_events_keepalive() {}
++
+ 	OS();
+ 	virtual ~OS();
+ };
+diff --git a/drivers/gles3/shader_gles3.h b/drivers/gles3/shader_gles3.h
+--- a/drivers/gles3/shader_gles3.h
++++ b/drivers/gles3/shader_gles3.h
+@@ -145,6 +145,11 @@
+ 
+ 	static void advance_async_shaders_compilation();
+ 
++	// Keeps the windowing system served while the compile state machine does
++	// blocking work (compile, link, queue wait, binary apply). See
++	// OS::pump_events_keepalive. Throttled internally; main thread only.
++	static void pump_events_during_compilation();
++
+ private:
+ 	union VersionKey {
+ 		static const uint32_t UBERSHADER_FLAG = ((uint32_t)1) << 31;
+diff --git a/drivers/gles3/shader_gles3.cpp b/drivers/gles3/shader_gles3.cpp
+--- a/drivers/gles3/shader_gles3.cpp
++++ b/drivers/gles3/shader_gles3.cpp
+@@ -221,6 +221,23 @@
+ 	}
+ }
+ 
++void ShaderGLES3::pump_events_during_compilation() {
++	// A synchronous compile or link can keep this thread inside the GL driver
++	// for seconds (the scene ubershader especially). The windowing system has to
++	// keep being served meanwhile: a Wayland compositor pings the client and
++	// flags it as unresponsive when no pong comes back in time. Throttle to
++	// 100 ms so a busy compile loop does not flood the platform with pumps; the
++	// platform hook only answers system traffic and leaves input events queued
++	// for the normal event loop.
++	static uint64_t last_pump_usec = 0;
++	const uint64_t now_usec = OS::get_singleton()->get_ticks_usec();
++	if (now_usec - last_pump_usec < 100000) {
++		return;
++	}
++	last_pump_usec = now_usec;
++	OS::get_singleton()->pump_events_keepalive();
++}
++
+ void ShaderGLES3::_log_active_compiles() {
+ #ifdef DEBUG_ENABLED
+ 	if (log_active_async_compiles_count) {
+@@ -240,6 +257,14 @@
+ 	bool run_next_step = true;
+ 	while (run_next_step) {
+ 		run_next_step = false;
++		// A non-OK status means the step below may compile, link, wait for the
++		// queue or apply a binary inline, all inside the GL driver. Serve the
++		// platform in between so a compositor does not time the process out for
++		// the whole duration (the OK case is the common per-bind path and does no
++		// work, so it is skipped).
++		if (p_version->compile_status != Version::COMPILE_STATUS_OK) {
++			pump_events_during_compilation();
++		}
+ 		switch (p_version->compile_status) {
+ 			case Version::COMPILE_STATUS_OK: {
+ 				// Yeaaah!
+diff --git a/drivers/gles3/rasterizer_storage_gles3.cpp b/drivers/gles3/rasterizer_storage_gles3.cpp
+--- a/drivers/gles3/rasterizer_storage_gles3.cpp
++++ b/drivers/gles3/rasterizer_storage_gles3.cpp
+@@ -2368,6 +2368,9 @@
+ 	MutexLock lock(shader_dirty_mutex);
+ 
+ 	while (_shader_dirty_list.first()) {
++		// Compiling a whole scene's worth of shaders can run for a while; keep the
++		// windowing system served between them.
++		ShaderGLES3::pump_events_during_compilation();
+ 		_update_shader(_shader_dirty_list.first()->self());
+ 	}
+ }

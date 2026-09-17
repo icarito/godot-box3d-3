@@ -1,0 +1,34 @@
+diff --git a/sdl2_adapter.h b/sdl2_adapter.h
+--- a/sdl2_adapter.h
++++ b/sdl2_adapter.h
+@@ -511,6 +511,15 @@
+ 	bool is_vsync_enabled_gl() const {
+ 		return SDL_GL_GetSwapInterval() != 0;
+ 	}
++	// Serves whatever the windowing system has ready without dispatching any of
++	// it to the game. On Wayland, SDL's own pump answers the compositor's
++	// xdg_wm_base.ping from inside SDL_PumpEvents (the registered listener pongs
++	// there), while translated input and window events stay in SDL's queue for
++	// the next dispatch_events() call. Long blocking work (shader compilation)
++	// calls this so the compositor does not decide the process has hung.
++	void pump_events() {
++		SDL_PumpEvents();
++	}
+ 	void dispatch_events() {
+ 		SDL_Event ev;
+ 		while (SDL_PollEvent(&ev)) {
+diff --git a/frt_godot.cc b/frt_godot.cc
+--- a/frt_godot.cc
++++ b/frt_godot.cc
+@@ -337,6 +337,11 @@
+ 	void swap_buffers() override {
+ 		os_.swap_buffers_gl();
+ 	}
++	void pump_events_keepalive() override {
++		// SDL only: answers Wayland's xdg_wm_base.ping while leaving queued input
++		// and window events for the regular dispatch (see OS_FRT::pump_events).
++		os_.pump_events();
++	}
+ 	void _set_use_vsync(bool enable) override {
+ 		os_.set_use_vsync_gl(enable);
+ 	}
