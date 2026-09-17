@@ -420,9 +420,11 @@ Dos defectos que sólo aparecen con el driver **wayland** de SDL2 (en x11/XWayla
    throttled a 100 ms, desde la máquina de estados de compilado y desde `update_dirty_shaders()`;
    `patches/frt/sdl_event_keepalive.patch` lo implementa con un `SDL_PumpEvents()` pelado.
 
-2. **Ventana sin decoraciones.** GNOME no expone `zxdg_decoration_manager_v1`, así que SDL2 cae en las
-   CSD de libdecor-gtk. Esas reservan los 37 px (`set_window_geometry(0,-37,...)`) pero no se pintan
-   sobre la ventana GL: queda una franja vacía y la ventana sin título ni botones.
-   `patches/frt/sdl_wayland_decorations.patch` setea `SDL_VIDEO_WAYLAND_ALLOW_LIBDECOR=0` antes de
-   `SDL_Init` para que las dibuje el compositor (SSD), igual que x11; quien quiera libdecor puede
-   forzarlo con `SDL_VIDEO_WAYLAND_ALLOW_LIBDECOR=1`.
+2. **Decoraciones: no desactivar libdecor.** En GNOME no hay decoraciones del servidor, así que SDL2 usa
+   libdecor (CSD) y sus plugins para dibujar la barra de título. Un intento de llevarlo al camino del
+   compositor con `SDL_VIDEO_WAYLAND_ALLOW_LIBDECOR=0` dejó la ventana **sin barra de título**, porque
+   en GNOME no hay SSD que la reemplace. Se revirtió: FRT no toca libdecor y usa el default de SDL.
+   Verificado con el runtime FRT del fork (desktop GL): con `SDL_VIDEO_WAYLAND_ALLOW_LIBDECOR=1` libdecor
+   crea la superficie de título (p.ej. 1280x37) y la ventana en modo ventana la muestra. Referencia:
+   `docs/README-wayland.md` de SDL ("on some desktops (i.e. GNOME), Wayland applications use libdecor to
+   provide window decorations; if not installed, the decorations will be missing").
