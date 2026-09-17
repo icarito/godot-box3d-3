@@ -359,3 +359,71 @@ jobs:
             artifacts/thegates-renderer-windows/*
             templates/*
             *.tpz
+
+      # softprops/action-gh-release sube todo en una sola pasada y sin
+      # reintentos: si la API de assets devuelve 500 el release queda a medias
+      # (en v0.4.3 quedo con "Error creating asset temp dir" y ya no aceptaba
+      # ningun upload, ni siquiera por curl). Este paso compara lo que deberia
+      # estar con lo que hay y re-sube lo que falte, archivo por archivo con
+      # timeout y reintentos. Si tras eso sigue faltando algo, el storage del
+      # release esta roto: se recrea (el tag se conserva) y se sube todo.
+      - name: Verify and re-upload missing assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          mkdir -p publish
+          for d in artifacts/linux-editor artifacts/frt-linux-editor artifacts/linux-headless \
+                   artifacts/frt-arm64 artifacts/frt-x86_64 artifacts/thegates-renderer \
+                   artifacts/thegates-renderer-macos artifacts/thegates-renderer-windows templates; do
+            [ -d "$d" ] && cp -a "$d"/. publish/ 2>/dev/null || true
+          done
+          cp -a ./*.tpz publish/ 2>/dev/null || true
+
+          upload_asset() {
+            local f="$1" a
+            for a in 1 2 3 4 5; do
+              if timeout 1800 gh release upload "$TAG" "$f" --clobber; then
+                return 0
+              fi
+              echo "::warning::reintento $a subiendo $(basename "$f")"
+              sleep 20
+            done
+            echo "::error::no se pudo subir $(basename "$f")"
+            return 1
+          }
+
+          release_assets() {
+            gh release view "$TAG" --json assets --jq '.assets[].name' 2>/dev/null | sort || true
+          }
+
+          missing_list() {
+            release_assets > /tmp/have.txt
+            for f in publish/*; do
+              if ! grep -qxF "$(basename "$f")" /tmp/have.txt; then echo "$f"; fi
+            done
+          }
+
+          MISSING="$(missing_list)"
+          if [ -z "$MISSING" ]; then
+            echo "todos los assets presentes"
+            exit 0
+          fi
+          echo "faltan:"; echo "$MISSING"
+
+          while IFS= read -r f; do
+            [ -n "$f" ] && upload_asset "$f" || true
+          done <<< "$MISSING"
+
+          if [ -n "$(missing_list)" ]; then
+            echo "::warning::quedan assets sin subir; el release parece tener el storage roto, recreando (tag se conserva)"
+            PRERELEASE_FLAG=""
+            case "$TAG" in *-*) PRERELEASE_FLAG="--prerelease" ;; esac
+            gh release delete "$TAG" --yes
+            gh release create "$TAG" --title "$TAG" --target "$GITHUB_SHA" $PRERELEASE_FLAG --generate-notes
+            for f in publish/*; do
+              upload_asset "$f"
+            done
+          fi
+          echo "assets en el release: $(release_assets | wc -l)"
