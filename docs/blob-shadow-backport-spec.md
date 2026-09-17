@@ -188,4 +188,13 @@ Deuda conocida:
   con `modulate.a = 0`.
 - `blob_shadow_shadow_only` ilumina la sombra pero oculta la luz real: en un
   nivel real hay que agregar una luz aparte (como hace el test).
+- **Auto-sombreado del caster.** La `BlobShadow` es un volumen analítico:
+  oscurece todo lo que tapa, incluida la propia malla del caster, y la API no
+  tiene exclusión propia (tampoco upstream). Un occluder centrado dentro del
+  mesh y más ancho que él marca los costados y la cara de abajo como una banda
+  suave: en la demo (esfera r=0.5 dentro de un cubo de 0.8) bajaba la cara
+  frontal hasta luma 80. Ubicado en la base (r=0.45, el mínimo del caster
+  quedó en 105) queda como sombra de piso, que es el uso esperado. Los
+  personajes hacen lo mismo: el occluder va en los pies, no envolviendo el
+  cuerpo, y las piernas se oscurecen un poco, que es deseable.
 

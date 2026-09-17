@@ -132,18 +132,19 @@ func _build_scene():
 	decal_shadow.transform = Transform(Basis(), Vector3(0, 0.02, -1.4))
 	add_child(decal_shadow)
 
-	# La BlobShadow real: una esfera centrada en la caja. El nodo no dibuja
-	# geometría; la luz marcada como blob_shadow_enabled la proyecta sobre lo
-	# que tenga debajo. BlobFocus prioriza los casters cerca de la acción.
+	# La BlobShadow real: una esfera en la base de la caja (no centrada en
+	# ella). El occluder es un volumen y oscurece todo lo que tapa, incluida la
+	# propia malla del caster: centrado y más ancho que el cubo, marcaba los
+	# costados. En la base queda como sombra de piso, que es el uso esperado.
 	blob_caster = BlobShadow.new()
 	blob_caster.type = BlobShadow.BLOB_SHADOW_SPHERE
-	blob_caster.set_radius(0, 0.5)
-	blob_caster.translation = Vector3(0, 0.45, -1.4)
+	blob_caster.set_radius(0, 0.45)
+	blob_caster.translation = Vector3(0, 0.1, -1.4)
 	blob_caster.visible = shadow_mode != "decal"
 	add_child(blob_caster)
 
 	blob_focus = BlobFocus.new()
-	blob_focus.translation = Vector3(0, 0.45, -1.4)
+	blob_focus.translation = Vector3(0, 0.1, -1.4)
 	add_child(blob_focus)
 
 	laser = Decal.new()
@@ -210,8 +211,9 @@ func _process(dt):
 	var cp := Vector3(1.7 * sin(t * 0.7), 0.45 + 0.3 * abs(sin(t * 2.2)), -1.4 + 0.9 * sin(t * 1.4))
 	crate.translation = cp
 	decal_shadow.translation = Vector3(cp.x, 0.02, cp.z)
-	blob_caster.translation = cp
-	blob_focus.translation = cp
+	var base := Vector3(cp.x, cp.y - 0.35, cp.z)
+	blob_caster.translation = base
+	blob_focus.translation = base
 
 	if auto:
 		aim = Vector3(2.0 * sin(frames * 0.017), 2.3 + 1.1 * sin(frames * 0.023), WALL_Z)
