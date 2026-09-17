@@ -125,10 +125,18 @@ over the pinned FRT checkout). It is a mix of:
 - **Wayland keep-alive and decorations**: the FRT window answers the
   compositor's pings while a synchronous shader compile blocks the main thread,
   and gets window-manager decorations instead of empty libdecor chrome.
+- **`upstream_is_visible_in_tree_precalc.patch`**, an upstream backport:
+  `Spatial` caches `visible_in_tree` instead of walking the parent chain on
+  every `is_visible_in_tree()` call (upstream commit `54e5949`, adapted to
+  3.6.4-rc). DEV builds cross-check the cache against the old method.
 - **`zzz_feature_decal_gles3.patch`**, a feature (not upstreamable): the Godot 4
   `Decal` node backported into the GLES3 renderer, paired with the `decal/`
   module. The scene shader sits at its 31-conditional limit, so custom defines
   there must be written `#if defined(...)`.
+- **`zzzz_frt_render_diagnostics.patch`**, diagnostics only: the `SKINATTR`
+  instrumentation is opt-in (`FRT_SKIN_DIAGNOSTICS=1`), so release binaries
+  neither run the `glGet`s nor print. `FRT_NO_DEPTH_PREPASS` and
+  `FRT_SKIN_NO_DEPTH` remain available as env switches.
 - **`zzzzz_feature_blob_shadow_gles3.patch`**, a feature (not upstreamable): the
   Godot 4 `BlobShadow`/`BlobFocus` nodes backported from upstream PR #84804 to
   both GLES3 and GLES2. Applied last because its `_render_list()` hunk lands on

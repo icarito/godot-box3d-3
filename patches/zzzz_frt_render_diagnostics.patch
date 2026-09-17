@@ -2,12 +2,15 @@ diff --git a/drivers/gles3/rasterizer_scene_gles3.cpp b/drivers/gles3/rasterizer
 index 3849476..fd0be25 100644
 --- a/drivers/gles3/rasterizer_scene_gles3.cpp
 +++ b/drivers/gles3/rasterizer_scene_gles3.cpp
-@@ -2239,11 +2239,87 @@ void RasterizerSceneGLES3::_render_list(RenderList::Element **p_elements, int p_
+@@ -2239,11 +2239,90 @@ void RasterizerSceneGLES3::_render_list(RenderList::Element **p_elements, int p_
  			storage->info.render.surface_switch_count++;
  		}
  
++		// La instrumentacion es opt-in: sin FRT_SKIN_DIAGNOSTICS no hace ni un
++		// glGet ni imprime, asi que los builds de release no la pagan.
++		static const bool frt_skin_diag = OS::get_singleton()->has_environment("FRT_SKIN_DIAGNOSTICS");
 +		static int skin_attr_reports = 0;
-+		const bool probe_skin_program = skeleton && skin_attr_reports < 12;
++		const bool probe_skin_program = frt_skin_diag && skeleton && skin_attr_reports < 12;
 +		if (probe_skin_program) {
 +			skin_attr_reports++;
 +			GLint vao = 0, fbo = 0;
