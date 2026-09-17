@@ -1,0 +1,4448 @@
+diff --git a/COPYRIGHT.txt b/COPYRIGHT.txt
+--- a/COPYRIGHT.txt
++++ b/COPYRIGHT.txt
+@@ -139,6 +139,18 @@
+  2007-2014, Juan Linietsky, Ariel Manzur.
+ License: Expat and Zlib
+ 
++Files: ./drivers/gles2/shaders/scene.glsl
++ ./drivers/gles3/shaders/scene.glsl
++Comment: Blob shadows
++Copyright: 2024, Romain Guy
++License: Apache-2.0
++
++Files: ./drivers/gles2/shaders/scene.glsl
++ ./drivers/gles3/shaders/scene.glsl
++Comment: Blob shadows
++Copyright: 2019, Inigo Quilez
++License: Expat
++
+ Files: ./thirdparty/brotli/
+ Comment: Brotli
+ Copyright: 2009, 2010, 2013-2016 by the Brotli Authors.
+diff --git a/core/fixed_array.h b/core/fixed_array.h
+--- a/core/fixed_array.h
++++ b/core/fixed_array.h
+@@ -40,6 +40,7 @@
+ template <class T, uint32_t CAPACITY = 8, bool force_trivial = false, uint32_t ALIGN = 1>
+ class FixedArray {
+ 	static_assert(ALIGN > 0, "ALIGN must be at least 1.");
++	static_assert(CAPACITY > 0, "CAPACITY must be at least 1.");
+ 	const static uint32_t UNIT_SIZE = ((sizeof(T) + ALIGN - 1) / ALIGN * ALIGN);
+ 	const static bool CONSTRUCT = !std::is_trivially_constructible<T>::value && !force_trivial;
+ 	const static bool DESTRUCT = !std::is_trivially_destructible<T>::value && !force_trivial;
+@@ -107,6 +108,39 @@
+ 
+ 		_size = p_size;
+ 	}
++	bool pop() {
++		if (!size()) {
++			return false;
++		}
++		resize(size() - 1);
++		return true;
++	}
++	void insert(const T &p_val, uint32_t p_index, uint32_t p_max_size = CAPACITY) {
++		// Insert will drop the last item if the array is already full,
++		// as the fixed array is not growable.
++		// We can also optionally set p_max_size to grow to a smaller size than CAPACITY.
++		DEV_ASSERT(p_max_size <= CAPACITY);
++		//DEV_ASSERT(p_index < CAPACITY);
++
++		// We can only insert to size()+1 when the array is not full already.
++		ERR_FAIL_UNSIGNED_INDEX(p_index, MIN(p_max_size, size() + 1));
++
++		int32_t move_end = int32_t(size()) - 1;
++
++		// Two possibles, either we are adding to the list or lopping one off.
++		if (size() < p_max_size) {
++			resize(size() + 1);
++		}
++
++		move_end = MIN(move_end, (int32_t)p_max_size - 2);
++
++		for (int32_t n = move_end; n >= (int32_t)p_index; n--) {
++			get(n + 1) = get(n);
++		}
++
++		// Save the new value.
++		get(p_index) = p_val;
++	}
+ 	const T &operator[](uint32_t p_index) const {
+ 		DEV_ASSERT(p_index < size());
+ 		return get(p_index);
+@@ -116,6 +150,23 @@
+ 		return get(p_index);
+ 	}
+ 
++	const T &last() const {
++		DEV_ASSERT(size());
++		return (*this)[size() - 1];
++	}
++	T &last() {
++		DEV_ASSERT(size());
++		return (*this)[size() - 1];
++	}
++	const T &first() const {
++		DEV_ASSERT(size());
++		return (*this)[0];
++	}
++	T &first() {
++		DEV_ASSERT(size());
++		return (*this)[0];
++	}
++
+ 	operator Vector<T>() const {
+ 		Vector<T> ret;
+ 		if (size()) {
+diff --git a/core/math/bvh_tree.h b/core/math/bvh_tree.h
+--- a/core/math/bvh_tree.h
++++ b/core/math/bvh_tree.h
+@@ -156,7 +156,7 @@
+ template <class T>
+ class BVH_DummyPairTestFunction {
+ public:
+-	static bool user_collision_check(T *p_a, T *p_b) {
++	static bool user_pair_check(const T *p_a, const T *p_b) {
+ 		// return false if no collision, decided by masks etc
+ 		return true;
+ 	}
+@@ -165,7 +165,7 @@
+ template <class T>
+ class BVH_DummyCullTestFunction {
+ public:
+-	static bool user_cull_check(T *p_a, T *p_b) {
++	static bool user_cull_check(const T *p_a, const T *p_b) {
+ 		// return false if no collision
+ 		return true;
+ 	}
+diff --git a/core/math/camera_matrix.cpp b/core/math/camera_matrix.cpp
+--- a/core/math/camera_matrix.cpp
++++ b/core/math/camera_matrix.cpp
+@@ -262,6 +262,33 @@
+ 	return Vector2(res.x, res.y);
+ }
+ 
++bool CameraMatrix::get_projection_planes_and_endpoints(const Transform &p_transform, Plane *p_6planes, Vector3 *p_8points) const {
++	DEV_ASSERT(p_6planes);
++	DEV_ASSERT(p_8points);
++
++	_get_projection_planes(p_6planes);
++	const Planes intersections[8][3] = {
++		{ PLANE_FAR, PLANE_LEFT, PLANE_TOP },
++		{ PLANE_FAR, PLANE_LEFT, PLANE_BOTTOM },
++		{ PLANE_FAR, PLANE_RIGHT, PLANE_TOP },
++		{ PLANE_FAR, PLANE_RIGHT, PLANE_BOTTOM },
++		{ PLANE_NEAR, PLANE_LEFT, PLANE_TOP },
++		{ PLANE_NEAR, PLANE_LEFT, PLANE_BOTTOM },
++		{ PLANE_NEAR, PLANE_RIGHT, PLANE_TOP },
++		{ PLANE_NEAR, PLANE_RIGHT, PLANE_BOTTOM },
++	};
++
++	Vector3 point;
++	for (int i = 0; i < 8; i++) {
++		bool res = p_6planes[intersections[i][0]].intersect_3(p_6planes[intersections[i][1]], p_6planes[intersections[i][2]], &point);
++		ERR_FAIL_COND_V(!res, false);
++		p_8points[i] = p_transform.xform(point);
++	}
++
++	_transform_projection_planes(p_transform, p_6planes);
++	return true;
++}
++
+ bool CameraMatrix::get_endpoints(const Transform &p_transform, Vector3 *p_8points) const {
+ 	Vector<Plane> planes = get_projection_planes(Transform());
+ 	const Planes intersections[8][3] = {
+@@ -285,85 +312,91 @@
+ 	return true;
+ }
+ 
+-Vector<Plane> CameraMatrix::get_projection_planes(const Transform &p_transform) const {
++void CameraMatrix::_transform_projection_planes(const Transform &p_transform, Plane *p_6planes) const {
++	DEV_ASSERT(p_6planes);
++	for (uint32_t n = 0; n < 6; n++) {
++		p_6planes[n] = p_transform.xform(p_6planes[n]);
++	}
++}
++
++void CameraMatrix::_get_projection_planes(Plane *p_6planes) const {
++	DEV_ASSERT(p_6planes);
++
+ 	/** Fast Plane Extraction from combined modelview/projection matrices.
+ 	 * References:
+ 	 * https://web.archive.org/web/20011221205252/http://www.markmorley.com/opengl/frustumculling.html
+ 	 * https://web.archive.org/web/20061020020112/http://www2.ravensoft.com/users/ggribb/plane%20extraction.pdf
+ 	 */
+-
+-	Vector<Plane> planes;
+-
+ 	const real_t *matrix = (const real_t *)this->matrix;
+ 
+-	Plane new_plane;
+-
+ 	///////--- Near Plane ---///////
+-	new_plane = Plane(matrix[3] + matrix[2],
++	Plane &near_plane = p_6planes[0];
++	near_plane = Plane(matrix[3] + matrix[2],
+ 			matrix[7] + matrix[6],
+ 			matrix[11] + matrix[10],
+ 			matrix[15] + matrix[14]);
+ 
+-	new_plane.normal = -new_plane.normal;
+-	new_plane.normalize();
+-
+-	planes.push_back(p_transform.xform(new_plane));
++	near_plane.normal = -near_plane.normal;
++	near_plane.normalize();
+ 
+ 	///////--- Far Plane ---///////
+-	new_plane = Plane(matrix[3] - matrix[2],
++	Plane &far_plane = p_6planes[1];
++	far_plane = Plane(matrix[3] - matrix[2],
+ 			matrix[7] - matrix[6],
+ 			matrix[11] - matrix[10],
+ 			matrix[15] - matrix[14]);
+ 
+-	new_plane.normal = -new_plane.normal;
+-	new_plane.normalize();
+-
+-	planes.push_back(p_transform.xform(new_plane));
++	far_plane.normal = -far_plane.normal;
++	far_plane.normalize();
+ 
+ 	///////--- Left Plane ---///////
+-	new_plane = Plane(matrix[3] + matrix[0],
++	Plane &left_plane = p_6planes[2];
++	left_plane = Plane(matrix[3] + matrix[0],
+ 			matrix[7] + matrix[4],
+ 			matrix[11] + matrix[8],
+ 			matrix[15] + matrix[12]);
+ 
+-	new_plane.normal = -new_plane.normal;
+-	new_plane.normalize();
+-
+-	planes.push_back(p_transform.xform(new_plane));
++	left_plane.normal = -left_plane.normal;
++	left_plane.normalize();
+ 
+ 	///////--- Top Plane ---///////
+-	new_plane = Plane(matrix[3] - matrix[1],
++	Plane &top_plane = p_6planes[3];
++	top_plane = Plane(matrix[3] - matrix[1],
+ 			matrix[7] - matrix[5],
+ 			matrix[11] - matrix[9],
+ 			matrix[15] - matrix[13]);
+ 
+-	new_plane.normal = -new_plane.normal;
+-	new_plane.normalize();
+-
+-	planes.push_back(p_transform.xform(new_plane));
++	top_plane.normal = -top_plane.normal;
++	top_plane.normalize();
+ 
+ 	///////--- Right Plane ---///////
+-	new_plane = Plane(matrix[3] - matrix[0],
++	Plane &right_plane = p_6planes[4];
++	right_plane = Plane(matrix[3] - matrix[0],
+ 			matrix[7] - matrix[4],
+ 			matrix[11] - matrix[8],
+ 			matrix[15] - matrix[12]);
+ 
+-	new_plane.normal = -new_plane.normal;
+-	new_plane.normalize();
+-
+-	planes.push_back(p_transform.xform(new_plane));
++	right_plane.normal = -right_plane.normal;
++	right_plane.normalize();
+ 
+ 	///////--- Bottom Plane ---///////
+-	new_plane = Plane(matrix[3] + matrix[1],
++	Plane &bottom_plane = p_6planes[5];
++	bottom_plane = Plane(matrix[3] + matrix[1],
+ 			matrix[7] + matrix[5],
+ 			matrix[11] + matrix[9],
+ 			matrix[15] + matrix[13]);
+ 
+-	new_plane.normal = -new_plane.normal;
+-	new_plane.normalize();
++	bottom_plane.normal = -bottom_plane.normal;
++	bottom_plane.normalize();
++}
+ 
+-	planes.push_back(p_transform.xform(new_plane));
++Vector<Plane> CameraMatrix::get_projection_planes(const Transform &p_transform) const {
++	// Note this may unnecessarily blank the planes.
++	Vector<Plane> planes;
++	planes.resize(6);
+ 
++	_get_projection_planes(planes.ptrw());
++	_transform_projection_planes(p_transform, planes.ptrw());
+ 	return planes;
+ }
+ 
+diff --git a/core/math/camera_matrix.h b/core/math/camera_matrix.h
+--- a/core/math/camera_matrix.h
++++ b/core/math/camera_matrix.h
+@@ -46,6 +46,11 @@
+ 
+ 	real_t matrix[4][4];
+ 
++private:
++	void _get_projection_planes(Plane *p_6planes) const;
++	void _transform_projection_planes(const Transform &p_transform, Plane *p_6planes) const;
++
++public:
+ 	void set_identity();
+ 	void set_zero();
+ 	void set_light_bias();
+@@ -69,8 +74,11 @@
+ 	bool is_orthogonal() const;
+ 
+ 	Vector<Plane> get_projection_planes(const Transform &p_transform) const;
+-
+ 	bool get_endpoints(const Transform &p_transform, Vector3 *p_8points) const;
++
++	// Returns efficiently all info needed for culling AABBs via AABB::intersects_convex_shape().
++	bool get_projection_planes_and_endpoints(const Transform &p_transform, Plane *p_6planes, Vector3 *p_8points) const;
++
+ 	Vector2 get_viewport_half_extents() const;
+ 
+ 	void invert();
+diff --git a/doc/classes/BlobFocus.xml b/doc/classes/BlobFocus.xml
+new file mode 100644
+--- /dev/null
++++ b/doc/classes/BlobFocus.xml
+@@ -0,0 +1,18 @@
++<?xml version="1.0" encoding="UTF-8" ?>
++<class name="BlobFocus" inherits="Spatial" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../class.xsd">
++	<brief_description>
++		Prioritizes a region in which to show blob shadows.
++	</brief_description>
++	<description>
++		The number of blob shadows that can be shown at one time is limited (for performance reasons).
++		The [BlobFocus] node enables the user to set specific areas where the limited number of shadow casters should be prioritized.
++		[BlobFocus] might typically be set relative to a [Camera], or attached to a player.
++		Where multiple cameras are used, each [Camera] can have its own [BlobFocus].
++	</description>
++	<tutorials>
++	</tutorials>
++	<methods>
++	</methods>
++	<constants>
++	</constants>
++</class>
+diff --git a/doc/classes/BlobShadow.xml b/doc/classes/BlobShadow.xml
+new file mode 100644
+--- /dev/null
++++ b/doc/classes/BlobShadow.xml
+@@ -0,0 +1,52 @@
++<?xml version="1.0" encoding="UTF-8" ?>
++<class name="BlobShadow" inherits="Spatial" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../class.xsd">
++	<brief_description>
++		Casts spherical or capsular geometrical shadows.
++	</brief_description>
++	<description>
++		[BlobShadow] provides an alternative to traditional shadow maps, by casting simple geometrical soft shadows.
++		Provided the number of runtime shadows is kept low, this can provide better performance than shadow maps.
++		It is a good option when combined with lightmaps.
++		[BlobShadow] requires a [Light] set to cast blob shadows, and should usually be used in conjunction with a [BlobFocus], to determine where shadows should be prioritized.
++	</description>
++	<tutorials>
++	</tutorials>
++	<methods>
++		<method name="get_radius" qualifiers="const">
++			<return type="float" />
++			<argument index="0" name="index" type="int" />
++			<description>
++			</description>
++		</method>
++		<method name="set_radius">
++			<return type="void" />
++			<argument index="0" name="index" type="int" />
++			<argument index="1" name="radius" type="float" />
++			<description>
++				Only radius index 0 is used with spheres.
++				Radius index 0 and 1 are used with capsules.
++			</description>
++		</method>
++	</methods>
++	<members>
++		<member name="offset" type="Vector3" setter="set_offset" getter="get_offset">
++			Offset is used to determine the shape of capsules, allowing elongation in any direction.
++		</member>
++		<member name="offset_radius" type="float" setter="set_radius" getter="get_radius">
++			Radius of offset side of a capsule.
++			[b]Note:[/b] Unused for spheres.
++		</member>
++		<member name="radius" type="float" setter="set_radius" getter="get_radius" default="1.0">
++			Radius of the sphere (or origin side of a capsule).
++		</member>
++		<member name="type" type="int" setter="set_shadow_type" getter="get_shadow_type" enum="BlobShadow.BlobShadowType" default="0">
++			Allows choosing caster type, sphere or capsule.
++		</member>
++	</members>
++	<constants>
++		<constant name="BLOB_SHADOW_SPHERE" value="0" enum="BlobShadowType">
++		</constant>
++		<constant name="BLOB_SHADOW_CAPSULE" value="1" enum="BlobShadowType">
++		</constant>
++	</constants>
++</class>
+diff --git a/doc/classes/Light.xml b/doc/classes/Light.xml
+--- a/doc/classes/Light.xml
++++ b/doc/classes/Light.xml
+@@ -11,6 +11,13 @@
+ 		<link title="Third Person Shooter Demo">https://godotengine.org/asset-library/asset/678</link>
+ 	</tutorials>
+ 	<methods>
++		<method name="get_blob_shadow_param" qualifiers="const">
++			<return type="float" />
++			<argument index="0" name="arg0" type="int" enum="Light.BlobShadowParam" />
++			<description>
++				Returns the value of the specified [enum Light.BlobShadowParam] parameter.
++			</description>
++		</method>
+ 		<method name="get_param" qualifiers="const">
+ 			<return type="float" />
+ 			<argument index="0" name="param" type="int" enum="Light.Param" />
+@@ -18,6 +25,14 @@
+ 				Returns the value of the specified [enum Light.Param] parameter.
+ 			</description>
+ 		</method>
++		<method name="set_blob_shadow_param">
++			<return type="void" />
++			<argument index="0" name="parameter" type="int" enum="Light.BlobShadowParam" />
++			<argument index="1" name="value" type="float" />
++			<description>
++				Sets the value of the specified [enum Light.BlobShadowParam] parameter.
++			</description>
++		</method>
+ 		<method name="set_param">
+ 			<return type="void" />
+ 			<argument index="0" name="param" type="int" enum="Light.Param" />
+@@ -28,6 +43,24 @@
+ 		</method>
+ 	</methods>
+ 	<members>
++		<member name="blob_shadow_enabled" type="bool" setter="set_blob_shadow" getter="has_blob_shadow" default="false">
++			If [code]true[/code], the light will cast shadows when [BlobShadow] nodes are in the scene.
++		</member>
++		<member name="blob_shadow_intensity" type="float" setter="set_blob_shadow_param" getter="get_blob_shadow_param" default="1.0">
++			Allows modifying the intensity (darkness) of blob shadows per light.
++		</member>
++		<member name="blob_shadow_range_hardness" type="float" setter="set_blob_shadow_param" getter="get_blob_shadow_param" default="0.8">
++			Determines how quickly blob shadows fade as they reach their range limit.
++			A value of [code]1[/code] switches off shadows abruptly, [code]0[/code] gives maximum softness.
++		</member>
++		<member name="blob_shadow_range_max" type="float" setter="set_blob_shadow_param" getter="get_blob_shadow_param" default="0.0">
++			The maximum range at which [BlobShadow] nodes will cast shadows.
++			[b]Note:[/b] When set to [code]0[/code] (default), the range will be overridden by [member OmniLight.omni_range] or [member SpotLight.spot_range].
++		</member>
++		<member name="blob_shadow_shadow_only" type="bool" setter="set_blob_shadow_shadow_only" getter="is_blob_shadow_shadow_only" default="false">
++			If [code]true[/code], no light (or shadow mapping) will be visible, only blob shadows will be shown (if enabled).
++			This is particularly useful for "fake" blob shadow only lights, such as a drop shadow in a platform game.
++		</member>
+ 		<member name="editor_only" type="bool" setter="set_editor_only" getter="is_editor_only" default="false">
+ 			If [code]true[/code], the light only appears in the editor and will not be visible at runtime.
+ 		</member>
+@@ -128,6 +161,14 @@
+ 		<constant name="PARAM_MAX" value="17" enum="Param">
+ 			Represents the size of the [enum Param] enum.
+ 		</constant>
++		<constant name="BLOB_SHADOW_PARAM_RANGE_HARDNESS" value="0" enum="BlobShadowParam">
++		</constant>
++		<constant name="BLOB_SHADOW_PARAM_RANGE_MAX" value="1" enum="BlobShadowParam">
++		</constant>
++		<constant name="BLOB_SHADOW_PARAM_INTENSITY" value="2" enum="BlobShadowParam">
++		</constant>
++		<constant name="BLOB_SHADOW_PARAM_MAX" value="3" enum="BlobShadowParam">
++		</constant>
+ 		<constant name="BAKE_DISABLED" value="0" enum="BakeMode">
+ 			Light is ignored when baking.
+ 			[b]Note:[/b] Hiding a light does [i]not[/i] affect baking.
+diff --git a/doc/classes/Material3D.xml b/doc/classes/Material3D.xml
+--- a/doc/classes/Material3D.xml
++++ b/doc/classes/Material3D.xml
+@@ -186,6 +186,9 @@
+ 		<member name="flags_disable_ambient_light" type="bool" setter="set_flag" getter="get_flag" default="false">
+ 			If [code]true[/code], the object receives no ambient light.
+ 		</member>
++		<member name="flags_do_not_receive_blob_shadows" type="bool" setter="set_flag" getter="get_flag" default="false">
++			If [code]true[/code], the object receives no blob shadow that would otherwise be cast onto it.
++		</member>
+ 		<member name="flags_do_not_receive_shadows" type="bool" setter="set_flag" getter="get_flag" default="false">
+ 			If [code]true[/code], the object receives no shadow that would otherwise be cast onto it.
+ 		</member>
+@@ -566,6 +569,9 @@
+ 		<constant name="FLAG_DONT_RECEIVE_SHADOWS" value="15" enum="Flags">
+ 			Disables receiving shadows from other objects.
+ 		</constant>
++		<constant name="FLAG_DONT_RECEIVE_BLOB_SHADOWS" value="20" enum="Flags">
++			Disables receiving blob shadows.
++		</constant>
+ 		<constant name="FLAG_DISABLE_AMBIENT_LIGHT" value="17" enum="Flags">
+ 			Disables receiving ambient light.
+ 		</constant>
+@@ -578,7 +584,7 @@
+ 		<constant name="FLAG_ALBEDO_TEXTURE_SDF" value="19" enum="Flags">
+ 			Enables signed distance field rendering shader.
+ 		</constant>
+-		<constant name="FLAG_MAX" value="20" enum="Flags">
++		<constant name="FLAG_MAX" value="21" enum="Flags">
+ 			Represents the size of the [enum Flags] enum.
+ 		</constant>
+ 		<constant name="DIFFUSE_BURLEY" value="0" enum="DiffuseMode">
+diff --git a/doc/classes/ProjectSettings.xml b/doc/classes/ProjectSettings.xml
+--- a/doc/classes/ProjectSettings.xml
++++ b/doc/classes/ProjectSettings.xml
+@@ -1683,6 +1683,32 @@
+ 			Uses a simplified method of generating PVS (potentially visible set) data. The results may not be accurate where more than one portal join adjacent rooms.
+ 			[b]Note:[/b] Generally you should only use this option if you encounter bugs when it is set to [code]false[/code], i.e. there are problems with the default method.
+ 		</member>
++		<member name="rendering/quality/blob_shadows/enable" type="bool" setter="" getter="" default="true">
++			If [code]true[/code], blob shadows will be rendered where present.
++			[b]Note:[/b] Blob shadows depend on a [BlobShadow] caster being present, and a [Light] that is set to cast blob shadows.
++		</member>
++		<member name="rendering/quality/blob_shadows/gamma" type="float" setter="" getter="" default="1.0">
++			A gamma function is applied in the shader, which can be used to determine the softness of blob shadows.
++		</member>
++		<member name="rendering/quality/blob_shadows/intensity" type="float" setter="" getter="" default="0.7">
++			Global setting for blob shadow intensity (darkness).
++			Used in conjunction with [member rendering/quality/blob_shadows/gamma] to determine shadow appearance.
++		</member>
++		<member name="rendering/quality/blob_shadows/max_capsules" type="int" setter="" getter="" default="4">
++			Blob shadow performance is tightly linked to the maximum casters (sphere and capsule).
++			It is advisable to keep this limit as low as possible, and make use of the [BlobFocus] node to ensure shadows appear in the gameplay area.
++			[b]Note:[/b] If you are only using sphere casters, you should set this value to zero for maximum performance.
++		</member>
++		<member name="rendering/quality/blob_shadows/max_spheres" type="int" setter="" getter="" default="4">
++			Blob shadow performance is tightly linked to the maximum casters (sphere and capsule).
++			It is advisable to keep this limit as low as possible, and make use of the [BlobFocus] node to ensure shadows appear in the gameplay area.
++			[b]Note:[/b] If you are only using capsule casters, you should set this value to zero for maximum performance.
++		</member>
++		<member name="rendering/quality/blob_shadows/range" type="float" setter="" getter="" default="2.0">
++			This setting determines the maximum distance from a caster that the shadow will appear.
++			This is typically used to ensure that shadows from an object only cast onto a nearby floor.
++			Blob shadows are not subject to occlusion, and can thus spread into areas that may be lit by a different light (for instance in a room below). Keeping their range low helps prevent this problem.
++		</member>
+ 		<member name="rendering/quality/depth/hdr" type="bool" setter="" getter="" default="true">
+ 			If [code]true[/code], allocates the root [Viewport]'s framebuffer with high dynamic range. High dynamic range allows the use of [Color] values greater than 1. This must be set to [code]true[/code] for glow rendering to work if [member Environment.glow_hdr_threshold] is greater than or equal to [code]1.0[/code].
+ 			[b]Note:[/b] Only available on the GLES3 backend.
+diff --git a/doc/classes/VisualServer.xml b/doc/classes/VisualServer.xml
+--- a/doc/classes/VisualServer.xml
++++ b/doc/classes/VisualServer.xml
+@@ -38,6 +38,27 @@
+ 				Sets margin size, where black bars (or images, if [method black_bars_set_images] was used) are rendered.
+ 			</description>
+ 		</method>
++		<method name="blob_shadows_set_gamma">
++			<return type="void" />
++			<argument index="0" name="gamma" type="float" />
++			<description>
++				Sets the parameter for the blob shadows gamma function, which is used to determine shadow softness.
++			</description>
++		</method>
++		<method name="blob_shadows_set_intensity">
++			<return type="void" />
++			<argument index="0" name="intensity" type="float" />
++			<description>
++				Sets the intensity (darkness) of blob shadows.
++			</description>
++		</method>
++		<method name="blob_shadows_set_range">
++			<return type="void" />
++			<argument index="0" name="range" type="float" />
++			<description>
++				This setting determines the maximum distance from a caster that a blob shadow will appear.
++			</description>
++		</method>
+ 		<method name="camera_create">
+ 			<return type="RID" />
+ 			<description>
+@@ -45,6 +66,14 @@
+ 				Once finished with your RID, you will want to free the RID using the VisualServer's [method free_rid] static method.
+ 			</description>
+ 		</method>
++		<method name="camera_set_blob_focus_position">
++			<return type="void" />
++			<argument index="0" name="camera" type="RID" />
++			<argument index="1" name="position" type="Vector3" />
++			<description>
++				Each camera can set a blob focus position. This prioritizes a region when determining where to draw the (limited number of) blob shadows.
++			</description>
++		</method>
+ 		<method name="camera_set_cull_mask">
+ 			<return type="void" />
+ 			<argument index="0" name="camera" type="RID" />
+diff --git a/drivers/gles2/rasterizer_scene_gles2.cpp b/drivers/gles2/rasterizer_scene_gles2.cpp
+--- a/drivers/gles2/rasterizer_scene_gles2.cpp
++++ b/drivers/gles2/rasterizer_scene_gles2.cpp
+@@ -2268,6 +2268,10 @@
+ }
+ 
+ void RasterizerSceneGLES2::_render_render_list(RenderList::Element **p_elements, int p_element_count, const Transform &p_view_transform, const CameraMatrix &p_projection, const int p_eye, RID p_shadow_atlas, Environment *p_env, GLuint p_base_env, float p_shadow_bias, float p_shadow_normal_bias, bool p_reverse_cull, bool p_alpha_pass, bool p_shadow) {
++	if (!p_element_count) {
++		return;
++	}
++
+ 	ShadowAtlas *shadow_atlas = shadow_atlas_owner.getornull(p_shadow_atlas);
+ 
+ 	Vector2 viewport_size = state.viewport_size;
+@@ -2334,6 +2338,8 @@
+ 
+ 	storage->info.render.draw_call_count += p_element_count;
+ 
++	const AABB *instance_aabb = nullptr;
++
+ 	for (int i = 0; i < p_element_count; i++) {
+ 		RenderList::Element *e = p_elements[i];
+ 
+@@ -2522,6 +2528,15 @@
+ 			rebind = true;
+ 		}
+ 
++		// Setup blob shadows
++		bool blob_shadows = VSG::scene->are_blob_shadows_active() && !material->shader->spatial.unshaded && !material->shader->spatial.no_blob_shadows && !depth_prepass;
++		//blob_shadows = false;
++		if (blob_shadows) {
++			VisualServerScene::Instance *instance = (VisualServerScene::Instance *)(e->instance);
++			instance_aabb = &instance->transformed_aabb;
++		}
++		state.scene_shader.set_conditional(SceneShaderGLES2::USE_BLOB_SHADOWS, blob_shadows);
++
+ 		RasterizerStorageGLES2::Skeleton *skeleton = storage->skeleton_owner.getornull(e->instance->skeleton);
+ 
+ 		if (skeleton != prev_skeleton) {
+@@ -2662,6 +2677,37 @@
+ 			glUniform4fv(state.scene_shader.get_uniform_location(SceneShaderGLES2::LIGHTMAP_CAPTURES), 12, (const GLfloat *)e->instance->lightmap_capture_data.ptr());
+ 		}
+ 
++		if (blob_shadows) {
++			const int32_t max_casters = 128;
++			const int32_t blob_data_units = max_casters * 4;
++			float blob_data_casters[blob_data_units] = {};
++			float blob_data_lights[blob_data_units] = {};
++
++			const int32_t capsule_data_units = blob_data_units * 2;
++			float capsule_data_casters[capsule_data_units] = {};
++			float capsule_data_lights[blob_data_units] = {};
++
++			uint32_t num_blob_casters = VSG::scene->blob_shadows_fill_background_uniforms(*instance_aabb, blob_data_casters, blob_data_lights, max_casters);
++			uint32_t num_capsule_casters = VSG::scene->capsule_shadows_fill_background_uniforms(*instance_aabb, capsule_data_casters, capsule_data_lights, max_casters);
++
++			if (num_blob_casters || num_capsule_casters) {
++				if (num_blob_casters) {
++					glUniform4fv(state.scene_shader.get_uniform_location(SceneShaderGLES2::SPHERE_DATA_CASTERS), num_blob_casters, (const GLfloat *)blob_data_casters);
++					glUniform4fv(state.scene_shader.get_uniform_location(SceneShaderGLES2::SPHERE_DATA_LIGHTS), num_blob_casters, (const GLfloat *)blob_data_lights);
++				}
++
++				if (num_capsule_casters) {
++					glUniform4fv(state.scene_shader.get_uniform_location(SceneShaderGLES2::CAPSULE_DATA_CASTERS), num_capsule_casters * 2, (const GLfloat *)capsule_data_casters);
++					glUniform4fv(state.scene_shader.get_uniform_location(SceneShaderGLES2::CAPSULE_DATA_LIGHTS), num_capsule_casters, (const GLfloat *)capsule_data_lights);
++				}
++
++				glUniform2i(state.scene_shader.get_uniform_location(SceneShaderGLES2::SPHERE_CAPSULE_NUM_CASTERS), num_blob_casters, num_capsule_casters);
++				glUniform2f(state.scene_shader.get_uniform_location(SceneShaderGLES2::BLOB_RANGE_AND_GAMMA), VSG::scene->blob_shadows_get_range(), VSG::scene->blob_shadows_get_gamma());
++			} else {
++				glUniform2i(state.scene_shader.get_uniform_location(SceneShaderGLES2::SPHERE_CAPSULE_NUM_CASTERS), 0, 0);
++			}
++		}
++
+ 		_render_geometry(e);
+ 
+ 		prev_geometry = e->geometry;
+@@ -2696,6 +2742,7 @@
+ 	state.scene_shader.set_conditional(SceneShaderGLES2::FOG_DEPTH_ENABLED, false);
+ 	state.scene_shader.set_conditional(SceneShaderGLES2::FOG_HEIGHT_ENABLED, false);
+ 	state.scene_shader.set_conditional(SceneShaderGLES2::USE_DEPTH_PREPASS, false);
++	state.scene_shader.set_conditional(SceneShaderGLES2::USE_BLOB_SHADOWS, false);
+ }
+ 
+ void RasterizerSceneGLES2::_draw_sky(RasterizerStorageGLES2::Sky *p_sky, const CameraMatrix &p_projection, const Transform &p_transform, bool p_vflip, float p_custom_fov, float p_energy, const Basis &p_sky_orientation) {
+diff --git a/drivers/gles2/rasterizer_storage_gles2.cpp b/drivers/gles2/rasterizer_storage_gles2.cpp
+--- a/drivers/gles2/rasterizer_storage_gles2.cpp
++++ b/drivers/gles2/rasterizer_storage_gles2.cpp
+@@ -1466,6 +1466,7 @@
+ 			p_shader->spatial.uses_screen_texture = false;
+ 			p_shader->spatial.uses_depth_texture = false;
+ 			p_shader->spatial.uses_vertex = false;
++			p_shader->spatial.no_blob_shadows = false;
+ 			p_shader->spatial.uses_tangent = false;
+ 			p_shader->spatial.uses_ensure_correct_normals = false;
+ 			p_shader->spatial.writes_modelview_or_projection = false;
+@@ -1487,6 +1488,7 @@
+ 
+ 			shaders.actions_scene.render_mode_flags["unshaded"] = &p_shader->spatial.unshaded;
+ 			shaders.actions_scene.render_mode_flags["depth_test_disable"] = &p_shader->spatial.no_depth_test;
++			shaders.actions_scene.render_mode_flags["blob_shadows_disabled"] = &p_shader->spatial.no_blob_shadows;
+ 
+ 			shaders.actions_scene.render_mode_flags["vertex_lighting"] = &p_shader->spatial.uses_vertex_lighting;
+ 
+@@ -6600,6 +6602,13 @@
+ 	glGetIntegerv(GL_MAX_TEXTURE_SIZE, &config.max_texture_size);
+ 	glGetIntegerv(GL_MAX_CUBE_MAP_TEXTURE_SIZE, &config.max_cubemap_texture_size);
+ 	glGetIntegerv(GL_MAX_VIEWPORT_DIMS, config.max_viewport_dimensions);
++	int max_frag_uniform_vectors = 0;
++
++#ifndef GL_MAX_FRAGMENT_UNIFORM_VECTORS
++#define GL_MAX_FRAGMENT_UNIFORM_VECTORS 0x8DFD
++#endif
++	glGetIntegerv(GL_MAX_FRAGMENT_UNIFORM_VECTORS, &max_frag_uniform_vectors);
++	print_verbose("GL_MAX_FRAGMENT_UNIFORM_VECTORS " + itos(max_frag_uniform_vectors));
+ 
+ 	// the use skeleton software path should be used if either float texture is not supported,
+ 	// OR max_vertex_texture_image_units is zero
+diff --git a/drivers/gles2/rasterizer_storage_gles2.h b/drivers/gles2/rasterizer_storage_gles2.h
+--- a/drivers/gles2/rasterizer_storage_gles2.h
++++ b/drivers/gles2/rasterizer_storage_gles2.h
+@@ -501,6 +501,7 @@
+ 			bool uses_alpha_scissor;
+ 			bool unshaded;
+ 			bool no_depth_test;
++			bool no_blob_shadows;
+ 			bool uses_vertex;
+ 			bool uses_discard;
+ 			bool uses_sss;
+diff --git a/drivers/gles2/shader_compiler_gles2.cpp b/drivers/gles2/shader_compiler_gles2.cpp
+--- a/drivers/gles2/shader_compiler_gles2.cpp
++++ b/drivers/gles2/shader_compiler_gles2.cpp
+@@ -302,6 +302,14 @@
+ 				}
+ 			}
+ 
++			int max_spheres = CLAMP((int)GLOBAL_GET("rendering/quality/blob_shadows/max_spheres"), 0, 256);
++			String max_spheres_string = "#define MAX_SPHERE_CASTERS " + itos(max_spheres) + "\n";
++			r_gen_code.custom_defines.push_back(max_spheres_string.utf8());
++
++			int max_capsules = CLAMP((int)GLOBAL_GET("rendering/quality/blob_shadows/max_capsules"), 0, 256);
++			String max_capsules_string = "#define MAX_CAPSULE_CASTERS " + itos(max_capsules) + "\n";
++			r_gen_code.custom_defines.push_back(max_capsules_string.utf8());
++
+ 			int max_texture_uniforms = 0;
+ 			int max_uniforms = 0;
+ 
+@@ -1121,6 +1129,7 @@
+ 	actions[VS::SHADER_SPATIAL].renames["UV2"] = "uv2_interp";
+ 	actions[VS::SHADER_SPATIAL].renames["COLOR"] = "color_interp";
+ 	actions[VS::SHADER_SPATIAL].renames["POINT_SIZE"] = "point_size";
++	actions[VS::SHADER_SPATIAL].renames["BLOB_SHADOW"] = "blob_shadow_total";
+ 	// gl_InstanceID and VERTEX_ID is not available in OpenGL ES 2.0
+ 	actions[VS::SHADER_SPATIAL].renames["INSTANCE_ID"] = "0";
+ 	actions[VS::SHADER_SPATIAL].renames["VERTEX_ID"] = "0";
+@@ -1190,6 +1199,7 @@
+ 	actions[VS::SHADER_SPATIAL].usage_defines["INSTANCE_CUSTOM"] = "#define ENABLE_INSTANCE_CUSTOM\n";
+ 	actions[VS::SHADER_SPATIAL].usage_defines["ALPHA_SCISSOR"] = "#define ALPHA_SCISSOR_USED\n";
+ 	actions[VS::SHADER_SPATIAL].usage_defines["POSITION"] = "#define OVERRIDE_POSITION\n";
++	//actions[VS::SHADER_SPATIAL].usage_defines["BLOB_SHADOW"] = "#define USE_BLOB_SHADOWS\n";
+ 
+ 	actions[VS::SHADER_SPATIAL].usage_defines["SSS_STRENGTH"] = "#define ENABLE_SSS\n";
+ 	actions[VS::SHADER_SPATIAL].usage_defines["TRANSMISSION"] = "#define TRANSMISSION_USED\n";
+@@ -1248,6 +1258,7 @@
+ 	actions[VS::SHADER_SPATIAL].render_mode_defines["specular_toon"] = "#define SPECULAR_TOON\n";
+ 	actions[VS::SHADER_SPATIAL].render_mode_defines["specular_disabled"] = "#define SPECULAR_DISABLED\n";
+ 	actions[VS::SHADER_SPATIAL].render_mode_defines["shadows_disabled"] = "#define SHADOWS_DISABLED\n";
++	actions[VS::SHADER_SPATIAL].render_mode_defines["blob_shadows_disabled"] = "#define BLOB_SHADOWS_DISABLED\n";
+ 	actions[VS::SHADER_SPATIAL].render_mode_defines["ambient_light_disabled"] = "#define AMBIENT_LIGHT_DISABLED\n";
+ 	actions[VS::SHADER_SPATIAL].render_mode_defines["shadow_to_opacity"] = "#define USE_SHADOW_TO_OPACITY\n";
+ 
+diff --git a/drivers/gles2/shaders/scene.glsl b/drivers/gles2/shaders/scene.glsl
+--- a/drivers/gles2/shaders/scene.glsl
++++ b/drivers/gles2/shaders/scene.glsl
+@@ -325,6 +325,10 @@
+ 
+ #endif //vertex lighting for refprobes
+ 
++#ifdef USE_BLOB_SHADOWS
++varying highp vec3 blob_pixel_world_pos;
++#endif
++
+ #if defined(FOG_DEPTH_ENABLED) || defined(FOG_HEIGHT_ENABLED)
+ 
+ varying vec4 fog_interp;
+@@ -505,6 +509,10 @@
+ 		/* clang-format on */
+ 	}
+ 
++#ifdef USE_BLOB_SHADOWS
++	blob_pixel_world_pos = (world_matrix * vec4(vertex.xyz, 1.0)).xyz;
++#endif
++
+ 	gl_PointSize = point_size;
+ 	vec4 outvec = vertex;
+ 
+@@ -876,6 +884,225 @@
+ 
+ #endif //USE_REFLECTION_PROBE2
+ 
++#ifdef USE_BLOB_SHADOWS
++varying highp vec3 blob_pixel_world_pos;
++uniform vec2 blob_range_and_gamma;
++
++uniform ivec2 sphere_capsule_num_casters;
++
++#if MAX_SPHERE_CASTERS != 0
++uniform vec4 sphere_data_casters[MAX_SPHERE_CASTERS];
++uniform vec4 sphere_data_lights[MAX_SPHERE_CASTERS];
++#endif
++
++#define CAPSULE_DATA_CASTERS_UNITS (MAX_CAPSULE_CASTERS * 2)
++
++#if MAX_CAPSULE_CASTERS != 0
++uniform vec4 capsule_data_casters[CAPSULE_DATA_CASTERS_UNITS];
++uniform vec4 capsule_data_lights[MAX_CAPSULE_CASTERS];
++#endif
++
++// Blob shadow sphere and capsule shaders based on:
++// https://www.shadertoy.com/view/3stcD4 (Copyright 2024, Romain Guy, Apache 2.0)
++// https://www.shadertoy.com/view/4d2XWV
++// https://www.shadertoy.com/view/MlGczG (Copyright 2019, Inigo Quilez, MIT)
++float shadows_acos_fast(float x) {
++	// Lagarde 2014, \"Inverse trigonometric functions GPU optimization for AMD GCN architecture\"
++	// This is the approximation of degree 1, with a max absolute error of 9.0x10^-3
++	float y = abs(x);
++	float p = -0.1565827 * y + 1.570796;
++	p *= sqrt(1.0 - y);
++	const float pi = 3.14159265359;
++	return x >= 0.0 ? p : pi - p;
++}
++
++float shadows_acos_fast_positive(float x) {
++	// Lagarde 2014, \"Inverse trigonometric functions GPU optimization for AMD GCN architecture\"
++	float p = -0.1565827 * x + 1.570796;
++	return p * sqrt(1.0 - x);
++}
++
++float shadows_saturate(float x) {
++	return clamp(x, 0.0, 1.0);
++}
++
++float shadows_spherical_caps_intersection(float cos_cap1, float cos_cap2, float cap2, float cos_distance) {
++	// Oat and Sander 2007, \"Ambient Aperture Lighting\"
++	// Approximation mentioned by Jimenez et al. 2016
++	float r1 = shadows_acos_fast_positive(cos_cap1);
++	float r2 = cap2;
++	float d = shadows_acos_fast(cos_distance);
++
++	// We work with cosine angles, replace the original paper's use of
++	// cos(min(r1, r2)_ with max(cos_cap1, cos_cap2)
++	// We also remove a multiplication by 2 * PI to simplify the computation
++	// since we divide by 2 * PI at the call site
++
++	if (min(r1, r2) <= max(r1, r2) - d) {
++		return 1.0 - max(cos_cap1, cos_cap2);
++	} else if (r1 + r2 <= d) {
++		return 0.0;
++	}
++
++	float delta = abs(r1 - r2);
++	float x = 1.0 - shadows_saturate((d - delta) / max(r1 + r2 - delta, 0.0001));
++
++	// simplified smoothstep()
++	float area = (x * x) * (-2.0 * x + 3.0);
++	return area * (1.0 - max(cos_cap1, cos_cap2));
++}
++
++// Note that sphere.w is expected to be radius SQUARED.
++// Is cheaper to calculate this as a one off on CPU.
++float shadows_directional_occlusion_sphere(in vec3 pos, in vec4 sphere, in vec4 cone) {
++	vec3 occluder = sphere.xyz - pos;
++
++	float occluder_length2 = dot(occluder, occluder);
++	vec3 occluder_dir = occluder * inversesqrt(occluder_length2);
++
++	float cos_phi = dot(occluder_dir, cone.xyz);
++	float cos_theta = sqrt(occluder_length2 / ((sphere.w) + occluder_length2));
++	float cos_cone = cos(cone.w);
++
++	return shadows_spherical_caps_intersection(cos_theta, cos_cone, cone.w, cos_phi) / (1.0 - cos_cone);
++}
++
++// Note that sphere.w is expected to be radius SQUARED.
++// Is cheaper to calculate this as a one off on CPU.
++float shadows_directional_occlusion_sphere_optimized(in vec3 pos, in vec4 sphere, in vec4 cone, in vec3 occluder_dir, in float occluder_length2) {
++	float cos_phi = dot(occluder_dir, cone.xyz);
++	float cos_theta = sqrt(occluder_length2 / ((sphere.w) + occluder_length2));
++	float cos_cone = cos(cone.w);
++
++	return shadows_spherical_caps_intersection(cos_theta, cos_cone, cone.w, cos_phi) / (1.0 - cos_cone);
++}
++
++// Function to find the closest point on segment A to segment B.
++// Returns the fraction between A0 and A1.
++float capsule_shadows_closest_point_on_line_segment(const vec3 A0, const vec3 A1, const vec3 B0, const vec3 B1) {
++	vec3 d1 = A1 - A0; // Direction vector of segment A
++	vec3 d2 = B1 - B0; // Direction vector of segment B
++	vec3 r = A0 - B0;
++
++	float a = dot(d1, d1); // Squared length of segment A
++	float e = dot(d2, d2); // Squared length of segment B
++	float f = dot(d2, r);
++
++	float c = dot(d1, r);
++	float b = dot(d1, d2);
++
++	float denom = a * e - b * b; // Denominator for line-line distance
++
++	float s, t;
++
++	// If segments are not parallel (denom != 0)
++	if (denom != 0.0) {
++		s = clamp((b * f - c * e) / denom, 0.0, 1.0);
++	} else {
++		// If parallel, choose arbitrary s (e.g., midpoint of segment A)
++		s = 0.5;
++	}
++
++	// Compute t based on s
++	t = (b * s + f) / e;
++
++	// If t is outside [0, 1], clamp it and recompute s
++	if (t < 0.0) {
++		//t = 0.0;
++		s = clamp(-c / a, 0.0, 1.0);
++	} else if (t > 1.0) {
++		//t = 1.0;
++		s = clamp((b - c) / a, 0.0, 1.0);
++	}
++
++	return s;
++}
++
++float blob_shadows_multi_shadow(vec3 pos) {
++	float shadow = 1.0;
++
++	const float cone_angle = radians(45.0) * 0.5;
++
++#if MAX_SPHERE_CASTERS != 0
++
++	for (int i = 0; i < sphere_capsule_num_casters.x; i++) {
++		vec4 cd = sphere_data_casters[i];
++
++		float cutoff = cd.w + blob_range_and_gamma.x;
++
++		vec3 offset = cd.xyz - pos;
++		float sl = dot(offset, offset);
++
++		cutoff *= cutoff;
++		if (sl >= cutoff) {
++			continue;
++		}
++
++		vec4 ld = sphere_data_lights[i];
++
++		float modulate = ld.w;
++		modulate *= 1.0 - (sl / cutoff);
++
++		vec3 occluder_dir = offset * inversesqrt(sl);
++		float sh = shadows_directional_occlusion_sphere_optimized(pos, sphere_data_casters[i], vec4(ld.xyz, cone_angle), occluder_dir, sl);
++
++		// Apply modulate before or after 1.0 -?
++		sh *= modulate;
++		sh = 1.0 - sh;
++
++		shadow *= sh;
++	}
++#endif // MAX_SPHERE_CASTERS != 0
++
++#if MAX_CAPSULE_CASTERS != 0
++	int caster_count = 0;
++
++	for (int i = 0; i < sphere_capsule_num_casters.y; i++) {
++		vec4 capsuleA = capsule_data_casters[caster_count++];
++		vec4 capsuleB = capsule_data_casters[caster_count++];
++		vec4 ld = capsule_data_lights[i];
++
++		float capsule_fraction = capsule_shadows_closest_point_on_line_segment(capsuleA.xyz, capsuleB.xyz, ld.xyz, pos);
++
++		vec4 sphere;
++		sphere.xyz = capsuleA.xyz + ((capsuleB.xyz - capsuleA.xyz) * capsule_fraction);
++		sphere.w = capsuleA.w + ((capsuleB.w - capsuleA.w) * capsule_fraction);
++
++		float cutoff = sphere.w + blob_range_and_gamma.x;
++
++		vec3 offset = sphere.xyz - pos;
++		float sl = dot(offset, offset);
++
++		cutoff *= cutoff;
++		if (sl >= cutoff) {
++			continue;
++		}
++
++		float modulate = ld.w;
++		modulate *= 1.0 - (sl / cutoff);
++
++		vec4 cone = vec4(normalize(vec3(ld.xyz - sphere.xyz)), cone_angle);
++		float sh = shadows_directional_occlusion_sphere(pos, sphere, cone);
++
++		sh *= modulate;
++		sh = 1.0 - sh;
++
++		shadow *= sh;
++	}
++#endif // MAX_CAPSULE_CASTERS != 0
++
++	// Deepen the shadow as desired by the user.
++	shadow = pow(shadow, blob_range_and_gamma.y);
++
++	// Negative shadow in particular can lead to NaN,
++	// so clamp to be safe.
++	shadow = clamp(shadow, 0.0, 1.0);
++
++	return shadow;
++}
++
++#endif // USE_BLOB_SHADOWS
++
+ #define RADIANCE_MAX_LOD 6.0
+ 
+ #if defined(USE_REFLECTION_PROBE1) || defined(USE_REFLECTION_PROBE2)
+@@ -1692,6 +1919,13 @@
+ 	vec2 screen_uv = gl_FragCoord.xy * screen_pixel_size;
+ #endif
+ 
++#ifdef USE_BLOB_SHADOWS
++	float blob_shadow_total = blob_shadows_multi_shadow(blob_pixel_world_pos);
++#else
++	// Prevent shader compilation failure when we try to use "BLOB_SHADOW" builtin when blob shadows are off.
++	float blob_shadow_total = 1.0;
++#endif
++
+ 	{
+ 		/* clang-format off */
+ 
+@@ -2401,6 +2635,10 @@
+ 
+ 	frag_color = vec4(ambient_light + diffuse_light + specular_light, alpha);
+ 
++#ifdef USE_BLOB_SHADOWS
++	frag_color.rgb *= blob_shadow_total;
++#endif
++
+ 	//add emission if in base pass
+ #ifdef BASE_PASS
+ 	frag_color.rgb += emission;
+@@ -2480,8 +2718,10 @@
+ 	highp float depth = ((position_interp.z / position_interp.w) + 1.0) * 0.5 + 0.0; // bias
+ 	highp vec4 comp = fract(depth * vec4(255.0 * 255.0 * 255.0, 255.0 * 255.0, 255.0, 1.0));
+ 	comp -= comp.xxyz * vec4(0.0, 1.0 / 255.0, 1.0 / 255.0, 1.0 / 255.0);
+-	gl_FragColor = comp;
++	frag_color = comp;
+ 
+ #endif
+ #endif
++
++	gl_FragColor = frag_color;
+ }
+diff --git a/drivers/gles3/rasterizer_scene_gles3.cpp b/drivers/gles3/rasterizer_scene_gles3.cpp
+--- a/drivers/gles3/rasterizer_scene_gles3.cpp
++++ b/drivers/gles3/rasterizer_scene_gles3.cpp
+@@ -2038,6 +2038,10 @@
+ 	bool prev_opaque_prepass = false;
+ 	state.scene_shader.set_conditional(SceneShaderGLES3::USE_OPAQUE_PREPASS, false);
+ 
++	const AABB *instance_aabb = nullptr;
++
++	bool allow_blob_shadows = VSG::scene->are_blob_shadows_active() && !p_shadow;
++
+ 	for (int i = 0; i < p_element_count; i++) {
+ 		RenderList::Element *e = p_elements[i];
+ 		RasterizerStorageGLES3::Material *material = e->material;
+@@ -2050,6 +2054,15 @@
+ 
+ 		uint32_t shading = (e->sort_key >> RenderList::SORT_KEY_SHADING_SHIFT) & RenderList::SORT_KEY_SHADING_MASK;
+ 
++		// Setup blob shadows
++		bool use_opaque_prepass_temp = e->sort_key & RenderList::SORT_KEY_OPAQUE_PRE_PASS;
++		bool blob_shadows = allow_blob_shadows && !material->shader->spatial.unshaded && !material->shader->spatial.no_blob_shadows && !use_opaque_prepass_temp;
++		if (blob_shadows) {
++			VisualServerScene::Instance *instance = (VisualServerScene::Instance *)(e->instance);
++			instance_aabb = &instance->transformed_aabb;
++		}
++		state.scene_shader.set_conditional(SceneShaderGLES3::USE_BLOB_SHADOWS, blob_shadows);
++
+ 		if (!p_shadow) {
+ 			bool use_directional = directional_light != nullptr;
+ 			if (p_directional_add) {
+@@ -2285,6 +2298,39 @@
+ 
+ 		state.scene_shader.set_uniform(SceneShaderGLES3::WORLD_TRANSFORM, e->instance->transform);
+ 
++		if (blob_shadows) {
++			const int32_t max_casters = 128;
++			const int32_t blob_data_units = max_casters * 4;
++			float blob_data_casters[blob_data_units] = {};
++			float blob_data_lights[blob_data_units] = {};
++
++			const int32_t capsule_data_units = blob_data_units * 2;
++			float capsule_data_casters[capsule_data_units] = {};
++			float capsule_data_lights[blob_data_units] = {};
++
++			uint32_t num_sphere_casters = VSG::scene->blob_shadows_fill_background_uniforms(*instance_aabb, blob_data_casters, blob_data_lights, max_casters);
++			uint32_t num_capsule_casters = VSG::scene->capsule_shadows_fill_background_uniforms(*instance_aabb, capsule_data_casters, capsule_data_lights, max_casters);
++
++			if (num_sphere_casters || num_capsule_casters) {
++				glUniform2i(state.scene_shader.get_uniform_location(SceneShaderGLES3::SPHERE_CAPSULE_NUM_CASTERS), num_sphere_casters, num_capsule_casters);
++				float gamma = VSG::scene->blob_shadows_get_gamma() * 2.2f;
++				glUniform2f(state.scene_shader.get_uniform_location(SceneShaderGLES3::BLOB_RANGE_AND_GAMMA), VSG::scene->blob_shadows_get_range(), gamma);
++
++				if (num_sphere_casters) {
++					glUniform4fv(state.scene_shader.get_uniform_location(SceneShaderGLES3::SPHERE_DATA_CASTERS), num_sphere_casters, (const GLfloat *)blob_data_casters);
++					glUniform4fv(state.scene_shader.get_uniform_location(SceneShaderGLES3::SPHERE_DATA_LIGHTS), num_sphere_casters, (const GLfloat *)blob_data_lights);
++				}
++
++				if (num_capsule_casters) {
++					glUniform4fv(state.scene_shader.get_uniform_location(SceneShaderGLES3::CAPSULE_DATA_CASTERS), num_capsule_casters * 2, (const GLfloat *)capsule_data_casters);
++					glUniform4fv(state.scene_shader.get_uniform_location(SceneShaderGLES3::CAPSULE_DATA_LIGHTS), num_capsule_casters, (const GLfloat *)capsule_data_lights);
++				}
++
++			} else {
++				glUniform2i(state.scene_shader.get_uniform_location(SceneShaderGLES3::SPHERE_CAPSULE_NUM_CASTERS), 0, 0);
++			}
++		}
++
+ 		const bool force_skin_no_depth = skeleton && !p_shadow && OS::get_singleton()->has_environment("FRT_SKIN_NO_DEPTH");
+ 		if (force_skin_no_depth) {
+ 			glDisable(GL_DEPTH_TEST);
+@@ -2356,6 +2402,7 @@
+ 	state.scene_shader.set_conditional(SceneShaderGLES3::USE_CONTACT_SHADOWS, false);
+ 	state.scene_shader.set_conditional(SceneShaderGLES3::USE_VERTEX_LIGHTING, false);
+ 	state.scene_shader.set_conditional(SceneShaderGLES3::USE_OPAQUE_PREPASS, false);
++	state.scene_shader.set_conditional(SceneShaderGLES3::USE_BLOB_SHADOWS, false);
+ }
+ 
+ void RasterizerSceneGLES3::_add_geometry(RasterizerStorageGLES3::Geometry *p_geometry, InstanceBase *p_instance, RasterizerStorageGLES3::GeometryOwner *p_owner, int p_material, bool p_depth_pass, bool p_shadow_pass) {
+diff --git a/drivers/gles3/rasterizer_storage_gles3.cpp b/drivers/gles3/rasterizer_storage_gles3.cpp
+--- a/drivers/gles3/rasterizer_storage_gles3.cpp
++++ b/drivers/gles3/rasterizer_storage_gles3.cpp
+@@ -2255,6 +2255,7 @@
+ 			p_shader->spatial.uses_discard = false;
+ 			p_shader->spatial.unshaded = false;
+ 			p_shader->spatial.no_depth_test = false;
++			p_shader->spatial.no_blob_shadows = false;
+ 			p_shader->spatial.uses_sss = false;
+ 			p_shader->spatial.uses_time = false;
+ 			p_shader->spatial.uses_vertex_lighting = false;
+@@ -2285,6 +2286,7 @@
+ 
+ 			shaders.actions_scene.render_mode_flags["unshaded"] = &p_shader->spatial.unshaded;
+ 			shaders.actions_scene.render_mode_flags["depth_test_disable"] = &p_shader->spatial.no_depth_test;
++			shaders.actions_scene.render_mode_flags["blob_shadows_disabled"] = &p_shader->spatial.no_blob_shadows;
+ 
+ 			shaders.actions_scene.render_mode_flags["vertex_lighting"] = &p_shader->spatial.uses_vertex_lighting;
+ 
+diff --git a/drivers/gles3/rasterizer_storage_gles3.h b/drivers/gles3/rasterizer_storage_gles3.h
+--- a/drivers/gles3/rasterizer_storage_gles3.h
++++ b/drivers/gles3/rasterizer_storage_gles3.h
+@@ -517,6 +517,7 @@
+ 			bool uses_alpha_scissor;
+ 			bool unshaded;
+ 			bool no_depth_test;
++			bool no_blob_shadows;
+ 			bool uses_vertex;
+ 			bool uses_discard;
+ 			bool uses_sss;
+diff --git a/drivers/gles3/shader_compiler_gles3.cpp b/drivers/gles3/shader_compiler_gles3.cpp
+--- a/drivers/gles3/shader_compiler_gles3.cpp
++++ b/drivers/gles3/shader_compiler_gles3.cpp
+@@ -426,6 +426,14 @@
+ 				}
+ 			}
+ 
++			int max_spheres = CLAMP((int)GLOBAL_GET("rendering/quality/blob_shadows/max_spheres"), 0, 256);
++			String max_spheres_string = "#define MAX_SPHERE_CASTERS " + itos(max_spheres) + "\n";
++			r_gen_code.defines.push_back(max_spheres_string.utf8());
++
++			int max_capsules = CLAMP((int)GLOBAL_GET("rendering/quality/blob_shadows/max_capsules"), 0, 256);
++			String max_capsules_string = "#define MAX_CAPSULE_CASTERS " + itos(max_capsules) + "\n";
++			r_gen_code.defines.push_back(max_capsules_string.utf8());
++
+ 			// structs
+ 
+ 			for (int i = 0; i < pnode->vstructs.size(); i++) {
+@@ -1290,6 +1298,7 @@
+ 	actions[VS::SHADER_SPATIAL].render_mode_defines["specular_toon"] = "#define SPECULAR_TOON\n";
+ 	actions[VS::SHADER_SPATIAL].render_mode_defines["specular_disabled"] = "#define SPECULAR_DISABLED\n";
+ 	actions[VS::SHADER_SPATIAL].render_mode_defines["shadows_disabled"] = "#define SHADOWS_DISABLED\n";
++	actions[VS::SHADER_SPATIAL].render_mode_defines["blob_shadows_disabled"] = "#define BLOB_SHADOWS_DISABLED\n";
+ 	actions[VS::SHADER_SPATIAL].render_mode_defines["ambient_light_disabled"] = "#define AMBIENT_LIGHT_DISABLED\n";
+ 	actions[VS::SHADER_SPATIAL].render_mode_defines["shadow_to_opacity"] = "#define USE_SHADOW_TO_OPACITY\n";
+ 
+diff --git a/drivers/gles3/shader_gles3.h b/drivers/gles3/shader_gles3.h
+--- a/drivers/gles3/shader_gles3.h
++++ b/drivers/gles3/shader_gles3.h
+@@ -452,6 +452,12 @@
+ }
+ 
+ void ShaderGLES3::_set_conditional(int p_which, bool p_value) {
++	// Conditionals are limited to 32 bit on GLES3.
++	// Blowing this leads to nasty bugs, and we can't static assert
++	// easily without affecting GLES2 (which is already 64 bit).
++	// In the longterm, we may change to 64 bit on GLES3 too.
++	DEV_ASSERT(p_which < 32);
++
+ 	ERR_FAIL_INDEX(p_which, conditional_count);
+ 	if (p_value) {
+ 		new_conditional_version.version |= (1 << p_which);
+diff --git a/drivers/gles3/shaders/scene.glsl b/drivers/gles3/shaders/scene.glsl
+--- a/drivers/gles3/shaders/scene.glsl
++++ b/drivers/gles3/shaders/scene.glsl
+@@ -329,6 +329,10 @@
+ out vec3 binormal_interp;
+ #endif
+ 
++#ifdef USE_BLOB_SHADOWS
++out highp vec3 blob_pixel_world_pos;
++#endif
++
+ #if defined(USE_MATERIAL)
+ 
+ /* clang-format off */
+@@ -438,6 +442,10 @@
+ 
+ 	highp mat4 local_projection = projection_matrix;
+ 
++#ifdef USE_BLOB_SHADOWS
++	blob_pixel_world_pos = (world_matrix * vec4(vertex.xyz, 1.0)).xyz;
++#endif
++
+ //using world coordinates
+ #if !defined(SKIP_TRANSFORM_USED) && defined(VERTEX_WORLD_COORDS_USED)
+ 
+@@ -701,6 +709,10 @@
+ in vec3 binormal_interp;
+ #endif
+ 
++#ifdef USE_BLOB_SHADOWS
++in highp vec3 blob_pixel_world_pos;
++#endif
++
+ in highp vec3 vertex_interp;
+ in vec3 normal_interp;
+ 
+@@ -724,7 +736,7 @@
+ // made the ubershader declare BOTH, burning a texture image unit that no draw can
+ // ever use. Units are scarce: the engine takes them from the top (texunit:-N maps
+ // to max_image_units - N), so every one it holds is one the material cannot have.
+-#ifdef RADIANCE_MAP_ARRAY_AVAILABLE
++#if defined(RADIANCE_MAP_ARRAY_AVAILABLE)
+ 
+ uniform sampler2DArray radiance_map_array; // texunit:-3
+ 
+@@ -892,6 +904,24 @@
+ 
+ uniform highp sampler2DShadow shadow_atlas; // texunit:-6
+ 
++#ifdef USE_BLOB_SHADOWS
++uniform vec2 blob_range_and_gamma;
++uniform ivec2 sphere_capsule_num_casters;
++
++#if MAX_SPHERE_CASTERS != 0
++uniform vec4 sphere_data_casters[MAX_SPHERE_CASTERS];
++uniform vec4 sphere_data_lights[MAX_SPHERE_CASTERS];
++#endif
++
++#define CAPSULE_DATA_CASTERS_UNITS (MAX_CAPSULE_CASTERS * 2)
++
++#if MAX_CAPSULE_CASTERS != 0
++uniform vec4 capsule_data_casters[CAPSULE_DATA_CASTERS_UNITS];
++uniform vec4 capsule_data_lights[MAX_CAPSULE_CASTERS];
++#endif
++
++#endif
++
+ struct ReflectionData {
+ 	mediump vec4 box_extents;
+ 	mediump vec4 box_offset;
+@@ -944,6 +974,205 @@
+ in highp vec4 position_interp;
+ uniform highp sampler2D depth_buffer; // texunit:-9
+ 
++#ifdef USE_BLOB_SHADOWS
++
++// Blob shadow sphere and capsule shaders based on:
++// https://www.shadertoy.com/view/3stcD4 (Copyright 2024, Romain Guy, Apache 2.0)
++// https://www.shadertoy.com/view/4d2XWV
++// https://www.shadertoy.com/view/MlGczG (Copyright 2019, Inigo Quilez, MIT)
++float shadows_acos_fast(float x) {
++	// Lagarde 2014, \"Inverse trigonometric functions GPU optimization for AMD GCN architecture\"
++	// This is the approximation of degree 1, with a max absolute error of 9.0x10^-3
++	float y = abs(x);
++	float p = -0.1565827 * y + 1.570796;
++	p *= sqrt(1.0 - y);
++	const float pi = 3.14159265359;
++	return x >= 0.0 ? p : pi - p;
++}
++
++float shadows_acos_fast_positive(float x) {
++	// Lagarde 2014, \"Inverse trigonometric functions GPU optimization for AMD GCN architecture\"
++	float p = -0.1565827 * x + 1.570796;
++	return p * sqrt(1.0 - x);
++}
++
++float shadows_saturate(float x) {
++	return clamp(x, 0.0, 1.0);
++}
++
++float shadows_spherical_caps_intersection(float cos_cap1, float cos_cap2, float cap2, float cos_distance) {
++	// Oat and Sander 2007, \"Ambient Aperture Lighting\"
++	// Approximation mentioned by Jimenez et al. 2016
++	float r1 = shadows_acos_fast_positive(cos_cap1);
++	float r2 = cap2;
++	float d = shadows_acos_fast(cos_distance);
++
++	// We work with cosine angles, replace the original paper's use of
++	// cos(min(r1, r2)_ with max(cos_cap1, cos_cap2)
++	// We also remove a multiplication by 2 * PI to simplify the computation
++	// since we divide by 2 * PI at the call site
++
++	if (min(r1, r2) <= max(r1, r2) - d) {
++		return 1.0 - max(cos_cap1, cos_cap2);
++	} else if (r1 + r2 <= d) {
++		return 0.0;
++	}
++
++	float delta = abs(r1 - r2);
++	float x = 1.0 - shadows_saturate((d - delta) / max(r1 + r2 - delta, 0.0001));
++
++	// simplified smoothstep()
++	float area = (x * x) * (-2.0 * x + 3.0);
++	return area * (1.0 - max(cos_cap1, cos_cap2));
++}
++
++// Note that sphere.w is expected to be radius SQUARED.
++// Is cheaper to calculate this as a one off on CPU.
++float shadows_directional_occlusion_sphere(in vec3 pos, in vec4 sphere, in vec4 cone) {
++	vec3 occluder = sphere.xyz - pos;
++	float occluder_length2 = dot(occluder, occluder);
++	vec3 occluder_dir = occluder * inversesqrt(occluder_length2);
++
++	float cos_phi = dot(occluder_dir, cone.xyz);
++	float cos_theta = sqrt(occluder_length2 / ((sphere.w) + occluder_length2));
++	float cos_cone = cos(cone.w);
++
++	return shadows_spherical_caps_intersection(cos_theta, cos_cone, cone.w, cos_phi) / (1.0 - cos_cone);
++}
++
++// Note that sphere.w is expected to be radius SQUARED.
++// Is cheaper to calculate this as a one off on CPU.
++float shadows_directional_occlusion_sphere_optimized(in vec3 pos, in vec4 sphere, in vec4 cone, in vec3 occluder_dir, in float occluder_length2) {
++	float cos_phi = dot(occluder_dir, cone.xyz);
++	float cos_theta = sqrt(occluder_length2 / ((sphere.w) + occluder_length2));
++	float cos_cone = cos(cone.w);
++
++	return shadows_spherical_caps_intersection(cos_theta, cos_cone, cone.w, cos_phi) / (1.0 - cos_cone);
++}
++
++// Function to find the closest point on segment A to segment B.
++// Returns the fraction between A0 and A1.
++float capsule_shadows_closest_point_on_line_segment(const vec3 A0, const vec3 A1, const vec3 B0, const vec3 B1) {
++	vec3 d1 = A1 - A0; // Direction vector of segment A
++	vec3 d2 = B1 - B0; // Direction vector of segment B
++	vec3 r = A0 - B0;
++
++	float a = dot(d1, d1); // Squared length of segment A
++	float e = dot(d2, d2); // Squared length of segment B
++	float f = dot(d2, r);
++
++	float c = dot(d1, r);
++	float b = dot(d1, d2);
++
++	float denom = a * e - b * b; // Denominator for line-line distance
++
++	float s, t;
++
++	// If segments are not parallel (denom != 0)
++	if (denom != 0.0) {
++		s = clamp((b * f - c * e) / denom, 0.0, 1.0);
++	} else {
++		// If parallel, choose arbitrary s (e.g., midpoint of segment A)
++		s = 0.5;
++	}
++
++	// Compute t based on s
++	t = (b * s + f) / e;
++
++	// If t is outside [0, 1], clamp it and recompute s
++	if (t < 0.0) {
++		//t = 0.0;
++		s = clamp(-c / a, 0.0, 1.0);
++	} else if (t > 1.0) {
++		//t = 1.0;
++		s = clamp((b - c) / a, 0.0, 1.0);
++	}
++
++	return s;
++}
++
++float blob_shadows_multi_shadow(vec3 pos) {
++	float shadow = 1.0;
++
++	const float cone_angle = radians(45.0) * 0.5;
++
++#if MAX_SPHERE_CASTERS != 0
++	for (int i = 0; i < sphere_capsule_num_casters.x; i++) {
++		vec4 cd = sphere_data_casters[i];
++
++		float cutoff = cd.w + blob_range_and_gamma.x;
++
++		vec3 offset = cd.xyz - pos;
++		float sl = dot(offset, offset);
++
++		cutoff *= cutoff;
++		if (sl >= cutoff) {
++			continue;
++		}
++
++		vec4 ld = sphere_data_lights[i];
++
++		float modulate = ld.w;
++		modulate *= 1.0 - (sl / cutoff);
++
++		vec3 occluder_dir = offset * inversesqrt(sl);
++		float sh = shadows_directional_occlusion_sphere_optimized(pos, sphere_data_casters[i], vec4(ld.xyz, cone_angle), occluder_dir, sl);
++
++		// Apply modulate before or after 1.0 -?
++		sh *= modulate;
++		sh = 1.0 - sh;
++		shadow *= sh;
++	}
++#endif // MAX_SPHERE_CASTERS != 0
++
++#if MAX_CAPSULE_CASTERS != 0
++	int caster_count = 0;
++
++	for (int i = 0; i < sphere_capsule_num_casters.y; i++) {
++		vec4 capsuleA = capsule_data_casters[caster_count++];
++		vec4 capsuleB = capsule_data_casters[caster_count++];
++		vec4 ld = capsule_data_lights[i];
++
++		float capsule_fraction = capsule_shadows_closest_point_on_line_segment(capsuleA.xyz, capsuleB.xyz, ld.xyz, pos);
++
++		vec4 sphere;
++		sphere.xyz = capsuleA.xyz + ((capsuleB.xyz - capsuleA.xyz) * capsule_fraction);
++		sphere.w = capsuleA.w + ((capsuleB.w - capsuleA.w) * capsule_fraction);
++
++		float cutoff = sphere.w + blob_range_and_gamma.x;
++
++		vec3 offset = sphere.xyz - pos;
++		float sl = dot(offset, offset);
++
++		cutoff *= cutoff;
++		if (sl >= cutoff) {
++			continue;
++		}
++
++		float modulate = ld.w;
++		modulate *= 1.0 - (sl / cutoff);
++
++		vec4 cone = vec4(normalize(vec3(ld.xyz - sphere.xyz)), cone_angle);
++		float sh = shadows_directional_occlusion_sphere(pos, sphere, cone);
++
++		sh *= modulate;
++		sh = 1.0 - sh;
++
++		shadow *= sh;
++	}
++#endif // MAX_CAPSULE_CASTERS != 0
++
++	// Deepen the shadow as desired by the user.
++	shadow = pow(shadow, blob_range_and_gamma.y);
++
++	// Negative shadow in particular can lead to NaN,
++	// so clamp to be safe.
++	shadow = clamp(shadow, 0.0, 1.0);
++
++	return shadow;
++}
++#endif // USE_BLOB_SHADOWS
++
+ #ifdef USE_CONTACT_SHADOWS //ubershader-skip
+ 
+ float contact_shadow_compute(vec3 pos, vec3 dir, float max_distance) {
+@@ -1703,7 +1932,7 @@
+ // ubershader, because //ubershader-skip drops the guard and leaves the declarations
+ // unconditional. rendering/quality/gi_probes/enabled lets such a project hand the
+ // units back to its materials.
+-#ifdef GI_PROBES_AVAILABLE
++#if defined(GI_PROBES_AVAILABLE)
+ 
+ #ifdef USE_GI_PROBES //ubershader-skip
+ 
+@@ -1955,6 +2184,13 @@
+ 	float sss_strength = 0.0;
+ #endif
+ 
++#ifdef USE_BLOB_SHADOWS
++	float blob_shadow_total = blob_shadows_multi_shadow(blob_pixel_world_pos);
++#else
++	// Prevent shader compilation failure when we try to use "BLOB_SHADOW" builtin when blob shadows are off.
++	float blob_shadow_total = 1.0;
++#endif
++
+ 	{
+ 		/* clang-format off */
+ 
+@@ -2095,7 +2331,7 @@
+ 		float horizon = min(1.0 + dot(ref_vec, normal), 1.0);
+ 		ref_vec = normalize((radiance_inverse_xform * vec4(ref_vec, 0.0)).xyz);
+ 		vec3 radiance;
+-#ifdef RADIANCE_MAP_ARRAY_AVAILABLE
++#if defined(RADIANCE_MAP_ARRAY_AVAILABLE)
+ 		radiance = textureDualParaboloidArray(radiance_map_array, ref_vec, roughness) * bg_energy;
+ #else
+ 		radiance = textureDualParaboloid(radiance_map, ref_vec, roughness) * bg_energy;
+@@ -2140,7 +2376,7 @@
+ 	specular_blob_intensity *= specular * 2.0;
+ #endif
+ 
+-#ifdef GI_PROBES_AVAILABLE
++#if defined(GI_PROBES_AVAILABLE)
+ #ifdef USE_GI_PROBES //ubershader-runtime
+ 	gi_probes_compute(vertex, normal, roughness, env_reflection_light, ambient_light);
+ 
+@@ -2543,6 +2779,14 @@
+ #endif //ubershader-runtime
+ #endif //SHADELESS //ubershader-runtime
+ 
++#ifdef USE_BLOB_SHADOWS
++	// The upstream port only darkened frag_color, which is the non-MRT path;
++	// without this the shadows disappear as soon as SSAO/SSR/DOF/SSS turns MRT
++	// on. Same contribution the non-MRT path darkens.
++	diffuse_buffer.rgb *= blob_shadow_total;
++	specular_buffer.rgb *= blob_shadow_total;
++#endif
++
+ 	normal_mr_buffer = vec4(normalize(normal) * 0.5 + 0.5, roughness);
+ 
+ #if defined(ENABLE_SSS)
+@@ -2560,6 +2804,10 @@
+ #endif //ubershader-runtime
+ #endif //SHADELESS //ubershader-runtime
+ 
++#ifdef USE_BLOB_SHADOWS
++	frag_color.rgb *= blob_shadow_total;
++#endif
++
+ #endif //USE_MULTIPLE_RENDER_TARGETS //ubershader-runtime
+ 
+ 	// Write to the final output once and only once.
+diff --git a/editor/icons/icon_blob_focus.svg b/editor/icons/icon_blob_focus.svg
+new file mode 100644
+--- /dev/null
++++ b/editor/icons/icon_blob_focus.svg
+@@ -0,0 +1 @@
++<svg height="16" viewBox="0 0 16 16" width="16" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"><radialGradient id="a" cx="8" cy="8" gradientUnits="userSpaceOnUse" r="7"><stop offset=".27669173" stop-color="#fc9c9c" stop-opacity="0"/><stop offset=".28" stop-color="#fc9c9c"/><stop offset="1" stop-color="#fc9c9c" stop-opacity="0"/></radialGradient><circle cx="8" cy="8" fill="url(#a)" r="7"/></svg>
+diff --git a/editor/icons/icon_blob_shadow.svg b/editor/icons/icon_blob_shadow.svg
+new file mode 100644
+--- /dev/null
++++ b/editor/icons/icon_blob_shadow.svg
+@@ -0,0 +1 @@
++<svg height="16" viewBox="0 0 16 16" width="16" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"><radialGradient id="a" cx="8" cy="8" gradientUnits="userSpaceOnUse" r="7"><stop offset=".28" stop-color="#fc9c9c"/><stop offset="1" stop-color="#fc9c9c" stop-opacity="0"/></radialGradient><circle cx="8" cy="8" fill="url(#a)" r="7"/></svg>
+diff --git a/editor/plugins/spatial_editor_plugin.cpp b/editor/plugins/spatial_editor_plugin.cpp
+--- a/editor/plugins/spatial_editor_plugin.cpp
++++ b/editor/plugins/spatial_editor_plugin.cpp
+@@ -6933,6 +6933,7 @@
+ 	add_gizmo_plugin(Ref<NavigationMeshSpatialGizmoPlugin>(memnew(NavigationMeshSpatialGizmoPlugin)));
+ 	add_gizmo_plugin(Ref<JointSpatialGizmoPlugin>(memnew(JointSpatialGizmoPlugin)));
+ 	add_gizmo_plugin(Ref<PhysicalBoneSpatialGizmoPlugin>(memnew(PhysicalBoneSpatialGizmoPlugin)));
++	add_gizmo_plugin(Ref<BlobShadowSpatialGizmoPlugin>(memnew(BlobShadowSpatialGizmoPlugin)));
+ }
+ 
+ void SpatialEditor::_bind_methods() {
+diff --git a/editor/spatial_editor_gizmos.cpp b/editor/spatial_editor_gizmos.cpp
+--- a/editor/spatial_editor_gizmos.cpp
++++ b/editor/spatial_editor_gizmos.cpp
+@@ -34,6 +34,7 @@
+ #include "core/math/geometry.h"
+ #include "scene/3d/audio_stream_player_3d.h"
+ #include "scene/3d/baked_lightmap.h"
++#include "scene/3d/blob_shadow.h"
+ #include "scene/3d/collision_polygon.h"
+ #include "scene/3d/collision_shape.h"
+ #include "scene/3d/cpu_particles.h"
+@@ -5532,3 +5533,124 @@
+ 	_color_poly_back = EDITOR_DEF("editors/3d_gizmos/gizmo_colors/occluder_polygon_back", Color(0.85, 0.1, 1.0, 0.3));
+ 	_color_hole = EDITOR_DEF("editors/3d_gizmos/gizmo_colors/occluder_hole", Color(0.0, 1.0, 1.0, 0.3));
+ }
++
++////
++
++BlobShadowSpatialGizmoPlugin::BlobShadowSpatialGizmoPlugin() {
++	Color col = EDITOR_DEF("editors/3d_gizmos/gizmo_colors/blob_shadow", Color(1.0, 0.5, 1.0, 1.0));
++
++	create_material("lines_billboard", col, true, true, true);
++	create_material("lines", col, false, true, true);
++	create_handle_material("handles_billboard", true);
++}
++
++bool BlobShadowSpatialGizmoPlugin::has_gizmo(Spatial *p_spatial) {
++	return Object::cast_to<BlobShadow>(p_spatial) != nullptr;
++}
++
++String BlobShadowSpatialGizmoPlugin::get_name() const {
++	return "BlobShadow";
++}
++
++int BlobShadowSpatialGizmoPlugin::get_priority() const {
++	return -1;
++}
++
++void BlobShadowSpatialGizmoPlugin::redraw(EditorSpatialGizmo *p_gizmo) {
++	p_gizmo->clear();
++
++	const Ref<Material> lines_billboard_material = get_material("lines_billboard", p_gizmo);
++
++	BlobShadow *bs = Object::cast_to<BlobShadow>(p_gizmo->get_spatial_node());
++	const float r = bs->get_radius();
++	Vector<Vector3> points_billboard;
++
++	for (int i = 0; i < 120; i++) {
++		// Create a circle
++		const float ra = Math::deg2rad((float)(i * 3));
++		const float rb = Math::deg2rad((float)((i + 1) * 3));
++		const Point2 a = Vector2(Math::sin(ra), Math::cos(ra)) * r;
++		const Point2 b = Vector2(Math::sin(rb), Math::cos(rb)) * r;
++
++		// Draw a billboarded circle
++		points_billboard.push_back(Vector3(a.x, a.y, 0));
++		points_billboard.push_back(Vector3(b.x, b.y, 0));
++	}
++
++	if (bs->get_shadow_type() == BlobShadow::BLOB_SHADOW_CAPSULE) {
++		const Ref<Material> lines_material = get_material("lines", p_gizmo);
++		Vector<Vector3> points;
++
++		const float r2 = bs->get_radius(1);
++
++		Vector3 offset = bs->get_offset();
++
++		const int deg_change = 4;
++
++		for (int i = 0; i <= 360; i += deg_change) {
++			real_t ra = Math::deg2rad((real_t)i);
++			real_t rb = Math::deg2rad((real_t)i + deg_change);
++			Point2 a = Vector2(Math::sin(ra), Math::cos(ra)) * r2;
++			Point2 b = Vector2(Math::sin(rb), Math::cos(rb)) * r2;
++
++			points.push_back(offset + Vector3(a.x, 0, a.y));
++			points.push_back(offset + Vector3(b.x, 0, b.y));
++			points.push_back(offset + Vector3(0, a.x, a.y));
++			points.push_back(offset + Vector3(0, b.x, b.y));
++			points.push_back(offset + Vector3(a.x, a.y, 0));
++			points.push_back(offset + Vector3(b.x, b.y, 0));
++		}
++
++		p_gizmo->add_lines(points, lines_material, false);
++	}
++
++	p_gizmo->add_lines(points_billboard, lines_billboard_material, true);
++
++	Vector<Vector3> handles;
++	handles.push_back(Vector3(r, 0, 0));
++	p_gizmo->add_handles(handles, get_material("handles_billboard"), true);
++}
++
++String BlobShadowSpatialGizmoPlugin::get_handle_name(const EditorSpatialGizmo *p_gizmo, int p_idx) const {
++	return "Radius";
++}
++
++Variant BlobShadowSpatialGizmoPlugin::get_handle_value(EditorSpatialGizmo *p_gizmo, int p_idx) const {
++	BlobShadow *bs = Object::cast_to<BlobShadow>(p_gizmo->get_spatial_node());
++	return bs->get_radius();
++}
++
++void BlobShadowSpatialGizmoPlugin::set_handle(EditorSpatialGizmo *p_gizmo, int p_idx, Camera *p_camera, const Point2 &p_point) {
++	BlobShadow *bs = Object::cast_to<BlobShadow>(p_gizmo->get_spatial_node());
++	Transform gt = bs->get_global_transform();
++
++	Vector3 ray_from = p_camera->project_ray_origin(p_point);
++	Vector3 ray_dir = p_camera->project_ray_normal(p_point);
++
++	if (p_idx == 0) {
++		Plane cp = Plane(gt.origin, p_camera->get_transform().basis.get_axis(2));
++
++		Vector3 inters;
++		if (cp.intersects_ray(ray_from, ray_dir, &inters)) {
++			float r = inters.distance_to(gt.origin);
++			if (SpatialEditor::get_singleton()->is_snap_enabled()) {
++				r = Math::stepify(r, SpatialEditor::get_singleton()->get_translate_snap());
++			}
++
++			bs->set_radius(0, r);
++		}
++	}
++}
++
++void BlobShadowSpatialGizmoPlugin::commit_handle(EditorSpatialGizmo *p_gizmo, int p_idx, const Variant &p_restore, bool p_cancel) {
++	BlobShadow *bs = Object::cast_to<BlobShadow>(p_gizmo->get_spatial_node());
++	if (p_cancel) {
++		bs->set_radius(0, p_restore);
++	} else {
++		UndoRedo *ur = SpatialEditor::get_singleton()->get_undo_redo();
++		ur->create_action(TTR("Change BlobShadow Radius"));
++		ur->add_do_method(bs, "set_radius", 0, bs->get_radius());
++		ur->add_undo_method(bs, "set_radius", 0, p_restore);
++		ur->commit_action();
++	}
++}
+diff --git a/editor/spatial_editor_gizmos.h b/editor/spatial_editor_gizmos.h
+--- a/editor/spatial_editor_gizmos.h
++++ b/editor/spatial_editor_gizmos.h
+@@ -575,4 +575,22 @@
+ 	OccluderGizmoPlugin();
+ };
+ 
++class BlobShadowSpatialGizmoPlugin : public EditorSpatialGizmoPlugin {
++	GDCLASS(BlobShadowSpatialGizmoPlugin, EditorSpatialGizmoPlugin);
++
++protected:
++	virtual String get_handle_name(const EditorSpatialGizmo *p_gizmo, int p_idx) const;
++	virtual Variant get_handle_value(EditorSpatialGizmo *p_gizmo, int p_idx) const;
++	virtual void set_handle(EditorSpatialGizmo *p_gizmo, int p_idx, Camera *p_camera, const Point2 &p_point);
++	virtual void commit_handle(EditorSpatialGizmo *p_gizmo, int p_idx, const Variant &p_restore, bool p_cancel = false);
++
++	bool has_gizmo(Spatial *p_spatial);
++	String get_name() const;
++	int get_priority() const;
++	void redraw(EditorSpatialGizmo *p_gizmo);
++
++public:
++	BlobShadowSpatialGizmoPlugin();
++};
++
+ #endif // SPATIAL_EDITOR_GIZMOS_H
+diff --git a/gles_builders.py b/gles_builders.py
+--- a/gles_builders.py
++++ b/gles_builders.py
+@@ -221,7 +221,8 @@
+         fd.write("\tenum Conditionals {\n")
+         for x in header_data.conditionals:
+             fd.write("\t\t" + x.upper() + ",\n")
+-        fd.write("\t};\n\n")
++        fd.write("\t\tCONDITIONALS_MAX,\n")
++        fd.write('\t};\n\tstatic_assert(Conditionals::CONDITIONALS_MAX < 64, "Conditionals limited to 64 bit.");\n\n')
+ 
+     if header_data.uniforms:
+         fd.write("\tenum Uniforms {\n")
+diff --git a/scene/3d/blob_focus.cpp b/scene/3d/blob_focus.cpp
+new file mode 100644
+--- /dev/null
++++ b/scene/3d/blob_focus.cpp
+@@ -0,0 +1,77 @@
++/**************************************************************************/
++/*  blob_focus.cpp                                                        */
++/**************************************************************************/
++/*                         This file is part of:                          */
++/*                             GODOT ENGINE                               */
++/*                        https://godotengine.org                         */
++/**************************************************************************/
++/* Copyright (c) 2014-present Godot Engine contributors (see AUTHORS.md). */
++/* Copyright (c) 2007-2014 Juan Linietsky, Ariel Manzur.                  */
++/*                                                                        */
++/* Permission is hereby granted, free of charge, to any person obtaining  */
++/* a copy of this software and associated documentation files (the        */
++/* "Software"), to deal in the Software without restriction, including    */
++/* without limitation the rights to use, copy, modify, merge, publish,    */
++/* distribute, sublicense, and/or sell copies of the Software, and to     */
++/* permit persons to whom the Software is furnished to do so, subject to  */
++/* the following conditions:                                              */
++/*                                                                        */
++/* The above copyright notice and this permission notice shall be         */
++/* included in all copies or substantial portions of the Software.        */
++/*                                                                        */
++/* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,        */
++/* EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF     */
++/* MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. */
++/* IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY   */
++/* CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,   */
++/* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE      */
++/* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                 */
++/**************************************************************************/
++
++#include "blob_focus.h"
++
++#include "scene/3d/camera.h"
++#include "servers/visual/visual_server_blob_shadows.h"
++
++void BlobFocus::_bind_methods() {
++}
++
++void BlobFocus::_physics_interpolated_changed() {
++	// See BlobShadow: 3.6 has no fti_update_servers_xform() pump, so keep the
++	// transform notification alive and read the interpolated transform there.
++	set_notify_transform(true);
++	Spatial::_physics_interpolated_changed();
++}
++
++void BlobFocus::_notification(int p_what) {
++	switch (p_what) {
++		case NOTIFICATION_VISIBILITY_CHANGED: {
++			if (is_visible_in_tree()) {
++				Viewport *viewport = get_viewport();
++				if (viewport) {
++					Camera *camera = viewport->get_camera();
++					if (camera) {
++						RID rid = camera->get_camera();
++						VisualServer::get_singleton()->camera_set_blob_focus_position(rid, get_global_transform_interpolated().origin);
++					}
++				}
++			}
++		} break;
++		case NOTIFICATION_TRANSFORM_CHANGED: {
++			if (is_visible_in_tree()) {
++				Viewport *viewport = get_viewport();
++				if (viewport) {
++					Camera *camera = viewport->get_camera();
++					if (camera) {
++						RID rid = camera->get_camera();
++						VisualServer::get_singleton()->camera_set_blob_focus_position(rid, get_global_transform_interpolated().origin);
++					}
++				}
++			}
++		} break;
++	}
++}
++
++BlobFocus::BlobFocus() {
++	set_notify_transform(true);
++}
+diff --git a/scene/3d/blob_focus.h b/scene/3d/blob_focus.h
+new file mode 100644
+--- /dev/null
++++ b/scene/3d/blob_focus.h
+@@ -0,0 +1,48 @@
++/**************************************************************************/
++/*  blob_focus.h                                                          */
++/**************************************************************************/
++/*                         This file is part of:                          */
++/*                             GODOT ENGINE                               */
++/*                        https://godotengine.org                         */
++/**************************************************************************/
++/* Copyright (c) 2014-present Godot Engine contributors (see AUTHORS.md). */
++/* Copyright (c) 2007-2014 Juan Linietsky, Ariel Manzur.                  */
++/*                                                                        */
++/* Permission is hereby granted, free of charge, to any person obtaining  */
++/* a copy of this software and associated documentation files (the        */
++/* "Software"), to deal in the Software without restriction, including    */
++/* without limitation the rights to use, copy, modify, merge, publish,    */
++/* distribute, sublicense, and/or sell copies of the Software, and to     */
++/* permit persons to whom the Software is furnished to do so, subject to  */
++/* the following conditions:                                              */
++/*                                                                        */
++/* The above copyright notice and this permission notice shall be         */
++/* included in all copies or substantial portions of the Software.        */
++/*                                                                        */
++/* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,        */
++/* EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF     */
++/* MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. */
++/* IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY   */
++/* CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,   */
++/* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE      */
++/* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                 */
++/**************************************************************************/
++
++#ifndef BLOB_FOCUS_H
++#define BLOB_FOCUS_H
++
++#include "scene/3d/spatial.h"
++
++class BlobFocus : public Spatial {
++	GDCLASS(BlobFocus, Spatial);
++
++protected:
++	static void _bind_methods();
++	void _notification(int p_what);
++	virtual void _physics_interpolated_changed();
++
++public:
++	BlobFocus();
++};
++
++#endif // BLOB_FOCUS_H
+diff --git a/scene/3d/blob_shadow.cpp b/scene/3d/blob_shadow.cpp
+new file mode 100644
+--- /dev/null
++++ b/scene/3d/blob_shadow.cpp
+@@ -0,0 +1,191 @@
++/**************************************************************************/
++/*  blob_shadow.cpp                                                       */
++/**************************************************************************/
++/*                         This file is part of:                          */
++/*                             GODOT ENGINE                               */
++/*                        https://godotengine.org                         */
++/**************************************************************************/
++/* Copyright (c) 2014-present Godot Engine contributors (see AUTHORS.md). */
++/* Copyright (c) 2007-2014 Juan Linietsky, Ariel Manzur.                  */
++/*                                                                        */
++/* Permission is hereby granted, free of charge, to any person obtaining  */
++/* a copy of this software and associated documentation files (the        */
++/* "Software"), to deal in the Software without restriction, including    */
++/* without limitation the rights to use, copy, modify, merge, publish,    */
++/* distribute, sublicense, and/or sell copies of the Software, and to     */
++/* permit persons to whom the Software is furnished to do so, subject to  */
++/* the following conditions:                                              */
++/*                                                                        */
++/* The above copyright notice and this permission notice shall be         */
++/* included in all copies or substantial portions of the Software.        */
++/*                                                                        */
++/* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,        */
++/* EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF     */
++/* MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. */
++/* IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY   */
++/* CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,   */
++/* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE      */
++/* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                 */
++/**************************************************************************/
++
++#include "blob_shadow.h"
++
++#include "servers/visual/visual_server_blob_shadows.h"
++
++void BlobShadow::_physics_interpolated_changed() {
++	// 3.6 has no centralised fixed-timestep-interpolation pump (the 3.7
++	// fti_update_servers_xform() hook this backport came from), so the shadow
++	// keeps listening to transform notifications whether or not physics
++	// interpolation is enabled; get_global_transform_interpolated() supplies the
++	// interpolated value when it is.
++	set_notify_transform(true);
++	Spatial::_physics_interpolated_changed();
++}
++
++void BlobShadow::_update_server(bool p_force_update) {
++	if (data.blob.is_valid()) {
++		Vector3 pos = get_global_transform_interpolated().origin;
++		if (!pos.is_equal_approx(data.prev_pos) || p_force_update) {
++			data.prev_pos = pos;
++			VisualServer::get_singleton()->blob_shadow_update(data.blob, pos, data.radius[0]);
++		}
++	} else if (data.capsule.is_valid()) {
++		Transform tr = get_global_transform_interpolated();
++		if (!tr.is_equal_approx(data.prev_xform) || p_force_update) {
++			data.prev_xform = tr;
++			Vector3 pos = tr.origin;
++			Vector3 pos_b = tr.xform(data.offset);
++			VisualServer::get_singleton()->capsule_shadow_update(data.capsule, pos, data.radius[0], pos_b, data.radius[1]);
++		}
++	}
++}
++
++void BlobShadow::_validate_property(PropertyInfo &property) const {
++	if (property.name == "offset_radius" || property.name == "offset") {
++		if (get_shadow_type() == BLOB_SHADOW_SPHERE) {
++			property.usage = 0;
++		}
++	}
++}
++
++void BlobShadow::_notification(int p_what) {
++	switch (p_what) {
++		case NOTIFICATION_ENTER_TREE: {
++			_refresh_visibility(true);
++		} break;
++		case NOTIFICATION_EXIT_TREE: {
++			_refresh_visibility(false);
++		} break;
++		case NOTIFICATION_TRANSFORM_CHANGED: {
++			if (is_visible_in_tree()) {
++				_update_server(false);
++			}
++		} break;
++		case NOTIFICATION_VISIBILITY_CHANGED: {
++			_refresh_visibility(is_inside_tree());
++		} break;
++	}
++}
++
++void BlobShadow::_refresh_visibility(bool p_in_tree) {
++	bool sphere_present = false;
++	bool capsule_present = false;
++
++	bool visible = p_in_tree && is_visible_in_tree();
++
++	if (visible) {
++		sphere_present = data.type == BLOB_SHADOW_SPHERE;
++		capsule_present = data.type == BLOB_SHADOW_CAPSULE;
++	}
++
++	if (sphere_present) {
++		if (!data.blob.is_valid()) {
++			data.blob = RID_PRIME(VisualServer::get_singleton()->blob_shadow_create());
++		}
++	} else {
++		if (data.blob.is_valid()) {
++			VisualServer::get_singleton()->free(data.blob);
++			data.blob = RID();
++		}
++	}
++
++	if (capsule_present) {
++		if (!data.capsule.is_valid()) {
++			data.capsule = RID_PRIME(VisualServer::get_singleton()->capsule_shadow_create());
++		}
++	} else {
++		if (data.capsule.is_valid()) {
++			VisualServer::get_singleton()->free(data.capsule);
++			data.capsule = RID();
++		}
++	}
++
++	_update_server(true);
++}
++
++void BlobShadow::set_radius(int p_index, real_t p_radius) {
++	ERR_FAIL_INDEX(p_index, 2);
++
++	if (p_radius == data.radius[p_index]) {
++		return;
++	}
++	data.radius[p_index] = p_radius;
++	_update_server(true);
++	update_gizmo();
++	_change_notify("radius");
++	_change_notify("offset_radius");
++}
++
++real_t BlobShadow::get_radius(int p_index) const {
++	ERR_FAIL_INDEX_V(p_index, 2, 0);
++	return data.radius[p_index];
++}
++
++void BlobShadow::set_offset(const Vector3 &p_offset) {
++	if (p_offset == data.offset) {
++		return;
++	}
++	data.offset = p_offset;
++	_update_server(true);
++	update_gizmo();
++}
++
++void BlobShadow::set_shadow_type(BlobShadowType p_type) {
++	if (data.type == p_type) {
++		return;
++	}
++
++	data.type = p_type;
++	_refresh_visibility(is_inside_tree());
++	update_gizmo();
++	_change_notify();
++}
++
++void BlobShadow::_bind_methods() {
++	BIND_ENUM_CONSTANT(BLOB_SHADOW_SPHERE);
++	BIND_ENUM_CONSTANT(BLOB_SHADOW_CAPSULE);
++
++	ClassDB::bind_method(D_METHOD("set_radius", "index", "radius"), &BlobShadow::set_radius);
++	ClassDB::bind_method(D_METHOD("get_radius", "index"), &BlobShadow::get_radius);
++
++	ClassDB::bind_method(D_METHOD("set_offset", "offset"), &BlobShadow::set_offset);
++	ClassDB::bind_method(D_METHOD("get_offset"), &BlobShadow::get_offset);
++
++	ClassDB::bind_method(D_METHOD("set_shadow_type", "type"), &BlobShadow::set_shadow_type);
++	ClassDB::bind_method(D_METHOD("get_shadow_type"), &BlobShadow::get_shadow_type);
++
++	ADD_PROPERTY(PropertyInfo(Variant::INT, "type", PROPERTY_HINT_ENUM, "Sphere,Capsule"), "set_shadow_type", "get_shadow_type");
++
++	ADD_PROPERTYI(PropertyInfo(Variant::REAL, "radius", PROPERTY_HINT_RANGE, "0,16,0.001,or_greater"), "set_radius", "get_radius", 0);
++	ADD_PROPERTYI(PropertyInfo(Variant::REAL, "offset_radius", PROPERTY_HINT_RANGE, "0,16,0.001,or_greater"), "set_radius", "get_radius", 1);
++
++	ADD_PROPERTY(PropertyInfo(Variant::VECTOR3, "offset"), "set_offset", "get_offset");
++}
++
++BlobShadow::BlobShadow() {
++	set_notify_transform(true);
++}
++
++BlobShadow::~BlobShadow() {
++	_refresh_visibility(false);
++}
+diff --git a/scene/3d/blob_shadow.h b/scene/3d/blob_shadow.h
+new file mode 100644
+--- /dev/null
++++ b/scene/3d/blob_shadow.h
+@@ -0,0 +1,93 @@
++/**************************************************************************/
++/*  blob_shadow.h                                                         */
++/**************************************************************************/
++/*                         This file is part of:                          */
++/*                             GODOT ENGINE                               */
++/*                        https://godotengine.org                         */
++/**************************************************************************/
++/* Copyright (c) 2014-present Godot Engine contributors (see AUTHORS.md). */
++/* Copyright (c) 2007-2014 Juan Linietsky, Ariel Manzur.                  */
++/*                                                                        */
++/* Permission is hereby granted, free of charge, to any person obtaining  */
++/* a copy of this software and associated documentation files (the        */
++/* "Software"), to deal in the Software without restriction, including    */
++/* without limitation the rights to use, copy, modify, merge, publish,    */
++/* distribute, sublicense, and/or sell copies of the Software, and to     */
++/* permit persons to whom the Software is furnished to do so, subject to  */
++/* the following conditions:                                              */
++/*                                                                        */
++/* The above copyright notice and this permission notice shall be         */
++/* included in all copies or substantial portions of the Software.        */
++/*                                                                        */
++/* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,        */
++/* EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF     */
++/* MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. */
++/* IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY   */
++/* CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,   */
++/* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE      */
++/* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                 */
++/**************************************************************************/
++
++#ifndef BLOB_SHADOW_H
++#define BLOB_SHADOW_H
++
++#include "scene/3d/spatial.h"
++
++class BlobShadow : public Spatial {
++	GDCLASS(BlobShadow, Spatial);
++
++public:
++	enum BlobShadowType {
++		BLOB_SHADOW_SPHERE,
++		BLOB_SHADOW_CAPSULE,
++	};
++
++private:
++	struct Data {
++		BlobShadowType type = BLOB_SHADOW_SPHERE;
++
++		RID blob;
++		RID capsule;
++
++		// Radius of sphere / capsules.
++		real_t radius[2];
++
++		// Offset to second sphere and second sphere radius
++		// when using a capsule.
++		Vector3 offset;
++
++		Vector3 prev_pos;
++		Transform prev_xform;
++
++		Data() {
++			radius[0] = 1;
++			radius[1] = 1;
++		}
++	} data;
++
++	void _refresh_visibility(bool p_in_tree);
++	void _update_server(bool p_force_update);
++
++protected:
++	static void _bind_methods();
++	void _notification(int p_what);
++	void _validate_property(PropertyInfo &property) const;
++	virtual void _physics_interpolated_changed();
++
++public:
++	void set_radius(int p_index, real_t p_radius);
++	real_t get_radius(int p_index = 0) const;
++
++	void set_offset(const Vector3 &p_offset);
++	Vector3 get_offset() const { return data.offset; }
++
++	void set_shadow_type(BlobShadowType p_type);
++	BlobShadowType get_shadow_type() const { return data.type; }
++
++	BlobShadow();
++	~BlobShadow();
++};
++
++VARIANT_ENUM_CAST(BlobShadow::BlobShadowType);
++
++#endif // BLOB_SHADOW_H
+diff --git a/scene/3d/light.cpp b/scene/3d/light.cpp
+--- a/scene/3d/light.cpp
++++ b/scene/3d/light.cpp
+@@ -33,6 +33,7 @@
+ #include "core/engine.h"
+ #include "core/project_settings.h"
+ #include "scene/resources/surface_tool.h"
++#include "servers/visual/visual_server_blob_shadows.h"
+ 
+ void Light::set_param(Param p_param, float p_value) {
+ 	ERR_FAIL_INDEX(p_param, PARAM_MAX);
+@@ -51,6 +52,25 @@
+ 			_change_notify("spot_range");
+ 		}
+ 	}
++
++	// Blob shadows are also interested in some of the regular parameters.
++	if (blob_light.is_valid()) {
++		switch (p_param) {
++			case PARAM_SPOT_ANGLE: {
++				VS::get_singleton()->blob_light_set_light_param(blob_light, VS::LightParam(p_param), p_value);
++			} break;
++			case PARAM_ENERGY: {
++				VS::get_singleton()->blob_light_set_light_param(blob_light, VS::LightParam(p_param), p_value);
++			} break;
++			case PARAM_RANGE: {
++				if (get_blob_shadow_param(BLOB_SHADOW_PARAM_RANGE_MAX) == 0) {
++					_update_blob_shadow_param(BLOB_SHADOW_PARAM_RANGE_MAX);
++				}
++			} break;
++			default:
++				break;
++		}
++	}
+ }
+ 
+ float Light::get_param(Param p_param) const {
+@@ -144,6 +164,82 @@
+ 	return bake_mode;
+ }
+ 
++void Light::set_blob_shadow(bool p_enable) {
++	if (p_enable == blob_shadow) {
++		return;
++	}
++	blob_shadow = p_enable;
++
++	set_notify_transform(p_enable);
++	if (p_enable) {
++		if (!blob_light.is_valid()) {
++			blob_light = RID_PRIME(VisualServer::get_singleton()->blob_light_create());
++
++			// Must refresh all parameters when recreating.
++			VisualServer::get_singleton()->blob_light_set_type(blob_light, get_light_type());
++			VisualServer::get_singleton()->blob_light_set_visible(blob_light, is_visible_in_tree());
++			for (int n = 0; n < BLOB_SHADOW_PARAM_MAX; n++) {
++				_update_blob_shadow_param((BlobShadowParam)n);
++			}
++			VisualServer::get_singleton()->blob_light_set_light_param(blob_light, VS::LIGHT_PARAM_SPOT_ANGLE, get_param(PARAM_SPOT_ANGLE));
++			VisualServer::get_singleton()->blob_light_set_light_param(blob_light, VS::LIGHT_PARAM_ENERGY, get_param(PARAM_ENERGY));
++
++			// Only set initial position if in the tree, else it will be updated when entering the tree.
++			if (is_inside_tree()) {
++				VisualServer::get_singleton()->blob_light_update(blob_light, get_global_transform());
++			}
++		}
++	} else {
++		if (blob_light.is_valid()) {
++			VisualServer::get_singleton()->free(blob_light);
++			blob_light = RID();
++		}
++	}
++}
++
++void Light::_update_blob_shadow_param(BlobShadowParam p_param) {
++	if (blob_light.is_valid()) {
++		real_t value = get_blob_shadow_param(p_param);
++
++		// Special case for range, if set to zero, we override with the light range.
++		if (p_param == BLOB_SHADOW_PARAM_RANGE_MAX) {
++			if (value == 0) {
++				if (type != VisualServer::LIGHT_DIRECTIONAL) {
++					value = get_param(PARAM_RANGE);
++				} else {
++					// Directional lights are hard coded with near infinite range
++					// if set to zero (default).
++					value = 10000000;
++				}
++			}
++		}
++		VS::get_singleton()->blob_light_set_param(blob_light, VS::LightBlobShadowParam(p_param), value);
++	}
++}
++
++void Light::set_blob_shadow_param(BlobShadowParam p_param, real_t p_value) {
++	blob_shadow_params[p_param] = p_value;
++	if (blob_light.is_valid()) {
++		_update_blob_shadow_param(p_param);
++	}
++}
++
++real_t Light::get_blob_shadow_param(BlobShadowParam p_param) const {
++	return blob_shadow_params[p_param];
++}
++
++void Light::set_blob_shadow_shadow_only(bool p_enable) {
++	if (p_enable == blob_shadow_shadow_only) {
++		return;
++	}
++	blob_shadow_shadow_only = p_enable;
++	_update_visibility();
++}
++
++bool Light::is_blob_shadow_shadow_only() const {
++	return blob_shadow_shadow_only;
++}
++
+ void Light::owner_changed_notify() {
+ 	// For cases where owner changes _after_ entering tree (as example, editor editing).
+ 	_update_visibility();
+@@ -170,18 +266,33 @@
+ 	}
+ #endif
+ 
+-	VS::get_singleton()->instance_set_visible(get_instance(), is_visible_in_tree() && editor_ok);
++	VS::get_singleton()->instance_set_visible(get_instance(), is_visible_in_tree() && editor_ok && !blob_shadow_shadow_only);
++	if (blob_light.is_valid()) {
++		VS::get_singleton()->blob_light_set_visible(blob_light, is_visible_in_tree() && editor_ok);
++		if (is_visible_in_tree() && editor_ok) {
++			VS::get_singleton()->blob_light_update(blob_light, get_global_transform_interpolated());
++		}
++	}
+ 
+ 	_change_notify("geometry/visible");
+ }
+ 
+ void Light::_notification(int p_what) {
+-	if (p_what == NOTIFICATION_VISIBILITY_CHANGED) {
+-		_update_visibility();
+-	}
+-
+-	if (p_what == NOTIFICATION_ENTER_TREE) {
+-		_update_visibility();
++	switch (p_what) {
++		case NOTIFICATION_VISIBILITY_CHANGED: {
++			_update_visibility();
++		} break;
++		case NOTIFICATION_ENTER_TREE: {
++			_update_visibility();
++		} break;
++
++		case NOTIFICATION_TRANSFORM_CHANGED: {
++			if (blob_light.is_valid() && is_visible_in_tree()) {
++				VisualServer::get_singleton()->blob_light_update(blob_light, get_global_transform_interpolated());
++			}
++		} break;
++		default:
++			break;
+ 	}
+ }
+ 
+@@ -232,6 +343,15 @@
+ 	ClassDB::bind_method(D_METHOD("set_bake_mode", "bake_mode"), &Light::set_bake_mode);
+ 	ClassDB::bind_method(D_METHOD("get_bake_mode"), &Light::get_bake_mode);
+ 
++	ClassDB::bind_method(D_METHOD("set_blob_shadow", "enabled"), &Light::set_blob_shadow);
++	ClassDB::bind_method(D_METHOD("has_blob_shadow"), &Light::has_blob_shadow);
++
++	ClassDB::bind_method(D_METHOD("set_blob_shadow_param", "parameter", "value"), &Light::set_blob_shadow_param);
++	ClassDB::bind_method(D_METHOD("get_blob_shadow_param"), &Light::get_blob_shadow_param);
++
++	ClassDB::bind_method(D_METHOD("set_blob_shadow_shadow_only", "enabled"), &Light::set_blob_shadow_shadow_only);
++	ClassDB::bind_method(D_METHOD("is_blob_shadow_shadow_only"), &Light::is_blob_shadow_shadow_only);
++
+ 	ADD_GROUP("Light", "light_");
+ 	ADD_PROPERTY(PropertyInfo(Variant::COLOR, "light_color", PROPERTY_HINT_COLOR_NO_ALPHA), "set_color", "get_color");
+ 	ADD_PROPERTYI(PropertyInfo(Variant::REAL, "light_energy", PROPERTY_HINT_RANGE, "0,16,0.001,or_greater"), "set_param", "get_param", PARAM_ENERGY);
+@@ -247,6 +367,12 @@
+ 	ADD_PROPERTYI(PropertyInfo(Variant::REAL, "shadow_bias", PROPERTY_HINT_RANGE, "-10,10,0.001"), "set_param", "get_param", PARAM_SHADOW_BIAS);
+ 	ADD_PROPERTYI(PropertyInfo(Variant::REAL, "shadow_contact", PROPERTY_HINT_RANGE, "0,10,0.001"), "set_param", "get_param", PARAM_CONTACT_SHADOW_SIZE);
+ 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "shadow_reverse_cull_face"), "set_shadow_reverse_cull_face", "get_shadow_reverse_cull_face");
++	ADD_GROUP("Blob Shadow", "blob_shadow_");
++	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "blob_shadow_enabled"), "set_blob_shadow", "has_blob_shadow");
++	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "blob_shadow_shadow_only"), "set_blob_shadow_shadow_only", "is_blob_shadow_shadow_only");
++	ADD_PROPERTYI(PropertyInfo(Variant::REAL, "blob_shadow_intensity", PROPERTY_HINT_RANGE, "0,2,0.01"), "set_blob_shadow_param", "get_blob_shadow_param", BLOB_SHADOW_PARAM_INTENSITY);
++	ADD_PROPERTYI(PropertyInfo(Variant::REAL, "blob_shadow_range_max", PROPERTY_HINT_RANGE, "0,100,0.1"), "set_blob_shadow_param", "get_blob_shadow_param", BLOB_SHADOW_PARAM_RANGE_MAX);
++	ADD_PROPERTYI(PropertyInfo(Variant::REAL, "blob_shadow_range_hardness", PROPERTY_HINT_RANGE, "0,1,0.001"), "set_blob_shadow_param", "get_blob_shadow_param", BLOB_SHADOW_PARAM_RANGE_HARDNESS);
+ 	ADD_GROUP("Editor", "");
+ 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "editor_only"), "set_editor_only", "is_editor_only");
+ 	ADD_GROUP("", "");
+@@ -270,6 +396,11 @@
+ 	BIND_ENUM_CONSTANT(PARAM_SHADOW_FADE_START);
+ 	BIND_ENUM_CONSTANT(PARAM_MAX);
+ 
++	BIND_ENUM_CONSTANT(BLOB_SHADOW_PARAM_RANGE_HARDNESS);
++	BIND_ENUM_CONSTANT(BLOB_SHADOW_PARAM_RANGE_MAX);
++	BIND_ENUM_CONSTANT(BLOB_SHADOW_PARAM_INTENSITY);
++	BIND_ENUM_CONSTANT(BLOB_SHADOW_PARAM_MAX);
++
+ 	BIND_ENUM_CONSTANT(BAKE_DISABLED);
+ 	BIND_ENUM_CONSTANT(BAKE_INDIRECT);
+ 	BIND_ENUM_CONSTANT(BAKE_ALL);
+@@ -293,10 +424,6 @@
+ 
+ 	VS::get_singleton()->instance_set_base(get_instance(), light);
+ 
+-	reverse_cull = false;
+-	bake_mode = BAKE_INDIRECT;
+-
+-	editor_only = false;
+ 	set_color(Color(1, 1, 1, 1));
+ 	set_shadow(false);
+ 	set_negative(false);
+@@ -319,10 +446,16 @@
+ 	set_param(PARAM_SHADOW_NORMAL_BIAS, 0.0);
+ 	set_param(PARAM_SHADOW_BIAS, 0.15);
+ 	set_disable_scale(true);
++
++	for (int n = 0; n < BLOB_SHADOW_PARAM_MAX; n++) {
++		blob_shadow_params[n] = 0;
++	}
++	set_blob_shadow_param(BLOB_SHADOW_PARAM_RANGE_HARDNESS, 0.8f);
++	set_blob_shadow_param(BLOB_SHADOW_PARAM_RANGE_MAX, 0);
++	set_blob_shadow_param(BLOB_SHADOW_PARAM_INTENSITY, 1);
+ }
+ 
+ Light::Light() {
+-	type = VisualServer::LIGHT_DIRECTIONAL;
+ 	ERR_PRINT("Light should not be instanced directly; use the DirectionalLight, OmniLight or SpotLight subtypes instead.");
+ }
+ 
+@@ -332,6 +465,10 @@
+ 	if (light.is_valid()) {
+ 		VisualServer::get_singleton()->free(light);
+ 	}
++
++	if (blob_light.is_valid()) {
++		VisualServer::get_singleton()->free(blob_light);
++	}
+ }
+ /////////////////////////////////////////
+ 
+diff --git a/scene/3d/light.h b/scene/3d/light.h
+--- a/scene/3d/light.h
++++ b/scene/3d/light.h
+@@ -61,6 +61,13 @@
+ 		PARAM_MAX = VS::LIGHT_PARAM_MAX
+ 	};
+ 
++	enum BlobShadowParam {
++		BLOB_SHADOW_PARAM_RANGE_HARDNESS,
++		BLOB_SHADOW_PARAM_RANGE_MAX,
++		BLOB_SHADOW_PARAM_INTENSITY,
++		BLOB_SHADOW_PARAM_MAX
++	};
++
+ 	enum BakeMode {
+ 		BAKE_DISABLED,
+ 		BAKE_INDIRECT,
+@@ -71,14 +78,23 @@
+ 	Color color;
+ 	float param[PARAM_MAX];
+ 	Color shadow_color;
+-	bool shadow;
+-	bool negative;
+-	bool reverse_cull;
+-	uint32_t cull_mask;
+-	VS::LightType type;
+-	bool editor_only;
++	bool shadow = false;
++	bool negative = false;
++	bool reverse_cull = false;
++	uint32_t cull_mask = 0;
++	VS::LightType type = VisualServer::LIGHT_DIRECTIONAL;
++	bool editor_only = false;
+ 	void _update_visibility();
+-	BakeMode bake_mode;
++	BakeMode bake_mode = BAKE_INDIRECT;
++
++	// Blob shadows
++	bool blob_shadow = false;
++	real_t blob_shadow_params[BLOB_SHADOW_PARAM_MAX];
++	void _update_blob_shadow_param(BlobShadowParam p_param);
++
++	// Allowing a light to be a shadow caster only is useful particularly
++	// in conjunction with lightmaps.
++	bool blob_shadow_shadow_only = false;
+ 
+ 	// bind helpers
+ 
+@@ -86,6 +102,7 @@
+ 
+ protected:
+ 	RID light;
++	RID blob_light;
+ 
+ 	static void _bind_methods();
+ 	void _notification(int p_what);
+@@ -123,6 +140,15 @@
+ 	void set_bake_mode(BakeMode p_mode);
+ 	BakeMode get_bake_mode() const;
+ 
++	void set_blob_shadow(bool p_enable);
++	bool has_blob_shadow() const { return blob_shadow; }
++
++	void set_blob_shadow_param(BlobShadowParam p_param, real_t p_value);
++	real_t get_blob_shadow_param(BlobShadowParam p_param) const;
++
++	void set_blob_shadow_shadow_only(bool p_enable);
++	bool is_blob_shadow_shadow_only() const;
++
+ 	virtual AABB get_aabb() const;
+ 	virtual PoolVector<Face3> get_faces(uint32_t p_usage_flags) const;
+ 
+@@ -131,6 +157,7 @@
+ };
+ 
+ VARIANT_ENUM_CAST(Light::Param);
++VARIANT_ENUM_CAST(Light::BlobShadowParam);
+ VARIANT_ENUM_CAST(Light::BakeMode);
+ 
+ class DirectionalLight : public Light {
+diff --git a/scene/register_scene_types.cpp b/scene/register_scene_types.cpp
+--- a/scene/register_scene_types.cpp
++++ b/scene/register_scene_types.cpp
+@@ -183,6 +183,8 @@
+ #include "scene/3d/arvr_nodes.h"
+ #include "scene/3d/audio_stream_player_3d.h"
+ #include "scene/3d/baked_lightmap.h"
++#include "scene/3d/blob_focus.h"
++#include "scene/3d/blob_shadow.h"
+ #include "scene/3d/bone_attachment.h"
+ #include "scene/3d/camera.h"
+ #include "scene/3d/collision_polygon.h"
+@@ -469,6 +471,8 @@
+ 	ClassDB::register_class<Occluder>();
+ 	ClassDB::register_class<Portal>();
+ 	ClassDB::register_class<MergeGroup>();
++	ClassDB::register_class<BlobShadow>();
++	ClassDB::register_class<BlobFocus>();
+ 
+ 	ClassDB::register_class<RootMotionView>();
+ 	ClassDB::set_class_enabled("RootMotionView", false); //disabled by default, enabled by editor
+diff --git a/scene/resources/material.cpp b/scene/resources/material.cpp
+--- a/scene/resources/material.cpp
++++ b/scene/resources/material.cpp
+@@ -488,6 +488,9 @@
+ 	if (flags[FLAG_DONT_RECEIVE_SHADOWS]) {
+ 		code += ",shadows_disabled";
+ 	}
++	if (flags[FLAG_DONT_RECEIVE_BLOB_SHADOWS]) {
++		code += ",blob_shadows_disabled";
++	}
+ 	if (flags[FLAG_DISABLE_AMBIENT_LIGHT]) {
+ 		code += ",ambient_light_disabled";
+ 	}
+@@ -2118,6 +2121,7 @@
+ 	ADD_PROPERTYI(PropertyInfo(Variant::BOOL, "flags_fixed_size"), "set_flag", "get_flag", FLAG_FIXED_SIZE);
+ 	ADD_PROPERTYI(PropertyInfo(Variant::BOOL, "flags_albedo_tex_force_srgb"), "set_flag", "get_flag", FLAG_ALBEDO_TEXTURE_FORCE_SRGB);
+ 	ADD_PROPERTYI(PropertyInfo(Variant::BOOL, "flags_do_not_receive_shadows"), "set_flag", "get_flag", FLAG_DONT_RECEIVE_SHADOWS);
++	ADD_PROPERTYI(PropertyInfo(Variant::BOOL, "flags_do_not_receive_blob_shadows"), "set_flag", "get_flag", FLAG_DONT_RECEIVE_BLOB_SHADOWS);
+ 	ADD_PROPERTYI(PropertyInfo(Variant::BOOL, "flags_disable_ambient_light"), "set_flag", "get_flag", FLAG_DISABLE_AMBIENT_LIGHT);
+ 	ADD_PROPERTYI(PropertyInfo(Variant::BOOL, "flags_ensure_correct_normals"), "set_flag", "get_flag", FLAG_ENSURE_CORRECT_NORMALS);
+ 	ADD_PROPERTYI(PropertyInfo(Variant::BOOL, "flags_albedo_tex_msdf"), "set_flag", "get_flag", FLAG_ALBEDO_TEXTURE_SDF);
+@@ -2320,6 +2324,7 @@
+ 	BIND_ENUM_CONSTANT(FLAG_TRIPLANAR_USE_WORLD);
+ 	BIND_ENUM_CONSTANT(FLAG_ALBEDO_TEXTURE_FORCE_SRGB);
+ 	BIND_ENUM_CONSTANT(FLAG_DONT_RECEIVE_SHADOWS);
++	BIND_ENUM_CONSTANT(FLAG_DONT_RECEIVE_BLOB_SHADOWS);
+ 	BIND_ENUM_CONSTANT(FLAG_DISABLE_AMBIENT_LIGHT);
+ 	BIND_ENUM_CONSTANT(FLAG_ENSURE_CORRECT_NORMALS);
+ 	BIND_ENUM_CONSTANT(FLAG_USE_SHADOW_TO_OPACITY);
+@@ -2425,7 +2430,7 @@
+ 	detail_blend_mode = BLEND_MODE_MIX;
+ 	depth_draw_mode = DEPTH_DRAW_OPAQUE_ONLY;
+ 	cull_mode = CULL_BACK;
+-	for (int i = 0; i < FLAG_MAX; i++) {
++	for (uint32_t i = 0; i < FLAG_MAX; i++) {
+ 		flags[i] = false;
+ 	}
+ 
+diff --git a/scene/resources/material.h b/scene/resources/material.h
+--- a/scene/resources/material.h
++++ b/scene/resources/material.h
+@@ -172,7 +172,7 @@
+ 		CULL_DISABLED
+ 	};
+ 
+-	enum Flags {
++	enum Flags : uint32_t {
+ 		FLAG_UNSHADED,
+ 		FLAG_USE_VERTEX_LIGHTING,
+ 		FLAG_DISABLE_DEPTH_TEST,
+@@ -193,6 +193,7 @@
+ 		FLAG_DISABLE_AMBIENT_LIGHT,
+ 		FLAG_USE_SHADOW_TO_OPACITY,
+ 		FLAG_ALBEDO_TEXTURE_SDF,
++		FLAG_DONT_RECEIVE_BLOB_SHADOWS,
+ 		FLAG_MAX
+ 	};
+ 
+@@ -246,13 +247,14 @@
+ 
+ private:
+ 	union MaterialKey {
++		static_assert(FLAG_MAX == 21, "Must change bit depth in MaterialKey when changing Flags.");
+ 		struct {
+ 			uint64_t feature_mask : 12;
+ 			uint64_t detail_uv : 1;
+ 			uint64_t blend_mode : 2;
+ 			uint64_t depth_draw_mode : 2;
+ 			uint64_t cull_mode : 2;
+-			uint64_t flags : 20;
++			uint64_t flags : 21;
+ 			uint64_t detail_blend_mode : 2;
+ 			uint64_t diffuse_mode : 3;
+ 			uint64_t specular_mode : 3;
+@@ -265,7 +267,7 @@
+ 			uint64_t emission_op : 1;
+ 			uint64_t texture_metallic : 1;
+ 			uint64_t texture_roughness : 1;
+-			//uint64_t reserved : 6;
++			//uint64_t reserved : 5;
+ 		};
+ 
+ 		uint64_t key;
+@@ -296,7 +298,7 @@
+ 		mk.blend_mode = blend_mode;
+ 		mk.depth_draw_mode = depth_draw_mode;
+ 		mk.cull_mode = cull_mode;
+-		for (int i = 0; i < FLAG_MAX; i++) {
++		for (uint32_t i = 0; i < FLAG_MAX; i++) {
+ 			if (flags[i]) {
+ 				mk.flags |= ((uint64_t)1 << i);
+ 			}
+diff --git a/servers/visual/shader_types.cpp b/servers/visual/shader_types.cpp
+--- a/servers/visual/shader_types.cpp
++++ b/servers/visual/shader_types.cpp
+@@ -108,6 +108,7 @@
+ 	shader_modes[VS::SHADER_SPATIAL].functions["fragment"].built_ins["RIM_TINT"] = ShaderLanguage::TYPE_FLOAT;
+ 	shader_modes[VS::SHADER_SPATIAL].functions["fragment"].built_ins["CLEARCOAT"] = ShaderLanguage::TYPE_FLOAT;
+ 	shader_modes[VS::SHADER_SPATIAL].functions["fragment"].built_ins["CLEARCOAT_GLOSS"] = ShaderLanguage::TYPE_FLOAT;
++	shader_modes[VS::SHADER_SPATIAL].functions["fragment"].built_ins["BLOB_SHADOW"] = ShaderLanguage::TYPE_FLOAT;
+ 	shader_modes[VS::SHADER_SPATIAL].functions["fragment"].built_ins["ANISOTROPY"] = ShaderLanguage::TYPE_FLOAT;
+ 	shader_modes[VS::SHADER_SPATIAL].functions["fragment"].built_ins["ANISOTROPY_FLOW"] = ShaderLanguage::TYPE_VEC2;
+ 	shader_modes[VS::SHADER_SPATIAL].functions["fragment"].built_ins["SSS_STRENGTH"] = ShaderLanguage::TYPE_FLOAT;
+@@ -202,6 +203,7 @@
+ 	shader_modes[VS::SHADER_SPATIAL].modes.push_back("ensure_correct_normals");
+ 
+ 	shader_modes[VS::SHADER_SPATIAL].modes.push_back("shadows_disabled");
++	shader_modes[VS::SHADER_SPATIAL].modes.push_back("blob_shadows_disabled");
+ 	shader_modes[VS::SHADER_SPATIAL].modes.push_back("ambient_light_disabled");
+ 	shader_modes[VS::SHADER_SPATIAL].modes.push_back("shadow_to_opacity");
+ 
+diff --git a/servers/visual/visual_server_blob_shadows.cpp b/servers/visual/visual_server_blob_shadows.cpp
+new file mode 100644
+--- /dev/null
++++ b/servers/visual/visual_server_blob_shadows.cpp
+@@ -0,0 +1,927 @@
++/**************************************************************************/
++/*  visual_server_blob_shadows.cpp                                        */
++/**************************************************************************/
++/*                         This file is part of:                          */
++/*                             GODOT ENGINE                               */
++/*                        https://godotengine.org                         */
++/**************************************************************************/
++/* Copyright (c) 2014-present Godot Engine contributors (see AUTHORS.md). */
++/* Copyright (c) 2007-2014 Juan Linietsky, Ariel Manzur.                  */
++/*                                                                        */
++/* Permission is hereby granted, free of charge, to any person obtaining  */
++/* a copy of this software and associated documentation files (the        */
++/* "Software"), to deal in the Software without restriction, including    */
++/* without limitation the rights to use, copy, modify, merge, publish,    */
++/* distribute, sublicense, and/or sell copies of the Software, and to     */
++/* permit persons to whom the Software is furnished to do so, subject to  */
++/* the following conditions:                                              */
++/*                                                                        */
++/* The above copyright notice and this permission notice shall be         */
++/* included in all copies or substantial portions of the Software.        */
++/*                                                                        */
++/* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,        */
++/* EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF     */
++/* MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. */
++/* IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY   */
++/* CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,   */
++/* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE      */
++/* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                 */
++/**************************************************************************/
++
++#include "visual_server_blob_shadows.h"
++
++#include "core/engine.h"
++#include "core/math/plane.h"
++#include "core/project_settings.h"
++
++#include <string.h>
++
++// #define GODOT_BLOB_SHADOWS_TEST_DIRECTION_INTERPOLATION
++
++bool VisualServerBlobShadows::_active_project_setting = true;
++bool VisualServerBlobShadows::_active_blobs_present = false;
++bool VisualServerBlobShadows::_active = true;
++
++void VisualServerBlobShadows::update() {
++	if (ProjectSettings::get_singleton()->has_changes()) {
++		// Only change these via project setting in the editor.
++		// In game use VisualServer API as it is more efficient and won't cause stalls.
++		if (Engine::get_singleton()->is_editor_hint()) {
++			data.range = GLOBAL_GET("rendering/quality/blob_shadows/range");
++			data.gamma = GLOBAL_GET("rendering/quality/blob_shadows/gamma");
++			data.intensity = GLOBAL_GET("rendering/quality/blob_shadows/intensity");
++		}
++		_active_project_setting = GLOBAL_GET("rendering/quality/blob_shadows/enable");
++		_refresh_active();
++	}
++
++	if (is_active()) {
++		data.bvh.update();
++	}
++}
++
++VisualServerBlobShadows::Light *VisualServerBlobShadows::request_light(uint32_t &r_handle) {
++	Light *light = data.lights.request(r_handle);
++	light->clear();
++
++	// Associate an instance with this light.
++	Instance *instance = data.instances.request(light->instance_handle);
++	instance->clear();
++	instance->handle = r_handle;
++	instance->type = IT_LIGHT;
++
++	// Lights only pair with casters.
++	light->bvh_handle = data.bvh.create((void *)(uintptr_t)light->instance_handle, true, 0, 2);
++
++	r_handle++;
++	_refresh_active();
++	return light;
++}
++
++void VisualServerBlobShadows::delete_light(uint32_t p_handle) {
++	const Light &light = get_light(p_handle);
++
++	data.bvh.erase(light.bvh_handle);
++
++	// Free instance associated with this light.
++	data.instances.free(light.instance_handle);
++
++	data.lights.free(--p_handle);
++	_refresh_active();
++}
++
++void VisualServerBlobShadows::set_light_visible(uint32_t p_handle, bool p_visible) {
++	Light &light = get_light(p_handle);
++	light.visible = p_visible;
++	make_light_dirty(light);
++	_refresh_active();
++}
++
++void VisualServerBlobShadows::make_light_dirty(Light &p_light) {
++	// Just immediate update for now.
++	AABB &aabb = p_light.aabb;
++	aabb.size = Vector3();
++
++	switch (p_light.type) {
++		case VisualServerBlobShadows::OMNI: {
++			aabb.position = p_light.pos;
++			aabb.grow_by(p_light.range_max);
++		} break;
++		case VisualServerBlobShadows::SPOT: {
++			if (p_light.direction.length_squared() < 0.001f) {
++				return;
++			}
++#define SPOT_SIMPLE_BOUND
++#ifdef SPOT_SIMPLE_BOUND
++			aabb.position = p_light.pos;
++			aabb.grow_by(p_light.range_max);
++
++#else
++			// Pointing in -Z direction (look_at convention)
++			Vector3 corn_a = Vector3(p_light.range_max, p_light.range_max, 0);
++			Vector3 corn_b = Vector3(-p_light.range_max, -p_light.range_max, -p_light.range_max);
++			aabb.position = corn_a;
++			aabb.expand_to(corn_b);
++
++			// Test
++			//aabb = AABB(Vector3(), Vector3(1, 1, -10));
++
++			// Rotate.
++			Transform tr;
++			tr.set_look_at(Vector3(), p_light.direction, Vector3(0, 1, 0));
++
++			aabb = tr.xform(aabb);
++
++			// Shift
++			aabb.position += p_light.pos;
++#endif
++		} break;
++		case VisualServerBlobShadows::DIRECTIONAL: {
++			const real_t cfmax = FLT_MAX / 4.0;
++			Vector3 corn_a = Vector3(-cfmax, p_light.pos.y, -cfmax);
++			Vector3 corn_b = Vector3(cfmax, p_light.pos.y - p_light.range_max, cfmax);
++			aabb.position = corn_a;
++			aabb.expand_to(corn_b);
++		} break;
++	}
++
++	data.bvh.move(p_light.bvh_handle, aabb);
++}
++
++VisualServerBlobShadows::Blob *VisualServerBlobShadows::request_blob(uint32_t &r_handle) {
++	Blob *caster = data.blobs.request(r_handle);
++	caster->clear();
++	caster->ref_count = 1;
++
++	// Associate an instance with this caster.
++	Instance *instance = data.instances.request(caster->instance_handle);
++	instance->clear();
++	instance->handle = r_handle;
++	instance->type = IT_BLOB;
++
++	// Casters only pair with lights.
++	caster->bvh_handle = data.bvh.create((void *)(uintptr_t)caster->instance_handle, true, 1, 1);
++
++	r_handle++;
++
++	_refresh_active();
++	return caster;
++}
++
++void VisualServerBlobShadows::delete_blob(uint32_t p_handle) {
++	const Caster &caster = get_blob(p_handle);
++
++	data.bvh.erase(caster.bvh_handle);
++
++	// Free instance associated with this caster.
++	data.instances.free(caster.instance_handle);
++
++	// Deferred free of the caster so it can fade,
++	// if it has a ref count.
++	unref_blob(p_handle);
++	_refresh_active();
++}
++
++void VisualServerBlobShadows::make_blob_dirty(Blob &p_caster) {
++	// Just immediate update for now.
++	AABB &aabb = p_caster.aabb;
++	aabb.position = p_caster.pos;
++	aabb.size = Vector3();
++	aabb.grow_by(p_caster.size);
++
++	data.bvh.move(p_caster.bvh_handle, aabb);
++}
++
++VisualServerBlobShadows::Capsule *VisualServerBlobShadows::request_capsule(uint32_t &r_handle) {
++	Capsule *caster = data.capsules.request(r_handle);
++	caster->clear();
++	caster->ref_count = 1;
++
++	// Associate an instance with this caster.
++	Instance *instance = data.instances.request(caster->instance_handle);
++	instance->clear();
++	instance->handle = r_handle;
++	instance->type = IT_CAPSULE;
++
++	// Casters only pair with lights.
++	caster->bvh_handle = data.bvh.create((void *)(uintptr_t)caster->instance_handle, true, 1, 1);
++
++	r_handle++;
++
++	_refresh_active();
++	return caster;
++}
++
++void VisualServerBlobShadows::delete_capsule(uint32_t p_handle) {
++	const Capsule &caster = get_capsule(p_handle);
++
++	data.bvh.erase(caster.bvh_handle);
++
++	// Free instance associated with this caster.
++	data.instances.free(caster.instance_handle);
++
++	// Deferred free of the caster so it can fade,
++	// if it has a ref count.
++	unref_capsule(p_handle);
++	_refresh_active();
++}
++
++void VisualServerBlobShadows::make_capsule_dirty(Capsule &p_caster) {
++	// Just immediate update for now.
++	AABB &aabb = p_caster.aabb;
++	aabb.position = p_caster.pos;
++	aabb.size = Vector3();
++	aabb.grow_by(p_caster.size);
++
++	AABB aabb2;
++	aabb2.position = p_caster.pos_b;
++	aabb2.grow_by(p_caster.size_b);
++	aabb.merge_with(aabb2);
++
++	data.bvh.move(p_caster.bvh_handle, aabb);
++}
++
++int VisualServerBlobShadows::qsort_cmp_func(const void *a, const void *b) {
++	const SortFocusCaster *pa = (const SortFocusCaster *)a;
++	const SortFocusCaster *pb = (const SortFocusCaster *)b;
++
++	return (pa->distance > pb->distance);
++}
++
++VisualServerBlobShadows::Focus *VisualServerBlobShadows::request_focus(uint32_t &r_handle) {
++	Focus *focus = data.foci.request(r_handle);
++	focus->clear();
++	r_handle++;
++	return focus;
++}
++
++void VisualServerBlobShadows::delete_focus(uint32_t p_handle) {
++	data.foci.free(--p_handle);
++}
++
++template <class T, bool BLOBS_OR_CAPSULES>
++void VisualServerBlobShadows::update_focus_blobs_or_capsules(const Focus &p_focus, FocusInfo &r_focus_info, const TrackedPooledList<T> &p_blobs, uint32_t p_max_casters) {
++	// This is incredibly naive going through each caster, calculating offsets and sorting.
++	// It should work fine up to 1000 or so casters, but can probably be optimized to use BVH
++	// or quick reject.
++	uint32_t sortcount = p_blobs.active_size();
++	SortFocusCaster *sortlist = (SortFocusCaster *)alloca(sortcount * sizeof(SortFocusCaster));
++	memset((void *)sortlist, 0, sortcount * sizeof(SortFocusCaster));
++
++	constexpr bool blobs_or_capsules = BLOBS_OR_CAPSULES;
++
++	uint32_t validcount = 0;
++	for (uint32_t n = 0; n < p_blobs.active_size(); n++) {
++		const T &caster = p_blobs.get_active(n);
++		if (!caster.linked_lights->size()) {
++			sortlist[n].distance = FLT_MAX;
++			sortlist[n].caster_id = UINT32_MAX;
++			continue;
++		}
++
++		sortlist[n].distance = (caster.pos_center - p_focus.pos).length_squared();
++		sortlist[n].caster_id = blobs_or_capsules ? data.blobs.get_active_id(n) : data.capsules.get_active_id(n);
++		validcount++;
++	}
++
++	qsort((void *)sortlist, sortcount, sizeof(SortFocusCaster), qsort_cmp_func);
++	uint32_t num_closest = MIN(p_max_casters, validcount);
++
++	for (uint32_t n = 0; n < num_closest; n++) {
++		update_focus_caster(blobs_or_capsules, r_focus_info, sortlist[n]);
++	}
++
++	// Update existing focus casters and pending
++	FocusInfo &fi = r_focus_info;
++
++	for (uint32_t n = 0; n < fi.blobs.size(); n++) {
++		FocusCaster &fc = fi.blobs[n];
++		if (fc.last_update_frame != data.update_frame) {
++			fc.state = FocusCaster::FCS_EXITING;
++		}
++
++		switch (fc.state) {
++			case FocusCaster::FCS_ON: {
++				fc.fraction = 1.0f;
++			} break;
++			case FocusCaster::FCS_ENTERING: {
++				fc.in_count++;
++				fc.fraction = (real_t)fc.in_count / 60;
++
++				// Fully faded in, change to on
++				if (fc.in_count >= 60) {
++					fc.state = FocusCaster::FCS_ON;
++					fc.in_count = 60;
++				}
++
++			} break;
++			case FocusCaster::FCS_EXITING: {
++				// unexit?
++				if (fc.last_update_frame == data.update_frame) {
++					fc.state = FocusCaster::FCS_ENTERING;
++				} else {
++					fc.in_count--;
++					fc.fraction = (real_t)fc.in_count / 60;
++					if (!fc.in_count) {
++						// Decrement ref count so we can free
++						// when no more fades.
++						if (blobs_or_capsules) {
++							unref_blob(fc.caster_id + 1);
++						} else {
++							unref_capsule(fc.caster_id + 1);
++						}
++
++						fi.blobs.remove_unordered(n);
++
++						// repeat this element
++						n--;
++					}
++				}
++
++			} break;
++		}
++	}
++
++	// If the pending is still not being actively requested, remove it
++	for (uint32_t n = 0; n < fi.blobs_pending.size(); n++) {
++		FocusCaster &fc = fi.blobs_pending[n];
++		if (fc.last_update_frame != data.update_frame) {
++			fi.blobs_pending.remove_unordered(n);
++			n--;
++		}
++	}
++
++	// Finally add any pending if there is room
++	uint32_t max_casters = blobs_or_capsules ? data.blob_max_casters : data.capsule_max_casters;
++
++	while ((fi.blobs.size() < max_casters) && fi.blobs_pending.size()) {
++		// When on the focus, we add a reference to
++		// prevent deletion.
++		FocusCaster &fc = fi.blobs_pending.last();
++
++		if (blobs_or_capsules) {
++			ref_blob(fc.caster_id + 1);
++		} else {
++			ref_capsule(fc.caster_id + 1);
++		}
++
++		fi.blobs.push_back(fc);
++		fi.blobs_pending.pop();
++
++		fc.state = FocusCaster::FCS_ENTERING;
++		fc.in_count = 1;
++		fc.fraction = (real_t)fc.in_count / 60;
++	}
++}
++
++void VisualServerBlobShadows::update_focus(Focus &r_focus) {
++	update_focus_blobs_or_capsules<Blob, true>(r_focus, r_focus.blobs, data.blobs, data.blob_max_casters);
++	update_focus_blobs_or_capsules<Capsule, false>(r_focus, r_focus.capsules, data.capsules, data.capsule_max_casters);
++}
++
++void VisualServerBlobShadows::update_focus_caster(bool p_blobs_or_capsules, FocusInfo &r_focus_info, const SortFocusCaster &p_sort_focus_caster) {
++	FocusInfo &fi = r_focus_info;
++
++	// Does the focus caster exist already?
++	for (uint32_t n = 0; n < fi.blobs.size(); n++) {
++		FocusCaster &fc = fi.blobs[n];
++		if (fc.caster_id == p_sort_focus_caster.caster_id) {
++			fc.last_update_frame = data.update_frame;
++			find_best_light(p_blobs_or_capsules, fc);
++			return;
++		}
++	}
++
++	// if we got to here, not existing, add to pending list
++	for (uint32_t n = 0; n < fi.blobs_pending.size(); n++) {
++		FocusCaster &fc = fi.blobs_pending[n];
++		if (fc.caster_id == p_sort_focus_caster.caster_id) {
++			fc.last_update_frame = data.update_frame;
++		}
++	}
++
++	if (fi.blobs_pending.is_full()) {
++		return;
++	}
++
++	// Add to pending
++	fi.blobs_pending.resize(fi.blobs_pending.size() + 1);
++	FocusCaster &fc = fi.blobs_pending.last();
++	fc.caster_id = p_sort_focus_caster.caster_id;
++	fc.last_update_frame = data.update_frame;
++}
++
++#ifdef GODOT_BLOB_SHADOWS_TEST_DIRECTION_INTERPOLATION
++Vector3 choose_random_dir() {
++	Vector3 d = Vector3(Math::randf(), Math::randf(), Math::randf());
++	d *= 2.0f;
++	d -= Vector3(1, 1, 1);
++	d.normalize();
++	return d;
++}
++
++void test_direction_interpolation() {
++	const int MAX_DIRS = 3;
++	Vector3 dirs[MAX_DIRS];
++	float weights[MAX_DIRS];
++	Vector3 orig_dirs[MAX_DIRS];
++	float orig_weights[MAX_DIRS];
++	for (int run = 0; run < 10; run++) {
++		float total_weight = 0.0f;
++		for (int i = 0; i < MAX_DIRS; i++) {
++			orig_dirs[i] = choose_random_dir();
++			orig_weights[i] = Math::randf();
++			total_weight += orig_weights[i];
++		}
++		for (int i = 0; i < MAX_DIRS; i++) {
++			orig_weights[i] /= total_weight;
++		}
++
++		for (int i = 0; i < MAX_DIRS; i++) {
++			dirs[i] = orig_dirs[i];
++			weights[i] = orig_weights[i];
++		}
++
++		for (int n = MAX_DIRS - 1; n >= 1; n--) {
++			float w0 = weights[n - 1];
++			float w1 = weights[n];
++			float fraction = w0 / (w0 + w1);
++			Vector3 new_dir = dirs[n - 1].slerp(dirs[n], fraction);
++			new_dir.normalize();
++			dirs[n - 1] = new_dir;
++			weights[n - 1] = w0 + w1;
++		}
++
++		print_line("final result : " + String(Variant(dirs[0])));
++
++		for (int i = 0; i < MAX_DIRS; i++) {
++			dirs[i] = orig_dirs[MAX_DIRS - i - 1];
++			weights[i] = orig_weights[MAX_DIRS - i - 1];
++		}
++
++		for (int n = MAX_DIRS - 1; n >= 1; n--) {
++			float w0 = weights[n - 1];
++			float w1 = weights[n];
++			float fraction = w0 / (w0 + w1);
++			Vector3 new_dir = dirs[n - 1].slerp(dirs[n], fraction);
++			new_dir.normalize();
++			dirs[n - 1] = new_dir;
++			weights[n - 1] = w0 + w1;
++		}
++
++		print_line("final result2 : " + String(Variant(dirs[0])));
++		print_line("\n");
++	}
++}
++#endif
++
++void VisualServerBlobShadows::find_best_light(bool p_blobs_or_capsules, FocusCaster &r_focus_caster) {
++#ifdef GODOT_BLOB_SHADOWS_TEST_DIRECTION_INTERPOLATION
++	test_direction_interpolation();
++#endif
++	Caster *caster = nullptr;
++	if (p_blobs_or_capsules) {
++		Blob &blob = data.blobs[r_focus_caster.caster_id];
++		caster = &blob;
++	} else {
++		Capsule &capsule = data.capsules[r_focus_caster.caster_id];
++		caster = &capsule;
++	}
++
++	// first find relative weights of lights
++	real_t total_weight = 0;
++
++	struct LightCalc {
++		Vector3 pos;
++		real_t dist;
++		real_t intensity;
++		real_t weight;
++	};
++
++	LightCalc *lights = (LightCalc *)alloca(sizeof(LightCalc) * caster->linked_lights->size());
++	memset((void *)lights, 0, sizeof(LightCalc) * caster->linked_lights->size());
++	uint32_t num_lights = 0;
++
++	r_focus_caster.light_modulate = 0;
++
++	if (data.debug_output) {
++		print_line("num linked lights for caster " + itos(caster->instance_handle) + " : " + itos(caster->linked_lights->size()) + ", caster pos " + String(Variant(caster->pos)));
++	}
++
++	r_focus_caster.active = false;
++
++	for (uint32_t n = 0; n < caster->linked_lights->size(); n++) {
++		uint32_t light_handle = (*caster->linked_lights)[n];
++		const Light &light = data.lights[light_handle];
++
++		if (!light.visible) {
++			continue;
++		}
++
++		LightCalc &lc = lights[num_lights++];
++
++		Vector3 offset_light_caster;
++		if (light.type != DIRECTIONAL) {
++			offset_light_caster = light.pos - caster->pos_center;
++			lc.dist = offset_light_caster.length();
++		} else {
++			lc.dist = Math::abs(light.pos.y - caster->pos_center.y);
++		}
++		lc.intensity = light.energy_intensity;
++
++		if (lc.dist >= light.range_max) // out of range
++		{
++			lc.dist = 0;
++			num_lights--;
++			continue;
++		}
++
++		if (Math::is_zero_approx(light.energy)) {
++			num_lights--;
++			continue;
++		}
++
++		// Total weight is scaled impact of each light, from 0 to 1.
++		lc.weight = (light.range_max - lc.dist) / light.range_max;
++		lc.weight *= light.energy;
++
++		// Apply cone on spot
++		if (light.type == SPOT) {
++			real_t dot = -offset_light_caster.normalized().dot(light.direction);
++
++			dot -= light.spot_dot_threshold;
++			dot *= light.spot_dot_multiplier;
++
++			if (dot <= 0) {
++				lc.dist = 0;
++				num_lights--;
++				continue;
++			}
++
++			lc.weight *= dot;
++			lc.intensity *= dot;
++		}
++
++		total_weight += lc.weight;
++
++		if (data.debug_output) {
++			print_line("(" + itos(n) + ") light handle " + itos(light_handle) + " weight " + String(Variant(lc.weight)) + ", dist " + String(Variant(lc.dist)) + " over max " + String(Variant(light.range_max)));
++			print_line("\tLight AABB " + String(Variant(light.aabb)) + " ... type " + light.get_type_string());
++		}
++
++		// Modify distance to take into account fade.
++		real_t dist_left = lc.dist;
++		if (dist_left > light.range_mid) {
++			dist_left -= light.range_mid;
++
++			// Scale 0 to 1
++			dist_left /= light.range_mid_max;
++			real_t fade = 1.0f - dist_left;
++
++			r_focus_caster.light_modulate = MAX(r_focus_caster.light_modulate, fade);
++		} else {
++			r_focus_caster.light_modulate = 1;
++		}
++
++		if (light.type != DIRECTIONAL) {
++			lc.pos = light.pos;
++		} else {
++			lc.pos = caster->pos_center - (light.direction * 10000);
++		}
++
++		r_focus_caster.active = true;
++	}
++
++	// No lights affect this caster, do no more work.
++	if (!r_focus_caster.active) {
++		return;
++	}
++
++	r_focus_caster.light_pos = Vector3();
++	real_t intensity = 0;
++
++	// prevent divide by zero
++	total_weight = MAX(total_weight, (real_t)0.0000001);
++
++	// second pass
++	for (uint32_t n = 0; n < num_lights; n++) {
++		LightCalc &lc = lights[n];
++
++		// scale weight by total weight
++		lc.weight /= total_weight;
++
++		r_focus_caster.light_pos += lc.pos * lc.weight;
++		intensity += lc.intensity * lc.weight;
++	}
++
++	r_focus_caster.light_modulate *= intensity;
++	r_focus_caster.light_modulate *= data.intensity;
++
++	// Precalculate light direction so we don't have to do per pixel in the shader.
++	Vector3 light_dir = (r_focus_caster.light_pos - caster->pos_center).normalized();
++
++	if (p_blobs_or_capsules) {
++		r_focus_caster.light_dir = light_dir;
++	} else {
++		r_focus_caster.light_dir = r_focus_caster.light_pos;
++	}
++
++	r_focus_caster.cone_degrees = 45.0f;
++
++	// Calculate boosted AABB based on the light direction.
++	AABB &boosted = caster->aabb_boosted;
++	boosted = caster->aabb;
++	Vector3 bvec = light_dir * -data.range;
++	boosted.size += bvec.abs();
++
++	// Boosted AABB may not be totally accurate in the case of capsule,
++	// especially when light close to capsule.
++	// ToDo: Maybe this can be improved.
++	if (bvec.x < 0) {
++		boosted.position.x += bvec.x;
++	}
++	if (bvec.y < 0) {
++		boosted.position.y += bvec.y;
++	}
++	if (bvec.z < 0) {
++		boosted.position.z += bvec.z;
++	}
++}
++
++void VisualServerBlobShadows::render_set_focus_handle(uint32_t p_focus_handle, const Vector3 &p_pos, const Transform &p_cam_transform, const CameraMatrix &p_cam_matrix) {
++	data.render_focus_handle = p_focus_handle;
++
++	// Get the camera frustum planes in world space.
++	if (!p_cam_matrix.get_projection_planes_and_endpoints(p_cam_transform, data.frustum_planes.ptr(), data.frustum_points.ptr())) {
++		// Invalid frustum / xform.
++		WARN_PRINT_ONCE("Invalid camera transform detected.");
++		return;
++	}
++
++	if (p_focus_handle) {
++		Focus &focus = get_focus(p_focus_handle);
++		focus.pos = p_pos;
++
++		data.update_frame = Engine::get_singleton()->get_frames_drawn();
++
++		// Update the focus only the first time it is demanded on a frame.
++		if (focus.last_updated_frame != data.update_frame) {
++			focus.last_updated_frame = data.update_frame;
++			update_focus(focus);
++		}
++
++		FocusInfo &blobs = focus.blobs;
++
++		// Cull spheres to camera.
++		for (uint32_t i = 0; i < blobs.blobs.size(); i++) {
++			const FocusCaster &fc = blobs.blobs[i];
++			const Blob &caster = get_blob(fc.caster_id + 1);
++
++			blobs.blobs_in_camera[i] = caster.aabb_boosted.intersects_convex_shape(data.frustum_planes.ptr(), 6, data.frustum_points.ptr(), 8) ? 255 : 0;
++		}
++
++		FocusInfo &capsules = focus.capsules;
++
++		// Cull capsules to camera.
++		for (uint32_t i = 0; i < capsules.blobs.size(); i++) {
++			const FocusCaster &fc = capsules.blobs[i];
++			const Capsule &caster = get_capsule(fc.caster_id + 1);
++
++			capsules.blobs_in_camera[i] = caster.aabb_boosted.intersects_convex_shape(data.frustum_planes.ptr(), 6, data.frustum_points.ptr(), 8) ? 255 : 0;
++		}
++	}
++}
++
++uint32_t VisualServerBlobShadows::fill_background_uniforms_blobs(const AABB &p_aabb, float *r_casters, float *r_lights, uint32_t p_max_casters) {
++	DEV_ASSERT(data.render_focus_handle);
++
++	uint32_t count = 0;
++
++	struct LightData {
++		Vector3 dir;
++		real_t modulate = 1.0f;
++	} ldata;
++
++	struct CasterData {
++		Vector3 pos;
++		float size;
++	} cdata;
++
++	if (sizeof(real_t) == 4) {
++		const Focus &focus = data.foci[data.render_focus_handle - 1];
++
++		const FocusInfo &fi = focus.blobs;
++
++		for (uint32_t n = 0; n < fi.blobs.size(); n++) {
++			const FocusCaster &fc = fi.blobs[n];
++
++			// Out of view.
++			if (!fi.blobs_in_camera[n]) {
++				continue;
++			}
++
++			ldata.modulate = fc.fraction * fc.light_modulate;
++
++			// If the light modulate is zero, there is no light affecting this caster,
++			// the direction will be unset, and we would get NaN in the shader,
++			// so we avoid all this work.
++			if (Math::is_zero_approx(ldata.modulate)) {
++				continue;
++			}
++
++			const Blob &caster = data.blobs[fc.caster_id];
++
++			cdata.pos = caster.pos;
++			cdata.size = caster.size;
++
++			// Does caster + shadow intersect the geometry?
++			if (!p_aabb.intersects(caster.aabb_boosted)) {
++				continue;
++			}
++
++			memcpy(r_casters, &cdata, sizeof(CasterData));
++			r_casters += 4;
++
++			ldata.dir = fc.light_dir;
++
++			memcpy(r_lights, &ldata, sizeof(LightData));
++			r_lights += 4;
++
++			count++;
++			if (count >= p_max_casters) {
++				break;
++			}
++		}
++
++	} else {
++		WARN_PRINT_ONCE("blob shadows with double NYI");
++	}
++
++	return count;
++}
++
++uint32_t VisualServerBlobShadows::fill_background_uniforms_capsules(const AABB &p_aabb, float *r_casters, float *r_lights, uint32_t p_max_casters) {
++	DEV_ASSERT(data.render_focus_handle);
++
++	uint32_t count = 0;
++
++	struct LightData {
++		Vector3 dir;
++		real_t modulate = 1.0f;
++	} ldata;
++
++	struct CasterData {
++		Vector3 pos;
++		float size;
++		Vector3 pos_b;
++		float size_b;
++	} cdata;
++
++	if (sizeof(real_t) == 4) {
++		const Focus &focus = data.foci[data.render_focus_handle - 1];
++
++		const FocusInfo &fi = focus.capsules;
++
++		for (uint32_t n = 0; n < fi.blobs.size(); n++) {
++			const FocusCaster &fc = fi.blobs[n];
++
++			// Out of view.
++			if (!fi.blobs_in_camera[n]) {
++				continue;
++			}
++
++			ldata.modulate = fc.fraction * fc.light_modulate;
++
++			// If the light modulate is zero, there is no light affecting this caster,
++			// the direction will be unset, and we would get NaN in the shader,
++			// so we avoid all this work.
++			if (!fc.active) {
++				continue;
++			}
++
++			const Capsule &caster = data.capsules[fc.caster_id];
++
++			cdata.pos = caster.pos;
++			cdata.size = caster.size;
++			cdata.pos_b = caster.pos_b;
++			cdata.size_b = caster.size_b;
++
++			// Does caster + shadow intersect the geometry?
++			if (!p_aabb.intersects(caster.aabb_boosted)) {
++				continue;
++			}
++
++			memcpy(r_casters, &cdata, sizeof(CasterData));
++			r_casters += 8;
++
++			ldata.dir = fc.light_dir;
++
++			memcpy(r_lights, &ldata, sizeof(LightData));
++			r_lights += 4;
++
++			count++;
++			if (count >= p_max_casters) {
++				break;
++			}
++		}
++
++	} else {
++		WARN_PRINT_ONCE("capsule shadows with double NYI");
++	}
++
++	return count;
++}
++
++void *VisualServerBlobShadows::_instance_pair(void *p_self, SpatialPartitionID, void *p_A, int, SpatialPartitionID, void *p_B, int) {
++	uint32_t handle_a = (uint32_t)(uint64_t)p_A;
++	uint32_t handle_b = (uint32_t)(uint64_t)p_B;
++
++	VisualServerBlobShadows *self = static_cast<VisualServerBlobShadows *>(p_self);
++
++	Instance &a = self->data.instances[handle_a];
++	Instance &b = self->data.instances[handle_b];
++
++	uint32_t caster_handle = 0;
++	uint32_t light_handle = 0;
++
++	Caster *caster = nullptr;
++
++	if (a.type == VisualServerBlobShadows::IT_LIGHT) {
++		DEV_ASSERT((b.type == VisualServerBlobShadows::IT_BLOB) || (b.type == VisualServerBlobShadows::IT_CAPSULE));
++		light_handle = a.handle;
++		caster_handle = b.handle;
++		caster = b.type == VisualServerBlobShadows::IT_BLOB ? (Caster *)&self->data.blobs[caster_handle] : (Caster *)&self->data.capsules[caster_handle];
++	} else {
++		DEV_ASSERT((a.type == VisualServerBlobShadows::IT_BLOB) || (a.type == VisualServerBlobShadows::IT_CAPSULE));
++		DEV_ASSERT(b.type == VisualServerBlobShadows::IT_LIGHT);
++		light_handle = b.handle;
++		caster_handle = a.handle;
++		caster = a.type == VisualServerBlobShadows::IT_BLOB ? (Caster *)&self->data.blobs[caster_handle] : (Caster *)&self->data.capsules[caster_handle];
++	}
++
++	DEV_ASSERT(caster->linked_lights);
++	DEV_ASSERT(caster->linked_lights->find(light_handle) == -1);
++	caster->linked_lights->push_back(light_handle);
++
++	return nullptr;
++}
++
++void VisualServerBlobShadows::_instance_unpair(void *p_self, SpatialPartitionID, void *p_A, int, SpatialPartitionID, void *p_B, int, void *udata) {
++	uint32_t handle_a = (uint32_t)(uint64_t)p_A;
++	uint32_t handle_b = (uint32_t)(uint64_t)p_B;
++
++	VisualServerBlobShadows *self = static_cast<VisualServerBlobShadows *>(p_self);
++
++	Instance &a = self->data.instances[handle_a];
++	Instance &b = self->data.instances[handle_b];
++
++	uint32_t caster_handle = 0;
++	uint32_t light_handle = 0;
++
++	Caster *caster = nullptr;
++
++	if (a.type == VisualServerBlobShadows::IT_LIGHT) {
++		DEV_ASSERT((b.type == VisualServerBlobShadows::IT_BLOB) || (b.type == VisualServerBlobShadows::IT_CAPSULE));
++		light_handle = a.handle;
++		caster_handle = b.handle;
++		caster = b.type == VisualServerBlobShadows::IT_BLOB ? (Caster *)&self->data.blobs[caster_handle] : (Caster *)&self->data.capsules[caster_handle];
++	} else {
++		DEV_ASSERT((a.type == VisualServerBlobShadows::IT_BLOB) || (a.type == VisualServerBlobShadows::IT_CAPSULE));
++		DEV_ASSERT(b.type == VisualServerBlobShadows::IT_LIGHT);
++		light_handle = b.handle;
++		caster_handle = a.handle;
++		caster = a.type == VisualServerBlobShadows::IT_BLOB ? (Caster *)&self->data.blobs[caster_handle] : (Caster *)&self->data.capsules[caster_handle];
++	}
++
++	DEV_ASSERT(caster->linked_lights);
++	int64_t found = caster->linked_lights->find(light_handle);
++	DEV_ASSERT(found != -1);
++	caster->linked_lights->remove_unordered(found);
++}
++
++void VisualServerBlobShadows::_refresh_active() {
++	_active_blobs_present = (data.blobs.active_size() || data.capsules.active_size()) && data.lights.active_size();
++	_active = _active_project_setting && _active_blobs_present;
++}
++
++VisualServerBlobShadows::VisualServerBlobShadows() {
++	data.bvh.set_pair_callback(_instance_pair, this);
++	data.bvh.set_unpair_callback(_instance_unpair, this);
++
++	_active_project_setting = GLOBAL_DEF("rendering/quality/blob_shadows/enable", true);
++	_refresh_active();
++
++	data.blob_max_casters = GLOBAL_DEF_RST("rendering/quality/blob_shadows/max_spheres", 4);
++	ProjectSettings::get_singleton()->set_custom_property_info("rendering/quality/blob_shadows/max_spheres", PropertyInfo(Variant::INT, "rendering/quality/blob_shadows/max_spheres", PROPERTY_HINT_RANGE, "0,128,1"));
++	data.capsule_max_casters = GLOBAL_DEF_RST("rendering/quality/blob_shadows/max_capsules", 4);
++	ProjectSettings::get_singleton()->set_custom_property_info("rendering/quality/blob_shadows/max_capsules", PropertyInfo(Variant::INT, "rendering/quality/blob_shadows/max_capsules", PROPERTY_HINT_RANGE, "0,128,1"));
++	data.range = GLOBAL_DEF("rendering/quality/blob_shadows/range", 2.0f);
++	ProjectSettings::get_singleton()->set_custom_property_info("rendering/quality/blob_shadows/range", PropertyInfo(Variant::REAL, "rendering/quality/blob_shadows/range", PROPERTY_HINT_RANGE, "0.0,256.0"));
++	data.gamma = GLOBAL_DEF("rendering/quality/blob_shadows/gamma", 1.0f);
++	ProjectSettings::get_singleton()->set_custom_property_info("rendering/quality/blob_shadows/gamma", PropertyInfo(Variant::REAL, "rendering/quality/blob_shadows/gamma", PROPERTY_HINT_RANGE, "0.01,10.0,0.01"));
++	data.intensity = GLOBAL_DEF("rendering/quality/blob_shadows/intensity", 0.7f);
++	ProjectSettings::get_singleton()->set_custom_property_info("rendering/quality/blob_shadows/intensity", PropertyInfo(Variant::REAL, "rendering/quality/blob_shadows/intensity", PROPERTY_HINT_RANGE, "0.0,6.0,0.01"));
++
++	data.frustum_planes.resize(6);
++	data.frustum_points.resize(8);
++}
+diff --git a/servers/visual/visual_server_blob_shadows.h b/servers/visual/visual_server_blob_shadows.h
+new file mode 100644
+--- /dev/null
++++ b/servers/visual/visual_server_blob_shadows.h
+@@ -0,0 +1,381 @@
++/**************************************************************************/
++/*  visual_server_blob_shadows.h                                          */
++/**************************************************************************/
++/*                         This file is part of:                          */
++/*                             GODOT ENGINE                               */
++/*                        https://godotengine.org                         */
++/**************************************************************************/
++/* Copyright (c) 2014-present Godot Engine contributors (see AUTHORS.md). */
++/* Copyright (c) 2007-2014 Juan Linietsky, Ariel Manzur.                  */
++/*                                                                        */
++/* Permission is hereby granted, free of charge, to any person obtaining  */
++/* a copy of this software and associated documentation files (the        */
++/* "Software"), to deal in the Software without restriction, including    */
++/* without limitation the rights to use, copy, modify, merge, publish,    */
++/* distribute, sublicense, and/or sell copies of the Software, and to     */
++/* permit persons to whom the Software is furnished to do so, subject to  */
++/* the following conditions:                                              */
++/*                                                                        */
++/* The above copyright notice and this permission notice shall be         */
++/* included in all copies or substantial portions of the Software.        */
++/*                                                                        */
++/* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,        */
++/* EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF     */
++/* MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. */
++/* IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY   */
++/* CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,   */
++/* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE      */
++/* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                 */
++/**************************************************************************/
++
++#ifndef VISUAL_SERVER_BLOB_SHADOWS_H
++#define VISUAL_SERVER_BLOB_SHADOWS_H
++
++#include "core/fixed_array.h"
++#include "core/math/bvh.h"
++#include "core/math/camera_matrix.h"
++#include "core/math/vector3.h"
++#include "core/pooled_list.h"
++
++class VisualServerBlobShadows {
++	enum {
++		MAX_CASTERS = 128, // blobs and capsules
++	};
++	enum InstanceType {
++		IT_BLOB,
++		IT_CAPSULE,
++		IT_LIGHT,
++	};
++
++	struct Instance {
++		InstanceType type;
++		uint32_t handle;
++		void clear() {
++			type = IT_BLOB;
++			handle = 0;
++		}
++	};
++
++	// Blobs can be switched off either in project setting,
++	// or if there are no blob occuders or blob lights.
++	static bool _active_project_setting;
++	static bool _active_blobs_present;
++	static bool _active;
++
++	void _refresh_active();
++
++public:
++	static bool is_active() { return _active; }
++	static bool is_allowed() { return _active_project_setting; }
++
++	real_t get_range() const { return data.range; }
++	real_t get_gamma() const { return data.gamma; }
++	real_t get_intensity() const { return data.intensity; }
++
++	void set_range(real_t p_value) { data.range = p_value; }
++	void set_gamma(real_t p_value) { data.gamma = p_value; }
++	void set_intensity(real_t p_value) { data.intensity = p_value; }
++
++	enum LightType {
++		SPOT,
++		OMNI,
++		DIRECTIONAL,
++	};
++
++	struct Light {
++		uint32_t instance_handle;
++		BVHHandle bvh_handle;
++		Vector3 pos;
++		LightType type;
++		bool visible;
++		real_t energy;
++		AABB aabb;
++
++		Vector3 direction;
++		real_t range_max;
++		real_t range_mid;
++		real_t range_mid_max;
++		real_t intensity;
++		real_t energy_intensity;
++
++		// Precalculated spotlight params.
++		real_t spot_degrees;
++		real_t spot_dot_threshold;
++		real_t spot_dot_multiplier;
++		void set_spot_degrees(real_t p_degrees) {
++			spot_degrees = MAX(p_degrees, (real_t)1); // Prevent divide by zero.
++			spot_dot_threshold = Math::cos(Math::deg2rad(spot_degrees));
++			spot_dot_multiplier = (real_t)1 / (1 - spot_dot_threshold);
++		}
++		void calculate_energy_intensity() {
++			real_t e = Math::pow(energy, (real_t)0.5);
++			energy_intensity = e * intensity;
++		}
++
++		const char *get_type_string() const {
++			switch (type) {
++				case SPOT: {
++					return "SPOT";
++				} break;
++
++				case DIRECTIONAL: {
++					return "DIR";
++				} break;
++				default:
++					break;
++			}
++
++			return "OMNI";
++		}
++		void clear() {
++			instance_handle = 0;
++			bvh_handle.set(0);
++			pos = Vector3();
++			set_spot_degrees(45);
++			direction = Vector3();
++			range_max = 10;
++			range_mid = 9;
++			range_mid_max = 1;
++			type = OMNI;
++			visible = true;
++			energy = 1;
++			energy_intensity = 1;
++			intensity = 1;
++			aabb = AABB();
++		}
++		Light() {
++			clear();
++		}
++		~Light() {
++		}
++	};
++
++	struct Caster {
++		// Casters are ref counted so that they can have
++		// delayed release as they slowly fade out from focus,
++		// instead of instantaneous.
++		// (Looks better!)
++		uint32_t ref_count;
++		uint32_t instance_handle;
++		BVHHandle bvh_handle;
++
++		Vector3 pos;
++		real_t size;
++
++		// "pos" is the center for spheres,
++		// but for capsules it is between pos and pos_b.
++		// We should use the center for light distance calculations.
++		Vector3 pos_center;
++
++		AABB aabb;
++		AABB aabb_boosted;
++		LocalVector<uint32_t> *linked_lights;
++
++		void clear() {
++			pos = Vector3();
++			size = 1;
++			ref_count = 0;
++			instance_handle = 0;
++			bvh_handle.set(0);
++			aabb = AABB();
++			aabb_boosted = AABB();
++			linked_lights->clear();
++		}
++		Caster() {
++			linked_lights = memnew(LocalVector<uint32_t>);
++			clear();
++		}
++		~Caster() {
++			if (linked_lights) {
++				memdelete(linked_lights);
++				linked_lights = nullptr;
++			}
++		}
++	};
++
++	struct Blob : public Caster {
++	};
++
++	struct Capsule : public Caster {
++		Vector3 pos_b;
++		real_t size_b;
++		void clear() {
++			pos_b = Vector3();
++			size_b = 1;
++			Caster::clear();
++		}
++
++		Capsule() {
++			size_b = 1;
++		}
++	};
++
++	struct SortFocusCaster {
++		uint32_t caster_id = 0;
++		real_t distance = 0;
++	};
++
++	// A caster that is in the current focus.
++	// Keeping track of how faded it it is, etc.
++	struct FocusCaster {
++		enum State {
++			FCS_ON,
++			FCS_ENTERING,
++			FCS_EXITING,
++		} state = FCS_ENTERING;
++
++		uint32_t caster_id = 0;
++
++		uint32_t in_count = 0; // The fraction in is in the in_count / transition_ticks
++		uint32_t last_update_frame = UINT32_MAX;
++
++		real_t fraction = 0;
++
++		// We only need to store lighting data for casters that are IN FOCUS.
++		// Casters that aren't in focus, storing lighting data would be a waste.
++		real_t cone_degrees = 45;
++		Vector3 light_pos;
++		Vector3 light_dir;
++		real_t light_modulate = 1;
++
++		// If no lights are within range, a focus caster is not active.
++		bool active = false;
++	};
++
++	struct FocusInfo {
++		FixedArray<FocusCaster, MAX_CASTERS> blobs;
++		FixedArray<FocusCaster, MAX_CASTERS> blobs_pending;
++		uint8_t blobs_in_camera[MAX_CASTERS] = {};
++
++		void clear() {
++			blobs.resize(0);
++			blobs_pending.resize(0);
++		}
++	};
++
++	struct Focus {
++		Vector3 pos;
++		uint32_t last_updated_frame = UINT32_MAX;
++
++		FocusInfo blobs;
++		FocusInfo capsules;
++
++		void clear() {
++			pos = Vector3();
++			blobs.clear();
++			capsules.clear();
++		}
++	};
++
++	// Lights
++	Light *request_light(uint32_t &r_handle);
++	void delete_light(uint32_t p_handle);
++	Light &get_light(uint32_t p_handle) { return data.lights[--p_handle]; }
++	const Light &get_light(uint32_t p_handle) const { return data.lights[--p_handle]; }
++	void set_light_visible(uint32_t p_handle, bool p_visible);
++	void make_light_dirty(Light &p_light);
++
++	// Blobs
++	Blob *request_blob(uint32_t &r_handle);
++	void delete_blob(uint32_t p_handle);
++	Blob &get_blob(uint32_t p_handle) { return data.blobs[--p_handle]; }
++	const Blob &get_blob(uint32_t p_handle) const { return data.blobs[--p_handle]; }
++	void make_blob_dirty(Blob &p_caster);
++
++	// Capsules
++	Capsule *request_capsule(uint32_t &r_handle);
++	void delete_capsule(uint32_t p_handle);
++	Capsule &get_capsule(uint32_t p_handle) { return data.capsules[--p_handle]; }
++	const Capsule &get_capsule(uint32_t p_handle) const { return data.capsules[--p_handle]; }
++	void make_capsule_dirty(Capsule &p_caster);
++
++	// Focus
++	Focus *request_focus(uint32_t &r_handle);
++	void delete_focus(uint32_t p_handle);
++	Focus &get_focus(uint32_t p_handle) { return data.foci[--p_handle]; }
++
++	// Note that data for the shader is 32 bit, even if real_t calculations done as 64 bit.
++	uint32_t fill_background_uniforms_blobs(const AABB &p_aabb, float *r_casters, float *r_lights, uint32_t p_max_casters);
++	uint32_t fill_background_uniforms_capsules(const AABB &p_aabb, float *r_casters, float *r_lights, uint32_t p_max_casters);
++
++	void render_set_focus_handle(uint32_t p_focus_handle, const Vector3 &p_pos, const Transform &p_cam_transform, const CameraMatrix &p_cam_matrix);
++	void update();
++
++private:
++	static int qsort_cmp_func(const void *a, const void *b);
++
++	void ref_blob(uint32_t p_handle) {
++		Blob &caster = get_blob(p_handle);
++		caster.ref_count++;
++	}
++
++	void unref_blob(uint32_t p_handle) {
++		Blob &caster = get_blob(p_handle);
++		DEV_ASSERT(caster.ref_count);
++		caster.ref_count--;
++
++		if (!caster.ref_count) {
++			data.blobs.free(--p_handle);
++			// print_line("releasing blob " + itos(p_handle));
++		}
++	}
++
++	void ref_capsule(uint32_t p_handle) {
++		Capsule &caster = get_capsule(p_handle);
++		caster.ref_count++;
++	}
++
++	void unref_capsule(uint32_t p_handle) {
++		Capsule &caster = get_capsule(p_handle);
++		DEV_ASSERT(caster.ref_count);
++		caster.ref_count--;
++
++		if (!caster.ref_count) {
++			data.capsules.free(--p_handle);
++			// print_line("releasing capsule " + itos(p_handle));
++		}
++	}
++
++	template <class T, bool BLOBS_OR_CAPSULES>
++	void update_focus_blobs_or_capsules(const Focus &p_focus, FocusInfo &r_focus_info, const TrackedPooledList<T> &p_blobs, uint32_t p_max_casters);
++
++	void update_focus(Focus &r_focus);
++	void update_focus_caster(bool p_blobs_or_capsules, FocusInfo &r_focus_info, const SortFocusCaster &p_sort_focus_caster);
++	void find_best_light(bool p_blobs_or_capsules, FocusCaster &r_focus_caster);
++
++	// note this is actually the BVH id +1, so that visual server can test against zero
++	// for validity to maintain compatibility with octree (where 0 indicates invalid)
++	typedef uint32_t SpatialPartitionID;
++
++	static void *_instance_pair(void *p_self, SpatialPartitionID, void *p_A, int, SpatialPartitionID, void *p_B, int);
++	static void _instance_unpair(void *p_self, SpatialPartitionID, void *p_A, int, SpatialPartitionID, void *p_B, int, void *);
++
++	struct Data {
++		TrackedPooledList<Light> lights;
++		TrackedPooledList<Focus> foci;
++		TrackedPooledList<Blob> blobs;
++		TrackedPooledList<Capsule> capsules;
++		PooledList<Instance> instances;
++		BVH_Manager<void, 2, true, 32> bvh;
++		uint32_t blob_max_casters = MAX_CASTERS;
++		uint32_t capsule_max_casters = MAX_CASTERS;
++
++		real_t range = 6.0f;
++		real_t gamma = 1.0f;
++		real_t intensity = 1.0f;
++
++		uint32_t update_frame = 0;
++		uint32_t render_focus_handle = 0;
++
++		// Camera frustum planes (world space).
++		LocalVector<Plane> frustum_planes;
++		LocalVector<Vector3> frustum_points;
++
++		bool debug_output = false;
++	} data;
++
++public:
++	VisualServerBlobShadows();
++};
++
++#endif // VISUAL_SERVER_BLOB_SHADOWS_H
+diff --git a/servers/visual/visual_server_raster.h b/servers/visual/visual_server_raster.h
+--- a/servers/visual/visual_server_raster.h
++++ b/servers/visual/visual_server_raster.h
+@@ -478,6 +478,7 @@
+ 	BIND4(camera_set_orthogonal, RID, float, float, float)
+ 	BIND5(camera_set_frustum, RID, float, Vector2, float, float)
+ 	BIND2(camera_set_transform, RID, const Transform &)
++	BIND2(camera_set_blob_focus_position, RID, const Vector3 &)
+ 	BIND2(camera_set_cull_mask, RID, uint32_t)
+ 	BIND2(camera_set_environment, RID, RID)
+ 	BIND2(camera_set_use_vertical_aspect, RID, bool)
+@@ -604,6 +605,24 @@
+ 
+ 	BIND2(instance_set_extra_visibility_margin, RID, real_t)
+ 
++	/* BLOB SHADOWS */
++	BIND0R(RID, capsule_shadow_create)
++	BIND5(capsule_shadow_update, RID, const Vector3 &, real_t, const Vector3 &, real_t)
++
++	BIND0R(RID, blob_shadow_create)
++	BIND3(blob_shadow_update, RID, const Vector3 &, real_t)
++
++	BIND1(blob_shadows_set_range, real_t)
++	BIND1(blob_shadows_set_gamma, real_t)
++	BIND1(blob_shadows_set_intensity, real_t)
++
++	BIND0R(RID, blob_light_create)
++	BIND2(blob_light_update, RID, const Transform &)
++	BIND3(blob_light_set_param, RID, VisualServer::LightBlobShadowParam, real_t)
++	BIND3(blob_light_set_light_param, RID, VisualServer::LightParam, real_t)
++	BIND2(blob_light_set_type, RID, VisualServer::LightType)
++	BIND2(blob_light_set_visible, RID, bool)
++
+ 	/* PORTALS */
+ 
+ 	BIND2(instance_set_portal_mode, RID, InstancePortalMode)
+diff --git a/servers/visual/visual_server_scene.cpp b/servers/visual/visual_server_scene.cpp
+--- a/servers/visual/visual_server_scene.cpp
++++ b/servers/visual/visual_server_scene.cpp
+@@ -42,6 +42,7 @@
+ 
+ RID VisualServerScene::camera_create() {
+ 	Camera *camera = memnew(Camera);
++	_blob_shadows.request_focus(camera->blob_focus_handle);
+ 	return camera_owner.make_rid(camera);
+ }
+ 
+@@ -73,6 +74,13 @@
+ 	camera->zfar = p_z_far;
+ }
+ 
++void VisualServerScene::camera_set_blob_focus_position(RID p_camera, const Vector3 &p_pos) {
++	Camera *camera = camera_owner.get(p_camera);
++	ERR_FAIL_COND(!camera);
++
++	camera->blob_focus_pos = p_pos;
++}
++
+ void VisualServerScene::camera_set_transform(RID p_camera, const Transform &p_transform) {
+ 	Camera *camera = camera_owner.get(p_camera);
+ 	ERR_FAIL_COND(!camera);
+@@ -618,6 +626,7 @@
+ 				if (instance->base_type == VS::INSTANCE_MESH) {
+ 					instance->blend_values.resize(VSG::storage->mesh_get_blend_shape_count(p_base));
+ 				}
++
+ 			} break;
+ 			case VS::INSTANCE_REFLECTION_PROBE: {
+ 				InstanceReflectionProbeData *reflection_probe = memnew(InstanceReflectionProbeData);
+@@ -1286,6 +1295,158 @@
+ 	return true;
+ }
+ 
++RID VisualServerScene::blob_light_create() {
++	BlobLight *blob_light = memnew(BlobLight);
++	ERR_FAIL_NULL_V(blob_light, RID());
++	RID blob_light_rid = blob_light_owner.make_rid(blob_light);
++
++	_blob_shadows.request_light(blob_light->handle);
++	return blob_light_rid;
++}
++
++void VisualServerScene::blob_light_update(RID p_blob_light, const Transform &p_global_transform) {
++	BlobLight *blob_light = blob_light_owner.getornull(p_blob_light);
++	ERR_FAIL_NULL(blob_light);
++	ERR_FAIL_COND(blob_light->handle == 0);
++	VisualServerBlobShadows::Light &blight = _blob_shadows.get_light(blob_light->handle);
++
++	blight.pos = p_global_transform.origin;
++	blight.direction = -p_global_transform.basis.get_axis(2);
++	blight.direction.normalize();
++
++	_blob_shadows.make_light_dirty(blight);
++}
++
++void VisualServerScene::blob_light_set_light_param(RID p_blob_light, VisualServer::LightParam p_param, real_t p_value) {
++	// This is our opportunity to intercept some of the more usual light parameters,
++	// if we can use them for blob shadows.
++	BlobLight *blob_light = blob_light_owner.getornull(p_blob_light);
++	ERR_FAIL_NULL(blob_light);
++	ERR_FAIL_COND(!blob_light->handle);
++
++	VisualServerBlobShadows::Light &blight = _blob_shadows.get_light(blob_light->handle);
++
++	switch (p_param) {
++		case VisualServer::LIGHT_PARAM_SPOT_ANGLE: {
++			blight.set_spot_degrees(p_value);
++		} break;
++		case VisualServer::LIGHT_PARAM_ENERGY: {
++			blight.energy = p_value;
++			blight.calculate_energy_intensity();
++		} break;
++		default:
++			break;
++	}
++
++	_blob_shadows.make_light_dirty(blight);
++}
++
++void VisualServerScene::blob_light_set_param(RID p_blob_light, VisualServer::LightBlobShadowParam p_param, real_t p_value) {
++	BlobLight *blob_light = blob_light_owner.getornull(p_blob_light);
++	ERR_FAIL_NULL(blob_light);
++	ERR_FAIL_COND(!blob_light->handle);
++
++	VisualServerBlobShadows::Light &blight = _blob_shadows.get_light(blob_light->handle);
++
++	switch (p_param) {
++		case VisualServer::LIGHT_BLOB_SHADOW_PARAM_RANGE_HARDNESS: {
++			blob_light->range_hardness = p_value;
++		} break;
++		case VisualServer::LIGHT_BLOB_SHADOW_PARAM_RANGE_MAX: {
++			blob_light->range_max = p_value;
++		} break;
++		case VisualServer::LIGHT_BLOB_SHADOW_PARAM_INTENSITY: {
++			blight.intensity = p_value;
++			blight.calculate_energy_intensity();
++		} break;
++		default:
++			break;
++	}
++
++	blight.range_max = blob_light->range_max;
++	blight.range_mid = blight.range_max * blob_light->range_hardness;
++
++	// Enforce positive non-zero
++	blight.range_mid_max = blight.range_max - blight.range_mid;
++	blight.range_mid_max = MAX(blight.range_mid_max, (real_t)0.00001f);
++
++	_blob_shadows.make_light_dirty(blight);
++}
++
++void VisualServerScene::blob_light_set_visible(RID p_blob_light, bool p_visible) {
++	BlobLight *blob_light = blob_light_owner.getornull(p_blob_light);
++	ERR_FAIL_NULL(blob_light);
++	ERR_FAIL_COND(blob_light->handle == 0);
++	_blob_shadows.set_light_visible(blob_light->handle, p_visible);
++}
++
++void VisualServerScene::blob_light_set_type(RID p_blob_light, VisualServer::LightType p_type) {
++	BlobLight *blob_light = blob_light_owner.getornull(p_blob_light);
++	ERR_FAIL_NULL(blob_light);
++	ERR_FAIL_COND(blob_light->handle == 0);
++	VisualServerBlobShadows::Light &blight = _blob_shadows.get_light(blob_light->handle);
++
++	switch (p_type) {
++		case VS::LIGHT_DIRECTIONAL: {
++			blight.type = VisualServerBlobShadows::DIRECTIONAL;
++		} break;
++		case VS::LIGHT_SPOT: {
++			blight.type = VisualServerBlobShadows::SPOT;
++		} break;
++		default: {
++			blight.type = VisualServerBlobShadows::OMNI;
++		} break;
++	}
++}
++
++RID VisualServerScene::blob_shadow_create() {
++	BlobShadow *blob = memnew(BlobShadow);
++	ERR_FAIL_NULL_V(blob, RID());
++	RID blob_rid = blob_shadow_owner.make_rid(blob);
++
++	_blob_shadows.request_blob(blob->handle);
++	return blob_rid;
++}
++
++void VisualServerScene::blob_shadow_update(RID p_blob, const Vector3 &p_occluder_pos, real_t p_occluder_radius) {
++	BlobShadow *blob = blob_shadow_owner.getornull(p_blob);
++	ERR_FAIL_NULL(blob);
++	ERR_FAIL_COND(blob->handle == 0);
++	VisualServerBlobShadows::Blob &caster = _blob_shadows.get_blob(blob->handle);
++
++	// Shader expects radius squared, cheaper to do on CPU than in fragment shader.
++	caster.pos = p_occluder_pos;
++	caster.pos_center = p_occluder_pos;
++	caster.size = p_occluder_radius * p_occluder_radius;
++	_blob_shadows.make_blob_dirty(caster);
++}
++
++RID VisualServerScene::capsule_shadow_create() {
++	CapsuleShadow *capsule = memnew(CapsuleShadow);
++	ERR_FAIL_NULL_V(capsule, RID());
++	RID capsule_rid = capsule_shadow_owner.make_rid(capsule);
++
++	_blob_shadows.request_capsule(capsule->handle);
++	return capsule_rid;
++}
++
++void VisualServerScene::capsule_shadow_update(RID p_blob, const Vector3 &p_occluder_a_pos, real_t p_occluder_a_radius, const Vector3 &p_occluder_b_pos, real_t p_occluder_b_radius) {
++	CapsuleShadow *capsule = capsule_shadow_owner.getornull(p_blob);
++	ERR_FAIL_NULL(capsule);
++	ERR_FAIL_COND(capsule->handle == 0);
++	VisualServerBlobShadows::Capsule &caster = _blob_shadows.get_capsule(capsule->handle);
++
++	// Shader expects radius squared, cheaper to do on CPU than in fragment shader.
++	caster.pos = p_occluder_a_pos;
++	caster.size = p_occluder_a_radius * p_occluder_a_radius;
++	caster.pos_b = p_occluder_b_pos;
++	caster.size_b = p_occluder_b_radius * p_occluder_b_radius;
++
++	caster.pos_center = (caster.pos + caster.pos_b) * (real_t)0.5;
++
++	_blob_shadows.make_capsule_dirty(caster);
++}
++
+ // the portal has to be associated with a scenario, this is assumed to be
+ // the same scenario as the portal node
+ RID VisualServerScene::portal_create() {
+@@ -2798,6 +2959,8 @@
+ 		} break;
+ 	}
+ 
++	_blob_shadows.render_set_focus_handle(camera->blob_focus_handle, camera->blob_focus_pos, camera->transform, camera_matrix);
++
+ 	_prepare_scene(camera->transform, camera_matrix, ortho, camera->env, camera->visible_layers, p_scenario, p_shadow_atlas, RID(), camera->previous_room_id_hint);
+ 	_render_scene(camera->transform, camera_matrix, 0, ortho, camera->env, p_scenario, p_shadow_atlas, RID(), -1);
+ #endif
+@@ -2818,6 +2981,8 @@
+ 	Transform world_origin = ARVRServer::get_singleton()->get_world_origin();
+ 	Transform cam_transform = p_interface->get_transform_for_eye(p_eye, world_origin);
+ 
++	_blob_shadows.render_set_focus_handle(camera->blob_focus_handle, camera->blob_focus_pos, cam_transform, camera_matrix);
++
+ 	// For stereo render we only prepare for our left eye and then reuse the outcome for our right eye
+ 	if (p_eye == ARVRInterface::EYE_LEFT) {
+ 		///@TODO possibly move responsibility for this into our ARVRServer or ARVRInterface?
+@@ -4345,6 +4510,14 @@
+ 	}
+ }
+ 
++uint32_t VisualServerScene::blob_shadows_fill_background_uniforms(const AABB &p_aabb, float *r_casters, float *r_lights, uint32_t p_max_casters) {
++	return _blob_shadows.fill_background_uniforms_blobs(p_aabb, r_casters, r_lights, p_max_casters);
++}
++
++uint32_t VisualServerScene::capsule_shadows_fill_background_uniforms(const AABB &p_aabb, float *r_casters, float *r_lights, uint32_t p_max_casters) {
++	return _blob_shadows.fill_background_uniforms_capsules(p_aabb, r_casters, r_lights, p_max_casters);
++}
++
+ void VisualServerScene::_update_dirty_instance(Instance *p_instance) {
+ 	if (p_instance->update_aabb) {
+ 		_update_instance_aabb(p_instance);
+@@ -4522,11 +4695,17 @@
+ 	if (scenario) {
+ 		scenario->sps->update();
+ 	}
++
++	_blob_shadows.update();
+ }
+ 
+ bool VisualServerScene::free(RID p_rid) {
+ 	if (camera_owner.owns(p_rid)) {
+ 		Camera *camera = camera_owner.get(p_rid);
++
++		_blob_shadows.delete_focus(camera->blob_focus_handle);
++		camera->blob_focus_handle = 0;
++
+ 		camera_owner.free(p_rid);
+ 		memdelete(camera);
+ 	} else if (scenario_owner.owns(p_rid)) {
+@@ -4585,6 +4764,27 @@
+ 		occ_res->destroy(_portal_resources);
+ 		occluder_resource_owner.free(p_rid);
+ 		memdelete(occ_res);
++	} else if (capsule_shadow_owner.owns(p_rid)) {
++		CapsuleShadow *capsule = capsule_shadow_owner.get(p_rid);
++		capsule_shadow_owner.free(p_rid);
++		if (capsule->handle) {
++			_blob_shadows.delete_capsule(capsule->handle);
++		}
++		memdelete(capsule);
++	} else if (blob_shadow_owner.owns(p_rid)) {
++		BlobShadow *blob = blob_shadow_owner.get(p_rid);
++		blob_shadow_owner.free(p_rid);
++		if (blob->handle) {
++			_blob_shadows.delete_blob(blob->handle);
++		}
++		memdelete(blob);
++	} else if (blob_light_owner.owns(p_rid)) {
++		BlobLight *blob_light = blob_light_owner.get(p_rid);
++		blob_light_owner.free(p_rid);
++		if (blob_light->handle) {
++			_blob_shadows.delete_light(blob_light->handle);
++		}
++		memdelete(blob_light);
+ 	} else {
+ 		return false;
+ 	}
+diff --git a/servers/visual/visual_server_scene.h b/servers/visual/visual_server_scene.h
+--- a/servers/visual/visual_server_scene.h
++++ b/servers/visual/visual_server_scene.h
+@@ -42,6 +42,7 @@
+ #include "core/self_list.h"
+ #include "portals/portal_renderer.h"
+ #include "servers/arvr/arvr_interface.h"
++#include "visual_server_blob_shadows.h"
+ 
+ class VisualServerLightCuller;
+ 
+@@ -88,6 +89,9 @@
+ 
+ 		int32_t previous_room_id_hint;
+ 
++		Vector3 blob_focus_pos;
++		uint32_t blob_focus_handle = 0;
++
+ 		Camera() {
+ 			visible_layers = 0xFFFFFFFF;
+ 			fov = 70;
+@@ -108,6 +112,7 @@
+ 	virtual void camera_set_orthogonal(RID p_camera, float p_size, float p_z_near, float p_z_far);
+ 	virtual void camera_set_frustum(RID p_camera, float p_size, Vector2 p_offset, float p_z_near, float p_z_far);
+ 	virtual void camera_set_transform(RID p_camera, const Transform &p_transform);
++	virtual void camera_set_blob_focus_position(RID p_camera, const Vector3 &p_pos);
+ 	virtual void camera_set_cull_mask(RID p_camera, uint32_t p_layers);
+ 	virtual void camera_set_environment(RID p_camera, RID p_env);
+ 	virtual void camera_set_use_vertical_aspect(RID p_camera, bool p_enable);
+@@ -467,6 +472,8 @@
+ 		RID instance;
+ 		uint64_t last_version;
+ 		List<Instance *>::Element *D; // directional light in scenario
++		bool shadow_dirty;
++
+ 		List<PairInfo> geometries;
+ 
+ 		Instance *baked_light;
+@@ -731,6 +738,50 @@
+ 	void _ghost_destroy_occlusion_rep(Ghost *p_ghost);
+ 
+ public:
++	/* BLOB SHADOWS API */
++
++	struct BlobShadow : RID_Data {
++		uint32_t handle = 0;
++	};
++	struct CapsuleShadow : RID_Data {
++		uint32_t handle = 0;
++	};
++	RID_Owner<BlobShadow> blob_shadow_owner;
++	RID_Owner<CapsuleShadow> capsule_shadow_owner;
++
++	struct BlobLight : RID_Data {
++		uint32_t handle = 0;
++		bool visible = true;
++		real_t range_hardness = 0.9f;
++		real_t range_max = 10;
++	};
++	RID_Owner<BlobLight> blob_light_owner;
++
++	virtual RID blob_shadow_create();
++	virtual void blob_shadow_update(RID p_blob, const Vector3 &p_occluder_pos, real_t p_occluder_radius);
++
++	virtual RID capsule_shadow_create();
++	virtual void capsule_shadow_update(RID p_blob, const Vector3 &p_occluder_a_pos, real_t p_occluder_a_radius, const Vector3 &p_occluder_b_pos, real_t p_occluder_b_radius);
++
++	virtual RID blob_light_create();
++	virtual void blob_light_update(RID p_blob_light, const Transform &p_global_transform);
++	virtual void blob_light_set_param(RID p_blob_light, VisualServer::LightBlobShadowParam p_param, real_t p_value);
++	virtual void blob_light_set_light_param(RID p_blob_light, VisualServer::LightParam p_param, real_t p_value);
++	virtual void blob_light_set_type(RID p_blob_light, VisualServer::LightType p_type);
++	virtual void blob_light_set_visible(RID p_blob_light, bool p_visible);
++
++	uint32_t blob_shadows_fill_background_uniforms(const AABB &p_aabb, float *r_casters, float *r_lights, uint32_t p_max_casters);
++	uint32_t capsule_shadows_fill_background_uniforms(const AABB &p_aabb, float *r_casters, float *r_lights, uint32_t p_max_casters);
++	bool are_blob_shadows_active() const { return _blob_shadows.is_active(); }
++
++	real_t blob_shadows_get_range() const { return _blob_shadows.get_range(); }
++	real_t blob_shadows_get_gamma() const { return _blob_shadows.get_gamma(); }
++	real_t blob_shadows_get_intensity() const { return _blob_shadows.get_intensity(); }
++
++	void blob_shadows_set_range(real_t p_value) { _blob_shadows.set_range(p_value); }
++	void blob_shadows_set_gamma(real_t p_value) { _blob_shadows.set_gamma(p_value); }
++	void blob_shadows_set_intensity(real_t p_value) { _blob_shadows.set_intensity(p_value); }
++
+ 	/* PORTALS API */
+ 
+ 	struct Portal : RID_Data {
+@@ -946,6 +997,7 @@
+ 	bool _use_bvh;
+ 	VisualServerCallbacks *_visual_server_callbacks;
+ 	PortalResources _portal_resources;
++	VisualServerBlobShadows _blob_shadows;
+ 
+ public:
+ 	VisualServerScene();
+diff --git a/servers/visual/visual_server_wrap_mt.h b/servers/visual/visual_server_wrap_mt.h
+--- a/servers/visual/visual_server_wrap_mt.h
++++ b/servers/visual/visual_server_wrap_mt.h
+@@ -395,6 +395,7 @@
+ 	FUNC4(camera_set_orthogonal, RID, float, float, float)
+ 	FUNC5(camera_set_frustum, RID, float, Vector2, float, float)
+ 	FUNC2(camera_set_transform, RID, const Transform &)
++	FUNC2(camera_set_blob_focus_position, RID, const Vector3 &)
+ 	FUNC2(camera_set_cull_mask, RID, uint32_t)
+ 	FUNC2(camera_set_environment, RID, RID)
+ 	FUNC2(camera_set_use_vertical_aspect, RID, bool)
+@@ -515,6 +516,24 @@
+ 
+ 	FUNC2(instance_set_extra_visibility_margin, RID, real_t)
+ 
++	/* BLOB SHADOWS */
++	FUNCRID(capsule_shadow)
++	FUNC5(capsule_shadow_update, RID, const Vector3 &, real_t, const Vector3 &, real_t)
++
++	FUNCRID(blob_shadow)
++	FUNC3(blob_shadow_update, RID, const Vector3 &, real_t)
++
++	FUNC1(blob_shadows_set_range, real_t)
++	FUNC1(blob_shadows_set_gamma, real_t)
++	FUNC1(blob_shadows_set_intensity, real_t)
++
++	FUNCRID(blob_light)
++	FUNC2(blob_light_update, RID, const Transform &)
++	FUNC3(blob_light_set_param, RID, VisualServer::LightBlobShadowParam, real_t)
++	FUNC3(blob_light_set_light_param, RID, VisualServer::LightParam, real_t)
++	FUNC2(blob_light_set_type, RID, VisualServer::LightType)
++	FUNC2(blob_light_set_visible, RID, bool)
++
+ 	/* PORTALS API */
+ 
+ 	FUNC2(instance_set_portal_mode, RID, InstancePortalMode)
+diff --git a/servers/visual_server.cpp b/servers/visual_server.cpp
+--- a/servers/visual_server.cpp
++++ b/servers/visual_server.cpp
+@@ -2096,6 +2096,7 @@
+ 	ClassDB::bind_method(D_METHOD("camera_set_orthogonal", "camera", "size", "z_near", "z_far"), &VisualServer::camera_set_orthogonal);
+ 	ClassDB::bind_method(D_METHOD("camera_set_frustum", "camera", "size", "offset", "z_near", "z_far"), &VisualServer::camera_set_frustum);
+ 	ClassDB::bind_method(D_METHOD("camera_set_transform", "camera", "transform"), &VisualServer::camera_set_transform);
++	ClassDB::bind_method(D_METHOD("camera_set_blob_focus_position", "camera", "position"), &VisualServer::camera_set_blob_focus_position);
+ 	ClassDB::bind_method(D_METHOD("camera_set_cull_mask", "camera", "layers"), &VisualServer::camera_set_cull_mask);
+ 	ClassDB::bind_method(D_METHOD("camera_set_environment", "camera", "env"), &VisualServer::camera_set_environment);
+ 	ClassDB::bind_method(D_METHOD("camera_set_use_vertical_aspect", "camera", "enable"), &VisualServer::camera_set_use_vertical_aspect);
+@@ -2191,6 +2192,11 @@
+ 	ClassDB::bind_method(D_METHOD("instances_cull_aabb", "aabb", "scenario"), &VisualServer::_instances_cull_aabb_bind, DEFVAL(RID()));
+ 	ClassDB::bind_method(D_METHOD("instances_cull_ray", "from", "to", "scenario"), &VisualServer::_instances_cull_ray_bind, DEFVAL(RID()));
+ 	ClassDB::bind_method(D_METHOD("instances_cull_convex", "convex", "scenario"), &VisualServer::_instances_cull_convex_bind, DEFVAL(RID()));
++
++	ClassDB::bind_method(D_METHOD("blob_shadows_set_range", "range"), &VisualServer::blob_shadows_set_range);
++	ClassDB::bind_method(D_METHOD("blob_shadows_set_gamma", "gamma"), &VisualServer::blob_shadows_set_gamma);
++	ClassDB::bind_method(D_METHOD("blob_shadows_set_intensity", "intensity"), &VisualServer::blob_shadows_set_intensity);
++
+ #endif
+ 	ClassDB::bind_method(D_METHOD("canvas_create"), &VisualServer::canvas_create);
+ 	ClassDB::bind_method(D_METHOD("canvas_set_item_mirroring", "canvas", "item", "mirroring"), &VisualServer::canvas_set_item_mirroring);
+diff --git a/servers/visual_server.h b/servers/visual_server.h
+--- a/servers/visual_server.h
++++ b/servers/visual_server.h
+@@ -460,6 +460,13 @@
+ 		LIGHT_PARAM_MAX
+ 	};
+ 
++	enum LightBlobShadowParam {
++		LIGHT_BLOB_SHADOW_PARAM_RANGE_HARDNESS,
++		LIGHT_BLOB_SHADOW_PARAM_RANGE_MAX,
++		LIGHT_BLOB_SHADOW_PARAM_INTENSITY,
++		LIGHT_BLOB_SHADOW_PARAM_MAX
++	};
++
+ 	virtual RID directional_light_create() = 0;
+ 	virtual RID omni_light_create() = 0;
+ 	virtual RID spot_light_create() = 0;
+@@ -638,6 +645,7 @@
+ 	virtual void camera_set_orthogonal(RID p_camera, float p_size, float p_z_near, float p_z_far) = 0;
+ 	virtual void camera_set_frustum(RID p_camera, float p_size, Vector2 p_offset, float p_z_near, float p_z_far) = 0;
+ 	virtual void camera_set_transform(RID p_camera, const Transform &p_transform) = 0;
++	virtual void camera_set_blob_focus_position(RID p_camera, const Vector3 &p_pos) = 0;
+ 	virtual void camera_set_cull_mask(RID p_camera, uint32_t p_layers) = 0;
+ 	virtual void camera_set_environment(RID p_camera, RID p_env) = 0;
+ 	virtual void camera_set_use_vertical_aspect(RID p_camera, bool p_enable) = 0;
+@@ -920,6 +928,24 @@
+ 
+ 	virtual void instance_set_extra_visibility_margin(RID p_instance, real_t p_margin) = 0;
+ 
++	/* BLOB SHADOWS API */
++	virtual RID capsule_shadow_create() = 0;
++	virtual void capsule_shadow_update(RID p_blob, const Vector3 &p_occluder_a_pos, real_t p_occluder_a_radius, const Vector3 &p_occluder_b_pos, real_t p_occluder_b_radius) = 0;
++
++	virtual RID blob_shadow_create() = 0;
++	virtual void blob_shadow_update(RID p_blob, const Vector3 &p_occluder_pos, real_t p_occluder_radius) = 0;
++
++	virtual void blob_shadows_set_range(real_t p_value) = 0;
++	virtual void blob_shadows_set_gamma(real_t p_value) = 0;
++	virtual void blob_shadows_set_intensity(real_t p_value) = 0;
++
++	virtual RID blob_light_create() = 0;
++	virtual void blob_light_update(RID p_blob_light, const Transform &p_global_transform) = 0;
++	virtual void blob_light_set_param(RID p_blob_light, VisualServer::LightBlobShadowParam p_param, real_t p_value) = 0;
++	virtual void blob_light_set_light_param(RID p_blob_light, VisualServer::LightParam p_param, real_t p_value) = 0;
++	virtual void blob_light_set_type(RID p_blob_light, VisualServer::LightType p_type) = 0;
++	virtual void blob_light_set_visible(RID p_blob_light, bool p_visible) = 0;
++
+ 	/* PORTALS API */
+ 
+ 	enum InstancePortalMode {
+@@ -1276,6 +1302,7 @@
+ VARIANT_ENUM_CAST(VisualServer::BlendShapeMode);
+ VARIANT_ENUM_CAST(VisualServer::LightType);
+ VARIANT_ENUM_CAST(VisualServer::LightParam);
++VARIANT_ENUM_CAST(VisualServer::LightBlobShadowParam);
+ VARIANT_ENUM_CAST(VisualServer::ViewportUpdateMode);
+ VARIANT_ENUM_CAST(VisualServer::ViewportClearMode);
+ VARIANT_ENUM_CAST(VisualServer::ViewportMSAA);

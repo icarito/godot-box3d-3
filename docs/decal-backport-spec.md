@@ -344,3 +344,12 @@ historia; el test vive en `/tmp/kilo/decal-test/` hasta migrarse a
   compila una variante síncrona (mitigado por los patches de async fallback).
 - Compressed textures rechazadas con warning.
 - GLES2: el nodo existe y no renderiza (por diseño, F4 si hace falta).
+- Ocultar un `Decal` (`visible = false`) saca de la lista de decals a *todos*
+  los demás: los `decal_mask` por objeto se construyen contra el índice
+  (`j + 1`) del array de la cull, y al desaparecer uno los índices se corren
+  sin rehacer las máscaras, así que los slots apuntan a decals equivocados o a
+  cero. Reproducido en `decal/demo_advanced` (modo `DECAL_DEMO_SHADOW=decal`)
+  con el decal de piso oculto: desaparecen las quemaduras y el láser aunque
+  sigan visibles. Workaround en la demo: dejarlo visible con `modulate.a = 0`.
+  El arreglo real es reconstruir las máscaras después de mover/ocultar decals
+  (o reindexar en `_setup_decals`).

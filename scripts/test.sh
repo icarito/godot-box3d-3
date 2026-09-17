@@ -34,6 +34,7 @@ scenes=(
 	res://tests/m26_csg_floor.tscn
 	res://tests/m27_shape_swap.tscn
 	res://tests/m28_layer_asymmetry.tscn
+	res://tests/m29_blob_shadow_api.tscn
 )
 
 status=0

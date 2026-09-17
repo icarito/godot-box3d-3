@@ -129,6 +129,11 @@ over the pinned FRT checkout). It is a mix of:
   `Decal` node backported into the GLES3 renderer, paired with the `decal/`
   module. The scene shader sits at its 31-conditional limit, so custom defines
   there must be written `#if defined(...)`.
+- **`zzzzz_feature_blob_shadow_gles3.patch`**, a feature (not upstreamable): the
+  Godot 4 `BlobShadow`/`BlobFocus` nodes backported from upstream PR #84804 to
+  both GLES3 and GLES2. Applied last because its `_render_list()` hunk lands on
+  the diagnostics patch's `FRT_SKIN_NO_DEPTH` block; it frees the two version
+  bits the sampler-budget patch was wasting so `USE_BLOB_SHADOWS` fits.
 
 See [`patches/README.md`](patches/README.md) for the per-patch detail.
 
@@ -237,11 +242,25 @@ textures. Godot 4 Compatibility semantics — the decal is not geometry, it only
 modifies the fragments inside its box. GLES2 and the dummy rasterizer ignore
 decals (the node still exists scene-side).
 
-`decal/demo_advanced/` is the acceptance demo: a decal over moving geometry and
-a blob shadow that follows a patrolling box. It is experimental; the scene
-shader is at its 31-conditional budget, so wiring more channels (normal/ORM
-rects are reserved) needs care. See
+`decal/demo_advanced/` is the acceptance demo: decals over moving geometry plus
+the shadow that follows a patrolling box. It now defaults to the real
+`BlobShadow` node (`DECAL_DEMO_SHADOW=blob`); `=decal` keeps the old fake
+projected-decal shadow for comparison and `=both` shows the two. It is
+experimental; the scene shader is at its 31-conditional budget, so wiring more
+channels (normal/ORM rects are reserved) needs care. See
 [`docs/decal-backport-spec.md`](docs/decal-backport-spec.md).
+
+Real blob shadows ship separately, backported from upstream PR #84804 by
+`zzzzz_feature_blob_shadow_gles3.patch`: the `BlobShadow` node casts a soft
+sphere or capsule shadow, `BlobFocus` tells the renderer where to prioritize
+casters, and the caster `Light` gains `blob_shadow_*` parameters
+(`rendering/quality/blob_shadows/*` sets the global range/gamma/intensity and
+the caster budgets). Unlike the demo's projected decal, these are not geometry:
+the scene shader darkens the receiving fragment. Both GLES3 and GLES2 render
+them; the particles/decals/ubershader budget is unaffected because the patch
+frees two conditionals instead of adding a 32nd. See
+[`docs/blob-shadow-backport-spec.md`](docs/blob-shadow-backport-spec.md) for the
+port notes and `test_project/blob_shadow_visual.gd` for the acceptance check.
 
 ## Tests
 
@@ -274,6 +293,19 @@ GODOT=../godot/bin/godot.x11.tools.64 scripts/test.sh
 | `m20_body_scale` | body scale reaches the shapes at their visual position |
 | `m21_character_mover` | a capsule character stays steady on props and slides along railings |
 | `m22_trimesh_jitter` | a capsule on mesh geometry does not buzz, at either triangle winding |
+| `m23_flush_spawn` … `m28_layer_asymmetry` | the Box3D bug-repro scenes (`scripts/test.sh` lists them) |
+| `m29_blob_shadow_api` | `BlobShadow`/`BlobFocus` and blob-shadow `Light` params: RID lifetime, type switch, radius/offset round-trip, enable/disable |
+
+The blob shadow feature also has a pixel test, which needs a real GL context:
+
+```bash
+xvfb-run -a -s "-screen 0 1024x600x24" \
+  ../godot/bin/godot.x11.opt.tools.64 --path test_project -s blob_shadow_visual.gd
+```
+
+It renders the same frame with and without the caster and prints `BLOB_OK` when
+the shadow region darkens and a control region does not (`--video-driver GLES2`
+covers the GLES2 path).
 
 ## Documentation
 
@@ -284,6 +316,9 @@ GODOT=../godot/bin/godot.x11.tools.64 scripts/test.sh
   culling, queries), and the module roadmap items that matter to it.
 - **Decal backport**: `docs/decal-backport-spec.md` — the Godot 4 `Decal` →
   GLES3 design, channels and limits.
+- **Blob shadow backport**: `docs/blob-shadow-backport-spec.md` — the Godot 4
+  `BlobShadow`/`BlobFocus` → GLES3/GLES2 port, the conditional-budget fix and
+  the 3.6 interpolation adaptation.
 - **FRT desktop parity / Wayland**: `docs/desktop_parity.md` — the desktop-GL
   switch, the missing platform pieces and what remains.
 - **Box3D engine** (`box3d/thirdparty/box3d/docs/`): upstream's own guide —

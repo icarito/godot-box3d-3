@@ -51,6 +51,13 @@ GLES2), el perfil más restrictivo del proyecto.
      `SurfaceTool` cada refresh; la altura del terreno es estable entre
      frames — regenerar solo cuando algún rayo cambia de nivel de grilla más
      allá de `snap_amount`.
+   - **Reemplazar la grilla por la `BlobShadow` del motor** (backport, ver
+     `docs/blob-shadow-backport-spec.md`): proyecta la sombra por shader sobre
+     la geometría que tenga debajo, sin raycasts ni malla generada, y sigue al
+     actor con `BlobFocus`. Requiere GLES3/GLES2 (Odisea ya usa GLES3 en
+     desktop, GLES2 lo soporta) y una luz con `blob_shadow_enabled`: se puede
+     usar una luz "shadow only" aparte para no tocar el look de la iluminación.
+     Es la opción de mayor esfuerzo pero la que borra el costo entero.
 
 3. **Trimesh de colisión compartidos.** `Mesh.create_trimesh_shape()` crea
    un `ConcavePolygonShape` nuevo **por llamada**: en

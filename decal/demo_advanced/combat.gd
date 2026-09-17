@@ -1,7 +1,11 @@
 extends Node
 
 # Rango de combate: decals en uso dinámico.
-#  - Sombra "blob" que sigue a una caja que patrulla y rebota (se mueve cada frame).
+#  - Sombra que sigue a una caja que patrulla y rebota (se mueve cada frame).
+#    Por defecto la proyecta la BlobShadow real (nodo de motor, sin geometría);
+#    la sombra "fake" legacy (un Decal con textura radial negra) queda en la
+#    escena pero desarmada (modulate.a = 0). DECAL_DEMO_SHADOW=blob|decal|both
+#    fuerza el modo (para comparar); =both muestra las dos.
 #  - Punto láser que se mueve cada frame (sigue el mouse; en auto, barre solo).
 #  - Explosiones: flash emisivo que se desvanece + quemadura persistente,
 #    con pool circular por panel. El límite del sistema es 8 decals por
@@ -25,7 +29,12 @@ var flash_idx := 0
 
 var stress := false      # DECAL_DEMO_STRESS=1: same interaction but without quitting, for stress testing
 var crate: MeshInstance
-var shadow: Decal
+var decal_shadow: Decal
+var blob_caster: BlobShadow
+var blob_focus: BlobFocus
+var blob_light: DirectionalLight
+# DECAL_DEMO_SHADOW=blob|decal|both. Default: the real blob shadow.
+var shadow_mode := "blob"
 var laser: Decal
 var aim := Vector3(0, -50, WALL_Z)
 
@@ -33,6 +42,9 @@ func _ready():
 	rng.seed = 777
 	auto = OS.get_environment("DECAL_DEMO_AUTO") == "1"
 	stress = OS.get_environment("DECAL_DEMO_STRESS") == "1"
+	var env_mode := OS.get_environment("DECAL_DEMO_SHADOW")
+	if env_mode in ["blob", "decal", "both"]:
+		shadow_mode = env_mode
 	_build_scene()
 
 func _build_scene():
@@ -45,6 +57,18 @@ func _build_scene():
 	var sun := DirectionalLight.new()
 	add_child(sun)
 	sun.rotation_degrees = Vector3(-55, 25, 0)
+
+	# Luz dedicada a las blob shadows: "shadow only" (no ilumina), apuntando
+	# casi recto hacia abajo para que la sombra caiga bajo la caja, y por
+	# encima de los casters (su AABB de blob shadows cuelga hacia abajo).
+	blob_light = DirectionalLight.new()
+	add_child(blob_light)
+	blob_light.translation = Vector3(0, 6, 0)
+	blob_light.rotation_degrees = Vector3(-90, 0, 0)
+	blob_light.light_energy = 1.0
+	blob_light.shadow_enabled = false
+	blob_light.blob_shadow_enabled = shadow_mode != "decal"
+	blob_light.blob_shadow_shadow_only = true
 
 	var floor_mi := MeshInstance.new()
 	var pm := PlaneMesh.new()
@@ -98,12 +122,29 @@ func _build_scene():
 	crate.material_override = cmat
 	add_child(crate)
 
-	shadow = Decal.new()
-	shadow.set_texture(Decal.TEXTURE_ALBEDO, _shadow_tex())
-	shadow.modulate = Color(1, 1, 1, 0.65)
-	shadow.size = Vector3(1.3, 1.0, 1.3)
-	shadow.transform = Transform(Basis(), Vector3(0, 0.02, -1.4))
-	add_child(shadow)
+	decal_shadow = Decal.new()
+	decal_shadow.set_texture(Decal.TEXTURE_ALBEDO, _shadow_tex())
+	# En modo blob queda transparente en vez de invisible: ocultar un Decal
+	# saca al resto de la escena de la lista de decals (bug propio del port de
+	# decals, ajeno a blob shadows), y acá el decal de piso es el que sobra.
+	decal_shadow.modulate = Color(1, 1, 1, 0.0 if shadow_mode == "blob" else 0.65)
+	decal_shadow.size = Vector3(1.3, 1.0, 1.3)
+	decal_shadow.transform = Transform(Basis(), Vector3(0, 0.02, -1.4))
+	add_child(decal_shadow)
+
+	# La BlobShadow real: una esfera centrada en la caja. El nodo no dibuja
+	# geometría; la luz marcada como blob_shadow_enabled la proyecta sobre lo
+	# que tenga debajo. BlobFocus prioriza los casters cerca de la acción.
+	blob_caster = BlobShadow.new()
+	blob_caster.type = BlobShadow.BLOB_SHADOW_SPHERE
+	blob_caster.set_radius(0, 0.5)
+	blob_caster.translation = Vector3(0, 0.45, -1.4)
+	blob_caster.visible = shadow_mode != "decal"
+	add_child(blob_caster)
+
+	blob_focus = BlobFocus.new()
+	blob_focus.translation = Vector3(0, 0.45, -1.4)
+	add_child(blob_focus)
 
 	laser = Decal.new()
 	laser.set_texture(Decal.TEXTURE_EMISSION, _glow_tex(Color(1, 0.1, 0.1)))
@@ -168,7 +209,9 @@ func _process(dt):
 	# La caja patrulla en un ocho y rebota; la sombra la sigue cada frame.
 	var cp := Vector3(1.7 * sin(t * 0.7), 0.45 + 0.3 * abs(sin(t * 2.2)), -1.4 + 0.9 * sin(t * 1.4))
 	crate.translation = cp
-	shadow.translation = Vector3(cp.x, 0.02, cp.z)
+	decal_shadow.translation = Vector3(cp.x, 0.02, cp.z)
+	blob_caster.translation = cp
+	blob_focus.translation = cp
 
 	if auto:
 		aim = Vector3(2.0 * sin(frames * 0.017), 2.3 + 1.1 * sin(frames * 0.023), WALL_Z)
@@ -229,13 +272,13 @@ func _verify_and_quit():
 	var floor_ref := _luma(_sample(img, cam.unproject_position(Vector3(crate.translation.x + 2.2, 0.0, crate.translation.z))))
 	var lp := _sample(img, cam.unproject_position(aim))
 	img.unlock()
-	print("DEMO scorch=", scorch, " wall=", wall, " shadow=", under_crate, " floor=", floor_ref, " laser_rgb=", lp)
+	print("DEMO shadow_mode=", shadow_mode, " scorch=", scorch, " wall=", wall, " shadow=", under_crate, " floor=", floor_ref, " laser_rgb=", lp)
 	var ok := true
 	if scorch > wall - 0.15:
 		print("DEMO_FAIL scorch no visible")
 		ok = false
 	if under_crate > floor_ref - 0.08:
-		print("DEMO_FAIL sombra blob no visible")
+		print("DEMO_FAIL sombra no visible")
 		ok = false
 	if lp.r < lp.g + 0.2 or lp.r < lp.b + 0.2:
 		print("DEMO_FAIL laser no rojo")
