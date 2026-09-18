@@ -1,0 +1,65 @@
+diff --git a/main/main.cpp b/main/main.cpp
+index 1f4e98fa9f..45ad565052 100644
+--- a/main/main.cpp
++++ b/main/main.cpp
+@@ -2429,7 +2429,13 @@ bool Main::iteration() {
+ 
+ 	message_queue->flush();
+ 
++	uint64_t sync_begin = OS::get_singleton()->get_ticks_usec();
+ 	VisualServer::get_singleton()->sync(); //sync if still drawing from previous frames.
++	uint64_t sync_ticks = OS::get_singleton()->get_ticks_usec() - sync_begin;
++
++	// FRT_PERF: tiempo de CPU del pase de render (incluye el swap). Permite partir el
++	// frame en idle / fisica / render y ver que queda para vsync/driver.
++	uint64_t render_begin = OS::get_singleton()->get_ticks_usec();
+ 
+ 	if (OS::get_singleton()->can_draw() && VisualServer::get_singleton()->is_render_loop_enabled()) {
+ 		if ((!force_redraw_requested) && OS::get_singleton()->is_in_low_processor_usage_mode()) {
+@@ -2453,6 +2459,8 @@ bool Main::iteration() {
+ 		}
+ 	}
+ 
++	uint64_t render_ticks = OS::get_singleton()->get_ticks_usec() - render_begin;
++
+ #ifndef TOOLS_ENABLED
+ 	// we can choose to sync delta from here, just after the draw
+ 	if (delta_sync_after_draw) {
+@@ -2465,6 +2473,37 @@ bool Main::iteration() {
+ 	idle_process_max = MAX(idle_process_ticks, idle_process_max);
+ 	uint64_t frame_time = OS::get_singleton()->get_ticks_usec() - raw_ticks_at_start;
+ 
++	// FRT_PERF: resumen cada 120 frames, en ms por frame. `idle` descuenta el render
++	// (idle_process_ticks incluye el pase de dibujo) y `rest` es lo que sobra para
++	// vsync/sleep/driver. Apagado por defecto: sin FRT_PERF en el env no hace nada.
++	{
++		static const bool frt_perf = OS::get_singleton()->has_environment("FRT_PERF");
++		if (frt_perf) {
++			static uint64_t acc_frame = 0, acc_idle = 0, acc_phys = 0, acc_render = 0, acc_sync = 0;
++			static int perf_frames = 0;
++			acc_frame += frame_time;
++			acc_idle += (idle_process_ticks > render_ticks) ? idle_process_ticks - render_ticks : 0;
++			acc_phys += physics_process_ticks;
++			acc_render += render_ticks;
++			acc_sync += sync_ticks;
++			perf_frames++;
++			if (perf_frames >= 120) {
++				double n = double(perf_frames);
++				double f = double(acc_frame) / n;
++				double rest_us = f - double(acc_idle + acc_phys + acc_render + acc_sync) / n;
++				print_line("[FRT_PERF] frame=" + rtos(f / 1000.0) +
++						" idle=" + rtos(double(acc_idle) / n / 1000.0) +
++						" phys=" + rtos(double(acc_phys) / n / 1000.0) +
++						" render=" + rtos(double(acc_render) / n / 1000.0) +
++						" sync=" + rtos(double(acc_sync) / n / 1000.0) +
++						" other=" + rtos(rest_us / 1000.0) +
++						" fps=" + rtos(1000000.0 / (f > 0.0 ? f : 1.0)));
++				acc_frame = acc_idle = acc_phys = acc_render = acc_sync = 0;
++				perf_frames = 0;
++			}
++		}
++	}
++
+ 	for (int i = 0; i < ScriptServer::get_language_count(); i++) {
+ 		ScriptServer::get_language(i)->frame();
+ 	}
