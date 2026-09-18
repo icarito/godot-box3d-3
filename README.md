@@ -75,6 +75,7 @@ compile Godot:
 | `godot.box3d.linux.x86_64.editor` | X11 editor binary, for working locally |
 | `godot.box3d.frt.linux.x86_64.editor` | FRT/SDL2 editor binary: same engine and module, SDL2 video. On a Wayland session SDL2 picks its native wayland driver (EGL/ES context, no XWayland); on X11 or the handheld CFWs it falls back to SDL2's x11/other backends. Implements `--no-window`. |
 | `godot.box3d.frt.x86_64.release`, `godot.box3d.frt.x86_64.debug` | FRT/SDL2 x86_64 **runtime** templates (`tools=no`, desktop GL 3.3 core via EGL): the engine Odisea's Wayland-native Linux builds embed, the x86_64 counterpart of the arm64 handheld templates |
+| `godot.box3d.frt.arm64.release`, `godot.box3d.frt.arm64.debug` | FRT/SDL2 arm64 **runtime** templates (`tools=no`, GLES3): the engine the PortMaster/ARM handheld builds embed (RK3326 and friends). The `.debug` one is what `dev.sh` attaches a local peer to |
 | `godot.box3d.thegates.linux.x86_64` | TheGates renderer: `platform=x11` template carrying the `the_gates` module (ZeroMQ IPC + shared-texture frame transport) alongside Box3D. The binary the TheGates launcher runs for gates declaring `godot_version = "3.6"` |
 | `godot.box3d.thegates.linux.x86_64.debug` | Same renderer, `release_debug` build, for debugging a gate |
 | `linux-3.6` | The renderer packaged the way TheGates' backend serves it: a zip whose archive root holds `Renderer-godot_v3.6.x86_64`, the exact file `/api/download_renderer/linux-3.6` returns |
@@ -125,6 +126,12 @@ over the pinned FRT checkout). It is a mix of:
 - **Wayland keep-alive and decorations**: the FRT window answers the
   compositor's pings while a synchronous shader compile blocks the main thread,
   and gets window-manager decorations instead of empty libdecor chrome.
+- **Gamepad axes through the GameControllerDB** (`patches/frt/zzz_sdl_gamecontroller_axes.patch`):
+  FRT opened the pad with the raw `SDL_Joystick` API, so it bypassed SDL's
+  GameControllerDB and a firmware-inverted axis (RG351V and similar) reached the
+  game as-is. It now opens a second `SDL_GameController` handle for the sticks,
+  which applies the per-GUID mapping from `SDL_GAMECONTROLLERCONFIG`; buttons and
+  hats keep coming from the raw handle, so a project's InputMap does not change.
 - **`upstream_is_visible_in_tree_precalc.patch`**, an upstream backport:
   `Spatial` caches `visible_in_tree` instead of walking the parent chain on
   every `is_visible_in_tree()` call (upstream commit `54e5949`, adapted to
