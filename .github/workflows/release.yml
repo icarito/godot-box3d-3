@@ -384,7 +384,7 @@ jobs:
           upload_asset() {
             local f="$1" a
             for a in 1 2 3 4 5; do
-              if timeout 1800 gh release upload "$TAG" "$f" --clobber; then
+              if timeout 1800 gh release upload "$TAG" "$f" --repo "$GITHUB_REPOSITORY" --clobber; then
                 return 0
               fi
               echo "::warning::reintento $a subiendo $(basename "$f")"
@@ -395,7 +395,7 @@ jobs:
           }
 
           release_assets() {
-            gh release view "$TAG" --json assets --jq '.assets[].name' 2>/dev/null | sort || true
+            gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' 2>/dev/null | sort || true
           }
 
           missing_list() {
@@ -420,8 +420,8 @@ jobs:
             echo "::warning::quedan assets sin subir; el release parece tener el storage roto, recreando (tag se conserva)"
             PRERELEASE_FLAG=""
             case "$TAG" in *-*) PRERELEASE_FLAG="--prerelease" ;; esac
-            gh release delete "$TAG" --yes
-            gh release create "$TAG" --title "$TAG" --target "$GITHUB_SHA" $PRERELEASE_FLAG --generate-notes
+            gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" --yes
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --title "$TAG" --target "$GITHUB_SHA" $PRERELEASE_FLAG --generate-notes
             for f in publish/*; do
               upload_asset "$f"
             done
