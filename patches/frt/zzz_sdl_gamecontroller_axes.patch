@@ -1,0 +1,96 @@
+--- a/sdl2_adapter.h
++++ b/sdl2_adapter.h
+@@ -229,6 +229,12 @@
+ 	SDL_KeyboardEvent key_ev_;
+ 	int key_unicode_;
+ 	SDL_Joystick *js_[MAX_JOYSTICKS];
++	// Second handle for the same device, only for the sticks. SDL_GameController
++	// applies the GameControllerDB mapping that get_controls put in
++	// SDL_GAMECONTROLLERCONFIG, which is what normalizes a device whose axes come
++	// out inverted (RG351V and friends). Buttons/hats keep coming from the raw
++	// joystick handle, so the project InputMap does not move.
++	SDL_GameController *gc_[MAX_JOYSTICKS];
+ 	uint64_t rumble_timestamp_[MAX_JOYSTICKS];
+ 	uint32_t rumble_supported_;
+ 	ExitShortcut exit_shortcut_;
+@@ -332,12 +338,34 @@
+ 				return id;
+ 		return -1;
+ 	}
++	int get_gc_id(int inst_id) {
++		SDL_GameController *gc = SDL_GameControllerFromInstanceID(inst_id);
++		if (!gc)
++			return -1;
++		for (int id = 0; id < MAX_JOYSTICKS; id++)
++			if (gc_[id] == gc)
++				return id;
++		return -1;
++	}
+ 	void js_event(const SDL_Event &ev) {
+ 		int id;
+ 		switch (ev.type) {
++		case SDL_CONTROLLERAXISMOTION: {
++			// Mapped axis from the GameControllerDB: this is the corrected stick.
++			if ((id = get_gc_id(ev.caxis.which)) < 0)
++				return;
++			int axis = ev.caxis.axis;
++			float value = (float)ev.caxis.value / 32768.0f;
++			handler_->handle_js_axis_event(id, axis, value);
++			} break;
+ 		case SDL_JOYAXISMOTION: {
+ 			if ((id = get_js_id(ev.jaxis.which)) < 0)
+ 				return;
++			// With a GameController open the sticks already arrived through
++			// SDL_CONTROLLERAXISMOTION (mapped). The raw event would duplicate them
++			// and, worse, without the mapping correction.
++			if (gc_[id])
++				return;
+ 			int axis = ev.jaxis.axis;
+ 			float value = (float)ev.jaxis.value / 32768.0f;
+ 			handler_->handle_js_axis_event(id, axis, value);
+@@ -393,6 +421,9 @@
+ 			SDL_JoystickGetGUIDString(SDL_JoystickGetDeviceGUID(id), guid, sizeof(guid));
+ 			handler_->handle_js_status_event(id, true, name, guid);
+ 			js_[id] = SDL_JoystickOpen(id);
++			// Null for devices with no mapping in the GameControllerDB: those keep
++			// the old raw-axis path (and the in-game Invert X/Y fallback).
++			gc_[id] = SDL_GameControllerOpen(id);
+ 			rumble_timestamp_[id] = 0;
+ 			if (SDL_JoystickRumble)
+ 				rumble_supported_ |= (1 << id);
+@@ -400,6 +431,10 @@
+ 		case SDL_JOYDEVICEREMOVED: {
+ 			if ((id = get_js_id(ev.jdevice.which)) < 0)
+ 				return;
++			if (gc_[id]) {
++				SDL_GameControllerClose(gc_[id]);
++				gc_[id] = 0;
++			}
+ 			SDL_JoystickClose(js_[id]);
+ 			js_[id] = 0;
+ 			handler_->handle_js_status_event(id, false, "", "");
+@@ -416,6 +451,7 @@
+ 		mouse_mode_ = MouseVisible;
+ 		key_unicode_ = 0;
+ 		memset(js_, 0, sizeof(js_));
++		memset(gc_, 0, sizeof(gc_));
+ 		rumble_supported_ = 0;
+ 		exit_shortcut_ = parse_exit_shortcut();
+ 		frt_resolve_symbols_sdl2();
+@@ -428,7 +464,7 @@
+ 	}
+ 	void init_window(GraphicsAPI api, int width, int height, bool resizable, bool borderless, bool always_on_top, bool hidden) {
+ 		setenv("SDL_VIDEO_RPI_OPTIONS", "gravity=center,scale=letterbox,background=1", 0);
+-		if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_JOYSTICK) < 0)
++		if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_JOYSTICK | SDL_INIT_GAMECONTROLLER) < 0)
+ 			fatal("SDL_Init failed: %s.", SDL_GetError());
+ 		int flags = (hidden ? SDL_WINDOW_HIDDEN : SDL_WINDOW_SHOWN) | SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_OPENGL;
+ 		// SDL defaults to a 16-bit depth buffer: with overlapping geometry the
+@@ -556,6 +592,7 @@
+ 			case SDL_MOUSEBUTTONDOWN:
+ 				mouse_event(ev);
+ 				break;
++			case SDL_CONTROLLERAXISMOTION:
+ 			case SDL_JOYAXISMOTION:
+ 			case SDL_JOYHATMOTION:
+ 			case SDL_JOYBUTTONDOWN:
