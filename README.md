@@ -142,10 +142,11 @@ over the pinned FRT checkout). It is a mix of:
   SDL 2.30+ only discovers joysticks connected after startup through udev, and
   where SDL is built without libudev (this distro, many CFWs) there is no
   hotplug at all. FRT opens a udev monitor (dlopen, so an ARM build without
-  libudev just does not fire) and forces SDL to re-enumerate on input-device
-  add/remove, which keeps the driver and the device GUIDs — so the
-  GameControllerDB mappings do not move — instead of swapping to the classic
-  driver, which rebuilds the GUIDs from the device name and breaks them. It also
+  libudev just falls back to a lightweight poll of the `/dev/input` mtime) and
+  forces SDL to re-enumerate on input-device add/remove, which keeps the driver
+  and the device GUIDs — so the GameControllerDB mappings do not move — instead
+  of swapping to the classic driver, which rebuilds the GUIDs from the device
+  name and breaks them. It also
   re-arms joystick events after the re-init and fixes `get_gc_id` for axis
   events (they carry the joystick instance id, not the controller's; without it
   the pad is detected but mute). Buttons stay on the raw indices the project
