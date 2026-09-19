@@ -19,6 +19,10 @@ layout fix for the GLES3 directional light UBO and an idempotent
 - **FRT for handhelds** — the same platform cross-compiled for ARM64 with SDL2
   and OpenGL ES, which is what PortMaster handhelds (ROCKNIX and friends) can
   actually run.
+- **Audio control for low-end** — the upstream audio mute / runtime driver swap
+  (`AudioServer.set_enabled()`, mute on loss of focus, pause and silence):
+  when nothing is playing, the audio thread and its daemon (Pulse/ALSA/SDL)
+  stop instead of spinning, which is the main audio-CPU lever on a handheld.
 - **Experimental GLES3 features** — the Godot 4 `Decal` node backported to the
   GLES3 renderer (`decal/` module, with blob-shadow demos), the Godot 3.7 glow
   map (`Environment.glow_map`, the "lens dirt" effect) and the shader
@@ -158,6 +162,13 @@ over the pinned FRT checkout). It is a mix of:
   ignores it by design. It does not spend a scene-ubershader conditional, so it
   is independent of the decal/blob budget; it applies after blob shadows and
   before the frame profiler.
+- **`zzz_feature_audio_mute.patch`**, a feature (not upstreamable): the upstream
+  audio mute / runtime driver swap (PR #63458) — `AudioServer.set_enabled()` /
+  `is_enabled()` and the `MuteFlags` for loss of focus, OS pause and silence,
+  which swap the active driver to the Dummy while muted. It touches no file
+  another patch touches, so its order is free. See
+  [`docs/audio-mute-backport-spec.md`](docs/audio-mute-backport-spec.md) and
+  [`docs/lowend-audio-alsa-evaluation.md`](docs/lowend-audio-alsa-evaluation.md).
 
 See [`patches/README.md`](patches/README.md) for the per-patch detail.
 
@@ -347,6 +358,7 @@ GODOT=../godot/bin/godot.x11.tools.64 scripts/test.sh
 | `m23_flush_spawn` … `m28_layer_asymmetry` | the Box3D bug-repro scenes (`scripts/test.sh` lists them) |
 | `m29_blob_shadow_api` | `BlobShadow`/`BlobFocus` and blob-shadow `Light` params: RID lifetime, type switch, radius/offset round-trip, enable/disable |
 | `m30_glow_map_api` | `Environment.glow_map`/`glow_map_strength` and `VisualServer.environment_set_glow_map`: binding, defaults, texture/strength round-trip, map clear/reassign |
+| `m31_audio_mute_api` | `AudioServer.set_enabled()`/`is_enabled()`: binding, defaults, the four `audio/muting/*` settings, mute/idempotence/unmute/back-to-back toggle |
 
 The blob shadow feature also has a pixel test, which needs a real GL context:
 
@@ -387,6 +399,10 @@ It captures a glowing emitter with a black glow map and without it, and prints
 - **Glow map backport**: `docs/glow-map-backport-spec.md` — the Godot 3.7 glow
   map → GLES3 port, the tonemap texture-unit rebalance and the
   `glow_map_strength` initialization fix.
+- **Audio mute backport**: `docs/audio-mute-backport-spec.md` — the upstream
+  mute flags and the runtime driver swap to Dummy (PR #63458).
+- **Low-end audio / ALSA**: `docs/lowend-audio-alsa-evaluation.md` — why the
+  handheld already runs ALSA via SDL2, and which audio levers actually matter.
 - **FRT desktop parity / Wayland**: `docs/desktop_parity.md` — the desktop-GL
   switch, the missing platform pieces and what remains.
 - **Box3D engine** (`box3d/thirdparty/box3d/docs/`): upstream's own guide —
