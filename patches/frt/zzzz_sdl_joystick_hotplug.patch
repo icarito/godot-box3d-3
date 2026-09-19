@@ -1,5 +1,5 @@
 diff --git a/sdl2_adapter.h b/sdl2_adapter.h
-index 8af4935..890d0d8 100644
+index 8af4935..6bf7d30 100644
 --- a/sdl2_adapter.h
 +++ b/sdl2_adapter.h
 @@ -43,6 +43,8 @@
@@ -79,8 +79,15 @@ index 8af4935..890d0d8 100644
  		exit_shortcut_ = parse_exit_shortcut();
  		frt_resolve_symbols_sdl2();
  	}
-@@ -466,6 +515,11 @@ public:
+@@ -464,8 +513,18 @@ public:
+ 	}
+ 	void init_window(GraphicsAPI api, int width, int height, bool resizable, bool borderless, bool always_on_top, bool hidden) {
  		setenv("SDL_VIDEO_RPI_OPTIONS", "gravity=center,scale=letterbox,background=1", 0);
++		// SDL drops joystick axis/button events while the window is not focused
++		// unless background events are allowed. A handheld, a borderless window
++		// or a compositor that never reports focus to SDL leaves the pad
++		// detected but mute; allow them so input always arrives.
++		SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
  		if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_JOYSTICK | SDL_INIT_GAMECONTROLLER) < 0)
  			fatal("SDL_Init failed: %s.", SDL_GetError());
 +		// Keep SDL's driver and GUIDs, but add the hotplug it lacks without
@@ -91,7 +98,7 @@ index 8af4935..890d0d8 100644
  		int flags = (hidden ? SDL_WINDOW_HIDDEN : SDL_WINDOW_SHOWN) | SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_OPENGL;
  		// SDL defaults to a 16-bit depth buffer: with overlapping geometry the
  		// z-fighting eats whole mesh chunks (the x11 platform requests 24/8).
-@@ -504,6 +558,12 @@ public:
+@@ -504,6 +563,12 @@ public:
  		init_context_gl();
  	}
  	void cleanup() {
@@ -104,7 +111,7 @@ index 8af4935..890d0d8 100644
  		SDL_DestroyWindow(window_);
  		SDL_Quit();
  	}
-@@ -557,6 +617,9 @@ public:
+@@ -557,6 +622,9 @@ public:
  		SDL_PumpEvents();
  	}
  	void dispatch_events() {
