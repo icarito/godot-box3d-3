@@ -1,140 +1,137 @@
-# Evaluación: backend ALSA para audio de bajo overhead en el perfil low-end
+# Evaluación: backend de audio en el perfil low-end (ROCKNIX / angel.local)
 
-Pregunta: ¿podemos usar el backend ALSA para bajar el costo de audio en el
-perfil low-end de Odisea? Respuesta corta: **en el handheld ya estamos, de
-hecho, sobre ALSA —vía SDL2, no vía el driver ALSA de Godot— y la palanca que
-importa no es el driver sino el silencio/pausa y el tamaño de buffer.** Abajo
-el porqué, con la evidencia en el árbol.
+Pregunta: en PortMaster/ROCKNIX, ¿SDL2 elige ALSA o Pulse?, ¿cuál es más
+liviano? Respuesta medida en el device (no inferida): **elige Pulse —el
+protocolo PulseAudio servido por `pipewire-pulse`— y ALSA directo es más liviano
+en capas, pero en esta imagen `SDL_AUDIODRIVER=alsa` NO evita PipeWire**, porque
+el `default` de ALSA *es* el plugin de PipeWire. Los ahorros reales están en el
+resampleo y el buffer, no en el nombre del driver.
 
-## Cómo se arma el audio hoy
+## Evidencia medida en `angel.local`
 
-### Build x11 (editor/desktop, `godot.box3d.linux.x86_64.editor`)
+ROCKNIX (imagen 2026-09-01, kernel 7.1.2, codec rk817, pipewire 17):
 
-Godot 3.6 trae los dos drivers: `drivers/pulseaudio/audio_driver_pulseaudio.cpp`
-y `drivers/alsa/audio_driver_alsa.cpp`. La plataforma x11 registra **PulseAudio
-primero y ALSA como fallback**:
-
-```cpp
-// platform/x11/os_x11.cpp:4509
-OS_X11::OS_X11() {
-#ifdef PULSEAUDIO_ENABLED
-	AudioDriverManager::add_driver(&driver_pulseaudio);
-#endif
-#ifdef ALSA_ENABLED
-	AudioDriverManager::add_driver(&driver_alsa);
-#endif
+```text
+# procesos de audio
+339 /usr/bin/pipewire
+349 /usr/bin/wireplumber -p main-systemwide
+366 /usr/bin/pipewire-pulse
+# no hay binario pulseaudio: command -v pulseaudio -> NO_PULSEAUDIO_BIN
 ```
 
-En nuestra máquina el binario x11 reporta `audio_drivers=3` (Dummy +
-PulseAudio + ALSA) y verifiqué que arranca con cualquiera de los dos:
-`--audio-driver ALSA` y `--audio-driver PulseAudio`, con `m31_audio_mute_api`
-en PASS en ambos.
+El juego corriendo:
 
-### Template handheld (`godot.box3d.frt.arm64.release`), el que corre Odisea en ROCKNIX
-
-La plataforma FRT registra **un solo driver, `AudioDriverSDL2`**, y no compila
-ni registra los de Godot:
-
-```cpp
-// platform/frt/frt_godot.cc:155
-Godot3_OS() : os_(this) {
-	AudioDriverManager::add_driver(&audio_driver_);   // AudioDriverSDL2
-	...
-}
-
-// platform/frt/frt_godot.cc:42
-Error init() override {
-	mix_rate_ = GLOBAL_GET("audio/mix_rate");
-	const int latency = GLOBAL_GET("audio/output_latency");
-	const int samples = closest_power_of_2(latency * mix_rate_ / 1000);
-	return audio_.init(mix_rate_, samples) ? OK : ERR_CANT_OPEN;
-}
+```text
+8417 /roms/ports/odisea/odisea.frt.aarch64 --resolution 640x480 -f \
+      --video-driver GLES3 --main-pack odisea.pck
+env: SDL_AUDIODRIVER=pulseaudio   SDL_VIDEODRIVER=wayland
+threads: SDLAudioP1, PulseMainloop, PulseHotplug
+fd: 11 -> /memfd:pulseaudio
 ```
 
-y `Audio::init()` (`platform/frt/sdl2_adapter.h:83`) abre con `SDL_OpenAudio`
-(`AUDIO_S16`, 2 canales, `desired.samples = samples`). Es decir: **`--audio-driver
-ALSA` no existe en el handheld**; el backend lo elige SDL2. SDL2 en Linux prueba
-PulseAudio y cae a ALSA; en un CFW sin PulseAudio (lo típico en ROCKNIX) ya
-termina en ALSA directo. `SDL_AUDIODRIVER=alsa` fuerza ese camino si hubiera
-Pulse presente.
+O sea: SDL2 abre el backend **pulseaudio** (forzado por el launcher), conecta a
+`pipewire-pulse` (socket `/var/run/0-runtime-dir/pulse/native`) y el hilo
+`SDLAudioP1` está vivo. **No es ALSA directo.** La cadena completa es:
 
-En resumen:
+```text
+Godot → AudioDriverSDL2 → libpulse → pipewire-pulse → grafo PipeWire → ALSA → rk817
+```
 
-| Camino | Driver | Cómo se elige ALSA |
-|--------|--------|--------------------|
-| x11 desktop/editor | PulseAudio o ALSA (Godot) | `--audio-driver ALSA` (funciona, verificado) |
-| FRT handheld (Odisea low-end) | SDL2 → Pulse/ALSA (no Godot) | `SDL_AUDIODRIVER=alsa` en el launcher |
-| Android/iOS/Windows | driver propio | n/a |
+Costo de esa capa (2 ventanas de 5 s, `HZ=100`, deltas de utime+stime):
 
-## Qué cuesta cada camino
+| Proceso | % de un core |
+|---------|--------------|
+| `pipewire` (grafo) | ~14% |
+| `pipewire-pulse` (protocolo) | ~25% |
+| `wireplumber` | ~0% |
+| `odisea.frt.aarch64` | ~129% |
 
-- **ALSA directo** habla con `snd_pcm` en el kernel: sin daemon ni protocolo ni
-  resampling del lado del cliente. Menos overhead y latencia, a cambio de acceso
-  más exclusivo y sin mezcla por app.
-- **PulseAudio** suma un proceso/demonio, el protocolo cliente-servidor y a
-  veces resampleo. Da mezcla y cambio de dispositivo en caliente.
-- **SDL2** es una capa fina arriba de uno u otro; su overhead propio es chico.
-- El costo del hilo de audio depende sobre todo de la **frecuencia de callbacks**,
-  que la fija `audio/output_latency`. Con el default (15 ms, 44100 Hz):
-  `closest_power_of_2(15*44100/1000) = 512` frames → ~86 callbacks/s; con 30 ms
-  baja a ~43/s y con 50 ms a ~26/s. En RK3326/RK3566 eso puede notarse más que
-  Pulse vs ALSA.
-- Odisea hoy no overridea `mix_rate` ni `output_latency` (`src/project.godot`
-  `[audio]` sólo trae `output_latency.web` y `driver/output_latency.Android`),
-  así que usa 44100/15 ms.
+`pipewire-pulse`+`pipewire` ≈ **0.4 core** en un SoC de gama baja; no es ruido.
 
-## Recomendación para el perfil low-end
+## Por qué ALSA no evade PipeWire acá
 
-1. **No agregar `AudioDriverALSA` a FRT.** SDL2 ya llega a ALSA y mantener dos
-   drivers duplica caminos sin ganancia clara. Si se quisiera el driver ALSA de
-   Godot en FRT, es registrar `AudioDriverALSA` en `frt_godot.cc`, pero el
-   adaptador SDL2 ya es la ruta de audio de esa plataforma.
-2. **Probar `SDL_AUDIODRIVER=alsa` en el launcher del perfil low-end** (no en
-   todos los perfiles). Si el CFW no tiene Pulse, no cambia nada; si lo tiene,
-   evita el daemon. Medir antes de adoptarlo fijo.
-3. **Subir `audio/output_latency` a 30-50 ms en el perfil low-end** mientras el
-   gameplay lo tolere; es la palanca más determinista de CPU de audio. Un
-   `override_mobile_parity.cfg`-style por perfil.
-4. **Integrar el mute de #63458 y prender `audio/muting/mute_on_silence=true` y
-   `mute_on_pause=true` en el perfil low-end.** Con el driver apagado en reposo
-   desaparece el hilo real de audio (y el daemon) durante las pausas; en un juego
-   con tramos largos sin música esto pesa más que elegir ALSA. Ver
+```text
+# aplay -L (recortado)
+pipewire
+    PipeWire Sound Server
+default
+    Default ALSA Output (currently PipeWire Media Server)
+sysdefault:CARD=rk817int
+    rk817_int, ff070000.i2s-rk817-hifi rk817-hifi-0
+```
+
+El `default` de ALSA es el plugin de PipeWire. SDL2 abre `default` (o `AUDIODEV`
+si está seteado), así que `SDL_AUDIODRIVER=alsa` **sigue pasando por PipeWire**,
+con el mismo grafo y el mismo resampleo: no baja el costo. Para saltarlo de
+verdad habría que apuntar SDL a `sysdefault:CARD=rk817int` o `hw:0,0` con
+`AUDIODEV`, y ahí:
+
+- PipeWire normalmente ya tiene tomado el PCM del rk817 → el open puede dar
+  `EBUSY`.
+- Se pierde el volumen/mezcla del sistema (PipeWire deja de mezclar el juego con
+  el resto), y un xrun del juego corta todo.
+
+No recomendado en ROCKNIX.
+
+## Qué es "más liviano"
+
+De menor a mayor cantidad de capas:
+
+1. **ALSA directo a `hw`/`sysdefault`** (`libasound`, sin daemon). Es el más
+   liviano, pero no mezcla y pelea por el device.
+2. **ALSA vía plugin de PipeWire** (`default` en esta imagen): un hop más, misma
+   verdad de reloj que el grafo.
+3. **Protocolo Pulse sobre `pipewire-pulse`** (lo que usa hoy SDL): el que más
+   suma (cliente libpulse + servidor pulse + grafo + resampleo).
+
+Con PipeWire como sistema de audio, la comparación práctica no es "ALSA vs
+Pulse" sino **cuánto resampleo y cuántos wakeups** hace el grafo. Config actual:
+
+```text
+# pw-metadata -n settings
+clock.rate = 48000      clock.allowed-rates = [ 48000 ]
+clock.quantum = 1024    clock.min-quantum = 32   clock.max-quantum = 2048
+```
+
+El juego mezcla a **44100** (Godot default; Odisea no overridea `audio/mix_rate`),
+así que PipeWire **resamplea 44100→48000** para cada callback. En un Cortex-A35
+eso explica buena parte del CPU de `pipewire-pulse`.
+
+## Recomendación (actualizada con lo medido)
+
+1. **`audio/mix_rate=48000` en el perfil low-end** (y en general en el device):
+   alinea el juego con `clock.rate` y elimina el resampleo por callback. Es el
+   cambio más barato y con efecto más directo sobre `pipewire-pulse`.
+2. **`audio/output_latency` 30-50 ms** en el perfil low-end: menos callbacks por
+   segundo (menos trabajo en Godot, en pipewire-pulse y en el grafo).
+3. **`audio/muting/mute_on_silence=true` + `mute_on_pause=true`** (feature del
+   PR #63458): en reposo se corta el stream y bajan los tres procesos. Ver
    `docs/audio-mute-backport-spec.md`.
-5. **Para el build x11/x86 de escritorio**, dejar ALSA como opción explícita
-   (`--audio-driver ALSA`), no como default: en desktop Pulse da mezcla entre
-   apps y cambio de dispositivo, que no queremos perder. En un kiosco/handheld
-   x11 dedicado sí tiene sentido forzarlo en el launcher.
+4. **No forzar `SDL_AUDIODRIVER=alsa`** para "ahorrar": en esta imagen sigue
+   pasando por PipeWire. Si se quisiera medir el bypass real, hacerlo con
+   `AUDIODEV=sysdefault:CARD=rk817int` en un branch de prueba y midiendo EBUSY y
+   pérdida de mezcla.
+5. Opcional: subir `clock.force-quantum` (1024→2048) baja wakeups pero sube
+   latencia y afecta a todo el sistema; medir antes.
 
-## Plan de medición (pendiente, en device)
-
-No medimos todavía en ROCKNIX; esto es lo que hay que correr en la RG351V/RK
-device para decidir con datos:
+## Plan de medición para validar 1-3
 
 ```sh
-# 1) Qué backend termina usando SDL (y si hay pulse corriendo).
-pgrep -a pulseaudio || echo "sin pulseaudio"
-SDL_AUDIODRIVER=alsa   # forzar ALSA
-# SDL_AUDIODRIVER=pulseaudio   # comparar
-
-# 2) CPU del proceso de Odisea en una escena con música continua y en una
-#    silenciosa, con el mismo tramo: 30 s cada una.
-#    Anotar user+sys total y, si se puede, el thread de audio:
-top -H -p "$(pgrep -f godot.box3d.frt.arm64)"
-# o, sin top:
-cat /proc/$(pgrep -f godot.box3d.frt.arm64)/stat
-
-# 3) Descartar xruns/glitches auditivos al subir output_latency a 30/50 ms.
+# baseline y después de cada cambio: CPU de los 3 procesos de audio + juego
+for p in $(pgrep -x pipewire) $(pgrep -x pipewire-pulse) $(pgrep -x odisea.frt.aarc); do
+  awk -v p=$p '{print p, $14+$15}' /proc/$p/stat
+done   # dos veces separadas 5 s; delta/(100*5) = % de core
+# y escuchar xruns/glitches al subir output_latency
 ```
 
-Criterio: adoptar `SDL_AUDIODRIVER=alsa` sólo si baja CPU medible y no agrega
-xruns ni glitches; el mute por silencio y el `output_latency` se pueden adoptar
-por separado sin tocar el driver.
+## Estructura del audio (recordatorio)
 
-## Evidencia local (x11, no handheld)
+| Camino | Driver | Cómo se elige |
+|--------|--------|---------------|
+| x11 desktop/editor | PulseAudio o ALSA de Godot | `--audio-driver ALSA` (verificado, drivers=3) |
+| FRT handheld (Odisea low-end) | `AudioDriverSDL2` → pulse/pipewire | `SDL_AUDIODRIVER` (el launcher fuerza `pulseaudio`) |
+| Android/iOS/Windows | driver propio | n/a |
 
-- `audio_drivers=3` (Dummy/Pulse/ALSA) y `m31_audio_mute_api` en PASS con
-  `--audio-driver ALSA` y con `--audio-driver PulseAudio`.
-- FRT handheld no incluye los drivers ALSA/Pulse de Godot; su audio es
-  `AudioDriverSDL2` (código citado arriba).
-- Sin medición en device todavía: por eso el paso 2 del plan es bloqueante para
-  cambiar el launcher.
+Godot en FRT no compila ni registra los drivers ALSA/Pulse propios
+(`platform/frt/frt_godot.cc` sólo registra `AudioDriverSDL2`), así que el
+backend lo elige SDL2 y en `angel.local` es Pulse sobre `pipewire-pulse`.

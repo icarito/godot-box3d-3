@@ -401,8 +401,9 @@ It captures a glowing emitter with a black glow map and without it, and prints
   `glow_map_strength` initialization fix.
 - **Audio mute backport**: `docs/audio-mute-backport-spec.md` — the upstream
   mute flags and the runtime driver swap to Dummy (PR #63458).
-- **Low-end audio / ALSA**: `docs/lowend-audio-alsa-evaluation.md` — why the
-  handheld already runs ALSA via SDL2, and which audio levers actually matter.
+- **Low-end audio / ALSA**: `docs/lowend-audio-alsa-evaluation.md` — what the
+  handheld actually uses (Pulse over `pipewire-pulse`, measured), the PipeWire
+  CPU cost and which audio levers actually matter.
 - **FRT desktop parity / Wayland**: `docs/desktop_parity.md` — the desktop-GL
   switch, the missing platform pieces and what remains.
 - **Box3D engine** (`box3d/thirdparty/box3d/docs/`): upstream's own guide —
