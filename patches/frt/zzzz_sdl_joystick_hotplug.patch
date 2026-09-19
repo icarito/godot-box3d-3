@@ -1,0 +1,197 @@
+diff --git a/sdl2_adapter.h b/sdl2_adapter.h
+index 8af4935..ba9a5d1 100644
+--- a/sdl2_adapter.h
++++ b/sdl2_adapter.h
+@@ -43,6 +43,7 @@
+  */
+ 
+ #include <dlfcn.h>
++#include <sys/select.h>
+ 
+ typedef int (*FRT_SDL_JoystickRumble)(SDL_Joystick *, Uint16, Uint16, Uint32);
+ FRT_SDL_JoystickRumble frt_SDL_JoystickRumble = 0;
+@@ -238,6 +239,20 @@ private:
+ 	uint64_t rumble_timestamp_[MAX_JOYSTICKS];
+ 	uint32_t rumble_supported_;
+ 	ExitShortcut exit_shortcut_;
++	// udev monitor (dlopen'd, like SDL does) so a pad connected after startup is
++	// noticed even when SDL itself was built without libudev. See
++	// poll_input_changes().
++	void *udev_lib_;
++	void *udev_;
++	void *udev_mon_;
++	int udev_mon_fd_;
++	void *(*udev_new_fn)();
++	void *(*udev_monitor_new_from_netlink_fn)(void *, const char *);
++	int (*udev_monitor_filter_add_match_subsystem_devtype_fn)(void *, const char *, const char *);
++	int (*udev_monitor_enable_receiving_fn)(void *);
++	int (*udev_monitor_get_fd_fn)(void *);
++	void *(*udev_monitor_receive_device_fn)(void *);
++	void *(*udev_device_unref_fn)(void *);
+ 	void resize_event(const SDL_Event &ev) {
+ 		ivec2 size;
+ 		SDL_GL_GetDrawableSize(window_, &size.x, &size.y);
+@@ -339,11 +354,20 @@ private:
+ 		return -1;
+ 	}
+ 	int get_gc_id(int inst_id) {
++		// Controller events carry the controller instance id, but axis events
++		// carry the joystick instance id; resolve both.
+ 		SDL_GameController *gc = SDL_GameControllerFromInstanceID(inst_id);
+-		if (!gc)
++		if (gc) {
++			for (int id = 0; id < MAX_JOYSTICKS; id++)
++				if (gc_[id] == gc)
++					return id;
++			return -1;
++		}
++		SDL_Joystick *js = SDL_JoystickFromInstanceID(inst_id);
++		if (!js)
+ 			return -1;
+ 		for (int id = 0; id < MAX_JOYSTICKS; id++)
+-			if (gc_[id] == gc)
++			if (gc_[id] && SDL_GameControllerGetJoystick(gc_[id]) == js)
+ 				return id;
+ 		return -1;
+ 	}
+@@ -408,6 +432,9 @@ private:
+ 		case SDL_JOYBUTTONUP: {
+ 			if ((id = get_js_id(ev.jbutton.which)) < 0)
+ 				return;
++			// Buttons stay on the raw joystick indices: the project InputMap is
++			// authored against them (the GameControllerDB mapping is only used
++			// for the sticks).
+ 			int button = ev.jbutton.button;
+ 			bool pressed = ev.jbutton.state == SDL_PRESSED;
+ 			handler_->handle_js_button_event(id, button, pressed);
+@@ -446,6 +473,90 @@ private:
+ 			if (js_[id] && (rumble_supported_ & (1 << id)))
+ 				handler_->handle_js_vibra_event(id, rumble_timestamp_[id]);
+ 	}
++	// SDL 2.30+ only notices joysticks connected after startup through udev, and
++	// where SDL is built without libudev (this distro, many CFWs) there is no
++	// hotplug at all: SDL never queues SDL_JOYDEVICEADDED for the new pad. Rather
++	// than fall back to the classic driver -- which reads the js* nodes and
++	// builds the device GUIDs from the name, changing them and breaking the
++	// GameControllerDB mappings -- watch /dev/input and force SDL to enumerate
++	// again. SDL_InitSubSystem re-queues SDL_JOYDEVICEADDED for the pads present,
++	// with the same driver and GUIDs as at startup.
++	void reenumerate_joysticks() {
++		// SDL is about to close its joystick handles: notify Godot the pads are
++		// gone and drop ours. The add events queued below re-notify the ones
++		// still present (the caller pumps SDL right after this).
++		for (int id = 0; id < MAX_JOYSTICKS; id++) {
++			if (js_[id]) {
++				handler_->handle_js_status_event(id, false, "", "");
++				js_[id] = 0;
++				gc_[id] = 0;
++			}
++		}
++		rumble_supported_ = 0;
++		SDL_QuitSubSystem(SDL_INIT_GAMECONTROLLER);
++		SDL_QuitSubSystem(SDL_INIT_JOYSTICK);
++		SDL_InitSubSystem(SDL_INIT_JOYSTICK);
++		SDL_InitSubSystem(SDL_INIT_GAMECONTROLLER);
++		// Re-arm joystick events: after a quit/init cycle SDL can leave them
++		// disabled, which would detect the pads but drop every axis/button.
++		SDL_JoystickEventState(SDL_ENABLE);
++	}
++	// Open a udev monitor for the input subsystem. udev is dlopen'd so the
++	// build does not depend on libudev being in the cross sysroot; if it is not
++	// there at runtime the monitor simply never fires.
++	void init_udev_monitor() {
++		udev_lib_ = dlopen("libudev.so.1", RTLD_LAZY | RTLD_LOCAL);
++		if (!udev_lib_)
++			udev_lib_ = dlopen("libudev.so.0", RTLD_LAZY | RTLD_LOCAL);
++		if (!udev_lib_)
++			return;
++		udev_new_fn = (void *(*)())dlsym(udev_lib_, "udev_new");
++		udev_monitor_new_from_netlink_fn = (void *(*)(void *, const char *))dlsym(udev_lib_, "udev_monitor_new_from_netlink");
++		udev_monitor_filter_add_match_subsystem_devtype_fn = (int (*)(void *, const char *, const char *))dlsym(udev_lib_, "udev_monitor_filter_add_match_subsystem_devtype");
++		udev_monitor_enable_receiving_fn = (int (*)(void *))dlsym(udev_lib_, "udev_monitor_enable_receiving");
++		udev_monitor_get_fd_fn = (int (*)(void *))dlsym(udev_lib_, "udev_monitor_get_fd");
++		udev_monitor_receive_device_fn = (void *(*)(void *))dlsym(udev_lib_, "udev_monitor_receive_device");
++		udev_device_unref_fn = (void *(*)(void *))dlsym(udev_lib_, "udev_device_unref");
++		if (!udev_new_fn || !udev_monitor_new_from_netlink_fn || !udev_monitor_enable_receiving_fn || !udev_monitor_get_fd_fn || !udev_monitor_receive_device_fn)
++			return;
++		udev_ = udev_new_fn();
++		if (!udev_)
++			return;
++		udev_mon_ = udev_monitor_new_from_netlink_fn(udev_, "udev");
++		if (!udev_mon_)
++			return;
++		if (udev_monitor_filter_add_match_subsystem_devtype_fn)
++			udev_monitor_filter_add_match_subsystem_devtype_fn(udev_mon_,
++					"input", NULL);
++		udev_monitor_enable_receiving_fn(udev_mon_);
++		udev_mon_fd_ = udev_monitor_get_fd_fn(udev_mon_);
++	}
++	void poll_input_changes() {
++		if (!udev_mon_ || udev_mon_fd_ < 0)
++			return;
++		// Drain every pending udev event; one device appearing can produce
++		// several (event*, js*, by-id links), and a single re-enumeration
++		// already picks up all of them.
++		fd_set fds;
++		FD_ZERO(&fds);
++		FD_SET(udev_mon_fd_, &fds);
++		struct timeval tv;
++		tv.tv_sec = 0;
++		tv.tv_usec = 0;
++		if (select(udev_mon_fd_ + 1, &fds, NULL, NULL, &tv) <= 0)
++			return;
++		bool changed = false;
++		for (;;) {
++			void *dev = udev_monitor_receive_device_fn(udev_mon_);
++			if (!dev)
++				break;
++			changed = true;
++			if (udev_device_unref_fn)
++				udev_device_unref_fn(dev);
++		}
++		if (changed)
++			reenumerate_joysticks();
++	}
+ public:
+ 	OS_FRT(EventHandler *handler) : handler_(handler) {
+ 		mouse_mode_ = MouseVisible;
+@@ -453,6 +564,10 @@ public:
+ 		memset(js_, 0, sizeof(js_));
+ 		memset(gc_, 0, sizeof(gc_));
+ 		rumble_supported_ = 0;
++		udev_lib_ = nullptr;
++		udev_ = nullptr;
++		udev_mon_ = nullptr;
++		udev_mon_fd_ = -1;
+ 		exit_shortcut_ = parse_exit_shortcut();
+ 		frt_resolve_symbols_sdl2();
+ 	}
+@@ -466,6 +581,9 @@ public:
+ 		setenv("SDL_VIDEO_RPI_OPTIONS", "gravity=center,scale=letterbox,background=1", 0);
+ 		if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_JOYSTICK | SDL_INIT_GAMECONTROLLER) < 0)
+ 			fatal("SDL_Init failed: %s.", SDL_GetError());
++		// Keep SDL's driver and GUIDs, but add the hotplug it lacks without
++		// libudev: a udev monitor re-enumerates SDL when input devices change.
++		init_udev_monitor();
+ 		int flags = (hidden ? SDL_WINDOW_HIDDEN : SDL_WINDOW_SHOWN) | SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_OPENGL;
+ 		// SDL defaults to a 16-bit depth buffer: with overlapping geometry the
+ 		// z-fighting eats whole mesh chunks (the x11 platform requests 24/8).
+@@ -504,6 +622,8 @@ public:
+ 		init_context_gl();
+ 	}
+ 	void cleanup() {
++		// The udev monitor lives until the process exits; SDL_Quit and the
++		// dlopen'd library handle are released by the OS.
+ 		SDL_DestroyWindow(window_);
+ 		SDL_Quit();
+ 	}
+@@ -557,6 +677,9 @@ public:
+ 		SDL_PumpEvents();
+ 	}
+ 	void dispatch_events() {
++		// A pad connected/removed since the last frame forces a re-enumeration,
++		// which queues the SDL_JOYDEVICEADDED handled by the loop below.
++		poll_input_changes();
+ 		SDL_Event ev;
+ 		while (SDL_PollEvent(&ev)) {
+ 			switch (ev.type) {

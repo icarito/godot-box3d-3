@@ -138,6 +138,18 @@ over the pinned FRT checkout). It is a mix of:
   game as-is. It now opens a second `SDL_GameController` handle for the sticks,
   which applies the per-GUID mapping from `SDL_GAMECONTROLLERCONFIG`; buttons and
   hats keep coming from the raw handle, so a project's InputMap does not change.
+- **Gamepad hotplug and axes** (`patches/frt/zzzz_sdl_joystick_hotplug.patch`):
+  SDL 2.30+ only discovers joysticks connected after startup through udev, and
+  where SDL is built without libudev (this distro, many CFWs) there is no
+  hotplug at all. FRT opens a udev monitor (dlopen, so an ARM build without
+  libudev just does not fire) and forces SDL to re-enumerate on input-device
+  add/remove, which keeps the driver and the device GUIDs — so the
+  GameControllerDB mappings do not move — instead of swapping to the classic
+  driver, which rebuilds the GUIDs from the device name and breaks them. It also
+  re-arms joystick events after the re-init and fixes `get_gc_id` for axis
+  events (they carry the joystick instance id, not the controller's; without it
+  the pad is detected but mute). Buttons stay on the raw indices the project
+  InputMap uses.
 - **`upstream_is_visible_in_tree_precalc.patch`**, an upstream backport:
   `Spatial` caches `visible_in_tree` instead of walking the parent chain on
   every `is_visible_in_tree()` call (upstream commit `54e5949`, adapted to
