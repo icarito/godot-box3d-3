@@ -1,0 +1,464 @@
+diff --git a/doc/classes/Environment.xml b/doc/classes/Environment.xml
+index a82f1a7..9ec7d03 100644
+--- a/doc/classes/Environment.xml
++++ b/doc/classes/Environment.xml
+@@ -233,6 +233,15 @@
+ 		<member name="glow_levels/7" type="bool" setter="set_glow_level" getter="is_glow_level_enabled" default="false">
+ 			If [code]true[/code], the 7th level of glow is enabled. This is the most "global" level (blurriest).
+ 		</member>
++		<member name="glow_map" type="Texture" setter="set_glow_map" getter="get_glow_map">
++			The texture that should be used as a glow map to [i]multiply[/i] the resulting glow color according to [member glow_map_strength]. This can be used to create a "lens dirt" effect. The texture's RGB color channels are used for modulation, but the alpha channel is ignored.
++			[b]Note:[/b] The texture will be stretched to fit the screen. Therefore, it's recommended to use a texture with an aspect ratio that matches your project's base aspect ratio (typically 16:9).
++			[b]Note:[/b] [member glow_map] has no effect when using the GLES2 rendering method, due to this rendering method using a simpler glow implementation optimized for low-end devices.
++		</member>
++		<member name="glow_map_strength" type="float" setter="set_glow_map_strength" getter="get_glow_map_strength" default="0.8">
++			How strong of an impact the [member glow_map] should have on the overall glow effect. A strength of [code]0.0[/code] means the glow map has no effect on the overall glow effect. A strength of [code]1.0[/code] means the glow has a full effect on the overall glow effect (and can turn off glow entirely in specific areas of the screen if the glow map has black areas).
++			[b]Note:[/b] [member glow_map_strength] has no effect when using the GLES2 rendering method, due to this rendering method using a simpler glow implementation optimized for low-end devices.
++		</member>
+ 		<member name="glow_strength" type="float" setter="set_glow_strength" getter="get_glow_strength" default="1.0">
+ 			The glow strength. When using the GLES2 renderer, this should be increased to 1.3 to compensate for the lack of HDR rendering.
+ 		</member>
+diff --git a/doc/classes/VisualServer.xml b/doc/classes/VisualServer.xml
+index c3f9de9..9682eda 100644
+--- a/doc/classes/VisualServer.xml
++++ b/doc/classes/VisualServer.xml
+@@ -989,6 +989,15 @@
+ 				Sets the variables to be used with the "glow" post-process effect. See [Environment] for more details.
+ 			</description>
+ 		</method>
++		<method name="environment_set_glow_map">
++			<return type="void" />
++			<argument index="0" name="env" type="RID" />
++			<argument index="1" name="glow_map_strength" type="float" />
++			<argument index="2" name="glow_map" type="RID" />
++			<description>
++				Sets the variables to be used with the glow map post-process effect. See [Environment] for more details.
++			</description>
++		</method>
+ 		<method name="environment_set_sky">
+ 			<return type="void" />
+ 			<argument index="0" name="env" type="RID" />
+diff --git a/drivers/dummy/rasterizer_dummy.h b/drivers/dummy/rasterizer_dummy.h
+index 64e4f0b..f22fb94 100644
+--- a/drivers/dummy/rasterizer_dummy.h
++++ b/drivers/dummy/rasterizer_dummy.h
+@@ -66,6 +66,7 @@ public:
+ 	void environment_set_dof_blur_near(RID p_env, bool p_enable, float p_distance, float p_transition, float p_far_amount, VS::EnvironmentDOFBlurQuality p_quality) {}
+ 	void environment_set_dof_blur_far(RID p_env, bool p_enable, float p_distance, float p_transition, float p_far_amount, VS::EnvironmentDOFBlurQuality p_quality) {}
+ 	void environment_set_glow(RID p_env, bool p_enable, int p_level_flags, float p_intensity, float p_strength, float p_bloom_threshold, VS::EnvironmentGlowBlendMode p_blend_mode, float p_hdr_bleed_threshold, float p_hdr_bleed_scale, float p_hdr_luminance_cap, bool p_bicubic_upscale, bool p_high_quality) {}
++	void environment_set_glow_map(RID p_env, float p_glow_map_strength, RID p_glow_map) {}
+ 
+ 	void environment_set_fog(RID p_env, bool p_enable, float p_begin, float p_end, RID p_gradient_texture) {}
+ 
+diff --git a/drivers/gles2/rasterizer_scene_gles2.cpp b/drivers/gles2/rasterizer_scene_gles2.cpp
+index e5314d0..71e5cbc 100644
+--- a/drivers/gles2/rasterizer_scene_gles2.cpp
++++ b/drivers/gles2/rasterizer_scene_gles2.cpp
+@@ -848,6 +848,11 @@ void RasterizerSceneGLES2::environment_set_glow(RID p_env, bool p_enable, int p_
+ 	env->glow_high_quality = p_high_quality;
+ }
+ 
++void RasterizerSceneGLES2::environment_set_glow_map(RID p_env, float p_glow_map_strength, RID p_glow_map) {
++	Environment *env = environment_owner.getornull(p_env);
++	ERR_FAIL_COND(!env);
++}
++
+ void RasterizerSceneGLES2::environment_set_fog(RID p_env, bool p_enable, float p_begin, float p_end, RID p_gradient_texture) {
+ 	Environment *env = environment_owner.getornull(p_env);
+ 	ERR_FAIL_COND(!env);
+diff --git a/drivers/gles2/rasterizer_scene_gles2.h b/drivers/gles2/rasterizer_scene_gles2.h
+index d027c4c..e3fe40b 100644
+--- a/drivers/gles2/rasterizer_scene_gles2.h
++++ b/drivers/gles2/rasterizer_scene_gles2.h
+@@ -486,6 +486,7 @@ public:
+ 	virtual void environment_set_dof_blur_far(RID p_env, bool p_enable, float p_distance, float p_transition, float p_amount, VS::EnvironmentDOFBlurQuality p_quality);
+ 
+ 	virtual void environment_set_glow(RID p_env, bool p_enable, int p_level_flags, float p_intensity, float p_strength, float p_bloom_threshold, VS::EnvironmentGlowBlendMode p_blend_mode, float p_hdr_bleed_threshold, float p_hdr_bleed_scale, float p_hdr_luminance_cap, bool p_bicubic_upscale, bool p_high_quality);
++	virtual void environment_set_glow_map(RID p_env, float p_glow_map_strength, RID p_glow_map);
+ 	virtual void environment_set_fog(RID p_env, bool p_enable, float p_begin, float p_end, RID p_gradient_texture);
+ 
+ 	virtual void environment_set_ssr(RID p_env, bool p_enable, int p_max_steps, float p_fade_in, float p_fade_out, float p_depth_tolerance, bool p_roughness);
+diff --git a/drivers/gles3/rasterizer_scene_gles3.cpp b/drivers/gles3/rasterizer_scene_gles3.cpp
+index 396bfe2..04b7ee5 100644
+--- a/drivers/gles3/rasterizer_scene_gles3.cpp
++++ b/drivers/gles3/rasterizer_scene_gles3.cpp
+@@ -884,6 +884,15 @@ void RasterizerSceneGLES3::environment_set_glow(RID p_env, bool p_enable, int p_
+ 	env->glow_bicubic_upscale = p_bicubic_upscale;
+ 	env->glow_high_quality = p_high_quality;
+ }
++
++void RasterizerSceneGLES3::environment_set_glow_map(RID p_env, float p_glow_map_strength, RID p_glow_map) {
++	Environment *env = environment_owner.getornull(p_env);
++	ERR_FAIL_COND(!env);
++
++	env->glow_map_strength = p_glow_map_strength;
++	env->glow_map = p_glow_map;
++}
++
+ void RasterizerSceneGLES3::environment_set_fog(RID p_env, bool p_enable, float p_begin, float p_end, RID p_gradient_texture) {
+ }
+ 
+@@ -4456,7 +4465,7 @@ void RasterizerSceneGLES3::_post_process(Environment *env, const CameraMatrix &p
+ 		RasterizerStorageGLES3::Texture *tex = storage->texture_owner.getornull(env->color_correction);
+ 		if (tex) {
+ 			state.tonemap_shader.set_conditional(TonemapShaderGLES3::USE_COLOR_CORRECTION, true);
+-			WRAPPED_GL_ACTIVE_TEXTURE(GL_TEXTURE3);
++			WRAPPED_GL_ACTIVE_TEXTURE(GL_TEXTURE4);
+ 			glBindTexture(tex->target, tex->tex_id);
+ 		}
+ 	}
+@@ -4471,6 +4480,14 @@ void RasterizerSceneGLES3::_post_process(Environment *env, const CameraMatrix &p
+ 
+ 		if (max_glow_level >= 0) {
+ 			state.tonemap_shader.set_uniform(TonemapShaderGLES3::GLOW_INTENSITY, env->glow_intensity);
++			state.tonemap_shader.set_uniform(TonemapShaderGLES3::GLOW_MAP_STRENGTH, env->glow_map_strength);
++
++			RasterizerStorageGLES3::Texture *tex = storage->texture_owner.getornull(env->glow_map);
++			if (tex) {
++				WRAPPED_GL_ACTIVE_TEXTURE(GL_TEXTURE3);
++				glBindTexture(tex->target, tex->tex_id);
++			}
++
+ 			int ss[2] = {
+ 				storage->frame.current_rt->width,
+ 				storage->frame.current_rt->height,
+diff --git a/drivers/gles3/rasterizer_scene_gles3.h b/drivers/gles3/rasterizer_scene_gles3.h
+index 01250bf..2c54de2 100644
+--- a/drivers/gles3/rasterizer_scene_gles3.h
++++ b/drivers/gles3/rasterizer_scene_gles3.h
+@@ -460,6 +460,8 @@ public:
+ 		float glow_hdr_luminance_cap;
+ 		bool glow_bicubic_upscale;
+ 		bool glow_high_quality;
++		float glow_map_strength;
++		RID glow_map;
+ 
+ 		VS::EnvironmentToneMapper tone_mapper;
+ 		float tone_mapper_exposure;
+@@ -541,6 +543,7 @@ public:
+ 				glow_hdr_luminance_cap(12.0),
+ 				glow_bicubic_upscale(false),
+ 				glow_high_quality(false),
++				glow_map_strength(0.0),
+ 				tone_mapper(VS::ENV_TONE_MAPPER_LINEAR),
+ 				tone_mapper_exposure(1.0),
+ 				tone_mapper_exposure_white(1.0),
+@@ -598,6 +601,7 @@ public:
+ 	virtual void environment_set_dof_blur_far(RID p_env, bool p_enable, float p_distance, float p_transition, float p_amount, VS::EnvironmentDOFBlurQuality p_quality);
+ 
+ 	virtual void environment_set_glow(RID p_env, bool p_enable, int p_level_flags, float p_intensity, float p_strength, float p_bloom_threshold, VS::EnvironmentGlowBlendMode p_blend_mode, float p_hdr_bleed_threshold, float p_hdr_bleed_scale, float p_hdr_luminance_cap, bool p_bicubic_upscale, bool p_high_quality);
++	virtual void environment_set_glow_map(RID p_env, float p_glow_map_strength, RID p_glow_map);
+ 	virtual void environment_set_fog(RID p_env, bool p_enable, float p_begin, float p_end, RID p_gradient_texture);
+ 
+ 	virtual void environment_set_ssr(RID p_env, bool p_enable, int p_max_steps, float p_fade_in, float p_fade_out, float p_depth_tolerance, bool p_roughness);
+diff --git a/drivers/gles3/shaders/tonemap.glsl b/drivers/gles3/shaders/tonemap.glsl
+index bdf0bd8..da9f335 100644
+--- a/drivers/gles3/shaders/tonemap.glsl
++++ b/drivers/gles3/shaders/tonemap.glsl
+@@ -42,6 +42,8 @@ uniform highp float auto_exposure_grey;
+ 
+ uniform highp sampler2D source_glow; //texunit:2
+ uniform highp float glow_intensity;
++uniform highp float glow_map_strength;
++uniform highp sampler2D glow_map; //texunit:3
+ #endif
+ 
+ #ifdef USE_BCS
+@@ -57,7 +59,7 @@ uniform float sharpen_intensity;
+ #endif
+ 
+ #ifdef USE_COLOR_CORRECTION
+-uniform sampler2D color_correction; //texunit:3
++uniform sampler2D color_correction; //texunit:4
+ #endif
+ 
+ layout(location = 0) out vec4 frag_color;
+@@ -482,6 +484,9 @@ void main() {
+ 
+ #ifdef USING_GLOW
+ 	vec3 glow = gather_glow(source_glow, uv_interp) * glow_intensity;
++	if (glow_map_strength > 0.001) {
++		glow = mix(glow, texture(glow_map, vec2(uv_interp.x, 1.0 - uv_interp.y)).rgb * glow, glow_map_strength);
++	}
+ 
+ 	// high dynamic range -> SRGB
+ 	glow = apply_tonemapping(glow, white);
+diff --git a/scene/resources/environment.cpp b/scene/resources/environment.cpp
+index 069364e..f528be3 100644
+--- a/scene/resources/environment.cpp
++++ b/scene/resources/environment.cpp
+@@ -498,7 +498,7 @@ float Environment::get_ssao_edge_sharpness() const {
+ 
+ void Environment::set_glow_enabled(bool p_enabled) {
+ 	glow_enabled = p_enabled;
+-	VS::get_singleton()->environment_set_glow(environment, glow_enabled, glow_levels, glow_intensity, glow_strength, glow_bloom, VS::EnvironmentGlowBlendMode(glow_blend_mode), glow_hdr_bleed_threshold, glow_hdr_bleed_scale, glow_hdr_luminance_cap, glow_bicubic_upscale, glow_high_quality);
++	_update_glow();
+ 	_change_notify();
+ }
+ 
+@@ -515,7 +515,7 @@ void Environment::set_glow_level(int p_level, bool p_enabled) {
+ 		glow_levels &= ~(1 << p_level);
+ 	}
+ 
+-	VS::get_singleton()->environment_set_glow(environment, glow_enabled, glow_levels, glow_intensity, glow_strength, glow_bloom, VS::EnvironmentGlowBlendMode(glow_blend_mode), glow_hdr_bleed_threshold, glow_hdr_bleed_scale, glow_hdr_luminance_cap, glow_bicubic_upscale, glow_high_quality);
++	_update_glow();
+ }
+ bool Environment::is_glow_level_enabled(int p_level) const {
+ 	ERR_FAIL_INDEX_V(p_level, VS::MAX_GLOW_LEVELS, false);
+@@ -525,8 +525,7 @@ bool Environment::is_glow_level_enabled(int p_level) const {
+ 
+ void Environment::set_glow_intensity(float p_intensity) {
+ 	glow_intensity = p_intensity;
+-
+-	VS::get_singleton()->environment_set_glow(environment, glow_enabled, glow_levels, glow_intensity, glow_strength, glow_bloom, VS::EnvironmentGlowBlendMode(glow_blend_mode), glow_hdr_bleed_threshold, glow_hdr_bleed_scale, glow_hdr_luminance_cap, glow_bicubic_upscale, glow_high_quality);
++	_update_glow();
+ }
+ float Environment::get_glow_intensity() const {
+ 	return glow_intensity;
+@@ -534,7 +533,7 @@ float Environment::get_glow_intensity() const {
+ 
+ void Environment::set_glow_strength(float p_strength) {
+ 	glow_strength = p_strength;
+-	VS::get_singleton()->environment_set_glow(environment, glow_enabled, glow_levels, glow_intensity, glow_strength, glow_bloom, VS::EnvironmentGlowBlendMode(glow_blend_mode), glow_hdr_bleed_threshold, glow_hdr_bleed_scale, glow_hdr_luminance_cap, glow_bicubic_upscale, glow_high_quality);
++	_update_glow();
+ }
+ float Environment::get_glow_strength() const {
+ 	return glow_strength;
+@@ -542,8 +541,7 @@ float Environment::get_glow_strength() const {
+ 
+ void Environment::set_glow_bloom(float p_threshold) {
+ 	glow_bloom = p_threshold;
+-
+-	VS::get_singleton()->environment_set_glow(environment, glow_enabled, glow_levels, glow_intensity, glow_strength, glow_bloom, VS::EnvironmentGlowBlendMode(glow_blend_mode), glow_hdr_bleed_threshold, glow_hdr_bleed_scale, glow_hdr_luminance_cap, glow_bicubic_upscale, glow_high_quality);
++	_update_glow();
+ }
+ float Environment::get_glow_bloom() const {
+ 	return glow_bloom;
+@@ -551,8 +549,7 @@ float Environment::get_glow_bloom() const {
+ 
+ void Environment::set_glow_blend_mode(GlowBlendMode p_mode) {
+ 	glow_blend_mode = p_mode;
+-
+-	VS::get_singleton()->environment_set_glow(environment, glow_enabled, glow_levels, glow_intensity, glow_strength, glow_bloom, VS::EnvironmentGlowBlendMode(glow_blend_mode), glow_hdr_bleed_threshold, glow_hdr_bleed_scale, glow_hdr_luminance_cap, glow_bicubic_upscale, glow_high_quality);
++	_update_glow();
+ }
+ Environment::GlowBlendMode Environment::get_glow_blend_mode() const {
+ 	return glow_blend_mode;
+@@ -560,8 +557,7 @@ Environment::GlowBlendMode Environment::get_glow_blend_mode() const {
+ 
+ void Environment::set_glow_hdr_bleed_threshold(float p_threshold) {
+ 	glow_hdr_bleed_threshold = p_threshold;
+-
+-	VS::get_singleton()->environment_set_glow(environment, glow_enabled, glow_levels, glow_intensity, glow_strength, glow_bloom, VS::EnvironmentGlowBlendMode(glow_blend_mode), glow_hdr_bleed_threshold, glow_hdr_bleed_scale, glow_hdr_luminance_cap, glow_bicubic_upscale, glow_high_quality);
++	_update_glow();
+ }
+ float Environment::get_glow_hdr_bleed_threshold() const {
+ 	return glow_hdr_bleed_threshold;
+@@ -569,8 +565,7 @@ float Environment::get_glow_hdr_bleed_threshold() const {
+ 
+ void Environment::set_glow_hdr_luminance_cap(float p_amount) {
+ 	glow_hdr_luminance_cap = p_amount;
+-
+-	VS::get_singleton()->environment_set_glow(environment, glow_enabled, glow_levels, glow_intensity, glow_strength, glow_bloom, VS::EnvironmentGlowBlendMode(glow_blend_mode), glow_hdr_bleed_threshold, glow_hdr_bleed_scale, glow_hdr_luminance_cap, glow_bicubic_upscale, glow_high_quality);
++	_update_glow();
+ }
+ float Environment::get_glow_hdr_luminance_cap() const {
+ 	return glow_hdr_luminance_cap;
+@@ -578,8 +573,7 @@ float Environment::get_glow_hdr_luminance_cap() const {
+ 
+ void Environment::set_glow_hdr_bleed_scale(float p_scale) {
+ 	glow_hdr_bleed_scale = p_scale;
+-
+-	VS::get_singleton()->environment_set_glow(environment, glow_enabled, glow_levels, glow_intensity, glow_strength, glow_bloom, VS::EnvironmentGlowBlendMode(glow_blend_mode), glow_hdr_bleed_threshold, glow_hdr_bleed_scale, glow_hdr_luminance_cap, glow_bicubic_upscale, glow_high_quality);
++	_update_glow();
+ }
+ float Environment::get_glow_hdr_bleed_scale() const {
+ 	return glow_hdr_bleed_scale;
+@@ -587,7 +581,7 @@ float Environment::get_glow_hdr_bleed_scale() const {
+ 
+ void Environment::set_glow_bicubic_upscale(bool p_enable) {
+ 	glow_bicubic_upscale = p_enable;
+-	VS::get_singleton()->environment_set_glow(environment, glow_enabled, glow_levels, glow_intensity, glow_strength, glow_bloom, VS::EnvironmentGlowBlendMode(glow_blend_mode), glow_hdr_bleed_threshold, glow_hdr_bleed_scale, glow_hdr_luminance_cap, glow_bicubic_upscale, glow_high_quality);
++	_update_glow();
+ }
+ 
+ bool Environment::is_glow_bicubic_upscale_enabled() const {
+@@ -596,13 +590,58 @@ bool Environment::is_glow_bicubic_upscale_enabled() const {
+ 
+ void Environment::set_glow_high_quality(bool p_enable) {
+ 	glow_high_quality = p_enable;
+-	VS::get_singleton()->environment_set_glow(environment, glow_enabled, glow_levels, glow_intensity, glow_strength, glow_bloom, VS::EnvironmentGlowBlendMode(glow_blend_mode), glow_hdr_bleed_threshold, glow_hdr_bleed_scale, glow_hdr_luminance_cap, glow_bicubic_upscale, glow_high_quality);
++	_update_glow();
+ }
+ 
+ bool Environment::is_glow_high_quality_enabled() const {
+ 	return glow_high_quality;
+ }
+ 
++void Environment::set_glow_map_strength(float p_glow_map_strength) {
++	glow_map_strength = p_glow_map_strength;
++	_update_glow_map();
++}
++
++float Environment::get_glow_map_strength() const {
++	return glow_map_strength;
++}
++
++void Environment::set_glow_map(Ref<Texture> p_glow_map) {
++	glow_map = p_glow_map;
++	_update_glow_map();
++}
++
++Ref<Texture> Environment::get_glow_map() const {
++	return glow_map;
++}
++
++void Environment::_update_glow() {
++	VS::get_singleton()->environment_set_glow(
++			environment,
++			glow_enabled,
++			glow_levels,
++			glow_intensity,
++			glow_strength,
++			glow_bloom,
++			VS::EnvironmentGlowBlendMode(glow_blend_mode),
++			glow_hdr_bleed_threshold,
++			glow_hdr_bleed_scale,
++			glow_hdr_luminance_cap,
++			glow_bicubic_upscale,
++			glow_high_quality);
++}
++
++void Environment::_update_glow_map() {
++	float _glow_map_strength = 0.0f;
++	RID glow_map_rid;
++	if (glow_map.is_valid()) {
++		glow_map_rid = glow_map->get_rid();
++		_glow_map_strength = glow_map_strength;
++	}
++
++	VS::get_singleton()->environment_set_glow_map(environment, _glow_map_strength, glow_map_rid);
++}
++
+ void Environment::set_dof_blur_far_enabled(bool p_enable) {
+ 	dof_blur_far_enabled = p_enable;
+ 	VS::get_singleton()->environment_set_dof_blur_far(environment, dof_blur_far_enabled, dof_blur_far_distance, dof_blur_far_transition, dof_blur_far_amount, VS::EnvironmentDOFBlurQuality(dof_blur_far_quality));
+@@ -1100,6 +1139,12 @@ void Environment::_bind_methods() {
+ 	ClassDB::bind_method(D_METHOD("set_glow_high_quality", "enabled"), &Environment::set_glow_high_quality);
+ 	ClassDB::bind_method(D_METHOD("is_glow_high_quality_enabled"), &Environment::is_glow_high_quality_enabled);
+ 
++	ClassDB::bind_method(D_METHOD("set_glow_map_strength", "strength"), &Environment::set_glow_map_strength);
++	ClassDB::bind_method(D_METHOD("get_glow_map_strength"), &Environment::get_glow_map_strength);
++
++	ClassDB::bind_method(D_METHOD("set_glow_map", "mode"), &Environment::set_glow_map);
++	ClassDB::bind_method(D_METHOD("get_glow_map"), &Environment::get_glow_map);
++
+ 	ADD_GROUP("Glow", "glow_");
+ 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "glow_enabled"), "set_glow_enabled", "is_glow_enabled");
+ 	ADD_PROPERTYI(PropertyInfo(Variant::BOOL, "glow_levels/1"), "set_glow_level", "is_glow_level_enabled", 0);
+@@ -1119,6 +1164,8 @@ void Environment::_bind_methods() {
+ 	ADD_PROPERTY(PropertyInfo(Variant::REAL, "glow_hdr_scale", PROPERTY_HINT_RANGE, "0.0,4.0,0.01"), "set_glow_hdr_bleed_scale", "get_glow_hdr_bleed_scale");
+ 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "glow_bicubic_upscale"), "set_glow_bicubic_upscale", "is_glow_bicubic_upscale_enabled");
+ 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "glow_high_quality"), "set_glow_high_quality", "is_glow_high_quality_enabled");
++	ADD_PROPERTY(PropertyInfo(Variant::REAL, "glow_map_strength", PROPERTY_HINT_RANGE, "0.0,1.0,0.01"), "set_glow_map_strength", "get_glow_map_strength");
++	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "glow_map", PROPERTY_HINT_RESOURCE_TYPE, "Texture"), "set_glow_map", "get_glow_map");
+ 
+ 	ClassDB::bind_method(D_METHOD("set_adjustment_enable", "enabled"), &Environment::set_adjustment_enable);
+ 	ClassDB::bind_method(D_METHOD("is_adjustment_enabled"), &Environment::is_adjustment_enabled);
+@@ -1244,6 +1291,7 @@ Environment::Environment() :
+ 	glow_hdr_bleed_scale = 2.0;
+ 	glow_bicubic_upscale = false;
+ 	glow_high_quality = false;
++	glow_map_strength = 0.8f;
+ 
+ 	dof_blur_far_enabled = false;
+ 	dof_blur_far_distance = 10;
+diff --git a/scene/resources/environment.h b/scene/resources/environment.h
+index 9fbf703..2aa1f62 100644
+--- a/scene/resources/environment.h
++++ b/scene/resources/environment.h
+@@ -147,6 +147,11 @@ private:
+ 	float glow_hdr_luminance_cap;
+ 	bool glow_bicubic_upscale;
+ 	bool glow_high_quality;
++	float glow_map_strength;
++	Ref<Texture> glow_map;
++
++	void _update_glow();
++	void _update_glow_map();
+ 
+ 	bool dof_blur_far_enabled;
+ 	float dof_blur_far_distance;
+@@ -337,6 +342,12 @@ public:
+ 	void set_glow_high_quality(bool p_enable);
+ 	bool is_glow_high_quality_enabled() const;
+ 
++	void set_glow_map_strength(float p_glow_map_strength);
++	float get_glow_map_strength() const;
++
++	void set_glow_map(Ref<Texture> p_glow_map);
++	Ref<Texture> get_glow_map() const;
++
+ 	void set_dof_blur_far_enabled(bool p_enable);
+ 	bool is_dof_blur_far_enabled() const;
+ 
+diff --git a/servers/visual/rasterizer.h b/servers/visual/rasterizer.h
+index a716fe9..07989e2 100644
+--- a/servers/visual/rasterizer.h
++++ b/servers/visual/rasterizer.h
+@@ -66,6 +66,7 @@ public:
+ 	virtual void environment_set_dof_blur_near(RID p_env, bool p_enable, float p_distance, float p_transition, float p_far_amount, VS::EnvironmentDOFBlurQuality p_quality) = 0;
+ 	virtual void environment_set_dof_blur_far(RID p_env, bool p_enable, float p_distance, float p_transition, float p_far_amount, VS::EnvironmentDOFBlurQuality p_quality) = 0;
+ 	virtual void environment_set_glow(RID p_env, bool p_enable, int p_level_flags, float p_intensity, float p_strength, float p_bloom_threshold, VS::EnvironmentGlowBlendMode p_blend_mode, float p_hdr_bleed_threshold, float p_hdr_bleed_scale, float p_hdr_luminance_cap, bool p_bicubic_upscale, bool p_high_quality) = 0;
++	virtual void environment_set_glow_map(RID p_env, float p_glow_map_strength, RID p_glow_map) = 0;
+ 	virtual void environment_set_fog(RID p_env, bool p_enable, float p_begin, float p_end, RID p_gradient_texture) = 0;
+ 
+ 	virtual void environment_set_ssr(RID p_env, bool p_enable, int p_max_steps, float p_fade_int, float p_fade_out, float p_depth_tolerance, bool p_roughness) = 0;
+diff --git a/servers/visual/visual_server_raster.h b/servers/visual/visual_server_raster.h
+index 7ebe846..5bd8ef0 100644
+--- a/servers/visual/visual_server_raster.h
++++ b/servers/visual/visual_server_raster.h
+@@ -560,6 +560,7 @@ public:
+ 	BIND6(environment_set_dof_blur_near, RID, bool, float, float, float, EnvironmentDOFBlurQuality)
+ 	BIND6(environment_set_dof_blur_far, RID, bool, float, float, float, EnvironmentDOFBlurQuality)
+ 	BIND12(environment_set_glow, RID, bool, int, float, float, float, EnvironmentGlowBlendMode, float, float, float, bool, bool)
++	BIND3(environment_set_glow_map, RID, float, RID)
+ 
+ 	BIND9(environment_set_tonemap, RID, EnvironmentToneMapper, float, float, bool, float, float, float, float)
+ 
+diff --git a/servers/visual/visual_server_wrap_mt.h b/servers/visual/visual_server_wrap_mt.h
+index 10a31b4..89cc7a0 100644
+--- a/servers/visual/visual_server_wrap_mt.h
++++ b/servers/visual/visual_server_wrap_mt.h
+@@ -474,6 +474,7 @@ public:
+ 	FUNC6(environment_set_dof_blur_near, RID, bool, float, float, float, EnvironmentDOFBlurQuality)
+ 	FUNC6(environment_set_dof_blur_far, RID, bool, float, float, float, EnvironmentDOFBlurQuality)
+ 	FUNC12(environment_set_glow, RID, bool, int, float, float, float, EnvironmentGlowBlendMode, float, float, float, bool, bool)
++	FUNC3(environment_set_glow_map, RID, float, RID)
+ 
+ 	FUNC9(environment_set_tonemap, RID, EnvironmentToneMapper, float, float, bool, float, float, float, float)
+ 
+diff --git a/servers/visual_server.cpp b/servers/visual_server.cpp
+index 3fea545..5c185b8 100644
+--- a/servers/visual_server.cpp
++++ b/servers/visual_server.cpp
+@@ -2149,6 +2149,7 @@ void VisualServer::_bind_methods() {
+ 	ClassDB::bind_method(D_METHOD("environment_set_dof_blur_near", "env", "enable", "distance", "transition", "far_amount", "quality"), &VisualServer::environment_set_dof_blur_near);
+ 	ClassDB::bind_method(D_METHOD("environment_set_dof_blur_far", "env", "enable", "distance", "transition", "far_amount", "quality"), &VisualServer::environment_set_dof_blur_far);
+ 	ClassDB::bind_method(D_METHOD("environment_set_glow", "env", "enable", "level_flags", "intensity", "strength", "bloom_threshold", "blend_mode", "hdr_bleed_threshold", "hdr_bleed_scale", "hdr_luminance_cap", "bicubic_upscale", "high_quality"), &VisualServer::environment_set_glow);
++	ClassDB::bind_method(D_METHOD("environment_set_glow_map", "env", "glow_map_strength", "glow_map"), &VisualServer::environment_set_glow_map);
+ 	ClassDB::bind_method(D_METHOD("environment_set_tonemap", "env", "tone_mapper", "exposure", "white", "auto_exposure", "min_luminance", "max_luminance", "auto_exp_speed", "auto_exp_grey"), &VisualServer::environment_set_tonemap);
+ 	ClassDB::bind_method(D_METHOD("environment_set_adjustment", "env", "enable", "brightness", "contrast", "saturation", "ramp"), &VisualServer::environment_set_adjustment);
+ 	ClassDB::bind_method(D_METHOD("environment_set_ssr", "env", "enable", "max_steps", "fade_in", "fade_out", "depth_tolerance", "roughness"), &VisualServer::environment_set_ssr);
+diff --git a/servers/visual_server.h b/servers/visual_server.h
+index 19855fe..d698620 100644
+--- a/servers/visual_server.h
++++ b/servers/visual_server.h
+@@ -808,6 +808,7 @@ public:
+ 		GLOW_BLEND_MODE_REPLACE,
+ 	};
+ 	virtual void environment_set_glow(RID p_env, bool p_enable, int p_level_flags, float p_intensity, float p_strength, float p_bloom_threshold, EnvironmentGlowBlendMode p_blend_mode, float p_hdr_bleed_threshold, float p_hdr_bleed_scale, float p_hdr_luminance_cap, bool p_bicubic_upscale, bool p_high_quality) = 0;
++	virtual void environment_set_glow_map(RID p_env, float p_glow_map_strength, RID p_glow_map) = 0;
+ 
+ 	enum EnvironmentToneMapper {
+ 		ENV_TONE_MAPPER_LINEAR,

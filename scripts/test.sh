@@ -35,6 +35,7 @@ scenes=(
 	res://tests/m27_shape_swap.tscn
 	res://tests/m28_layer_asymmetry.tscn
 	res://tests/m29_blob_shadow_api.tscn
+	res://tests/m30_glow_map_api.tscn
 )
 
 status=0

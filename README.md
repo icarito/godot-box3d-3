@@ -20,7 +20,8 @@ layout fix for the GLES3 directional light UBO and an idempotent
   and OpenGL ES, which is what PortMaster handhelds (ROCKNIX and friends) can
   actually run.
 - **Experimental GLES3 features** — the Godot 4 `Decal` node backported to the
-  GLES3 renderer (`decal/` module, with blob-shadow demos) and the shader
+  GLES3 renderer (`decal/` module, with blob-shadow demos), the Godot 3.7 glow
+  map (`Environment.glow_map`, the "lens dirt" effect) and the shader
   cache / asynchronous-compilation work the desktop editor leans on.
 
 Upstream Godot source stays untouched: every engine change lives in `patches/`
@@ -49,6 +50,7 @@ godot-box3d-3/
 │   ├── decal.cpp                # the node and its VisualServer wiring
 │   ├── decal_editor_plugin.cpp  # editor gizmo/dock
 │   └── demo_advanced/           # decal + blob-shadow demo scenes
+├── demos/glow_map/              # glow map demo project (GLES3, lens dirt)
 ├── patches/                     # engine + FRT patches over the pinned Godot
 │   └── README.md                # what each patch does and why
 ├── scripts/                     # build.sh, the FRT toolchain, test helpers
@@ -149,6 +151,13 @@ over the pinned FRT checkout). It is a mix of:
   both GLES3 and GLES2. Applied last because its `_render_list()` hunk lands on
   the diagnostics patch's `FRT_SKIN_NO_DEPTH` block; it frees the two version
   bits the sampler-budget patch was wasting so `USE_BLOB_SHADOWS` fits.
+- **`zzzzz_feature_glow_map_gles3.patch`**, a feature (not upstreamable): the
+  Godot 3.7 glow map backported from upstream PR #93133
+  (`Environment.glow_map`/`glow_map_strength` and
+  `VisualServer.environment_set_glow_map`, sampled in `tonemap.glsl`). GLES2
+  ignores it by design. It does not spend a scene-ubershader conditional, so it
+  is independent of the decal/blob budget; it applies after blob shadows and
+  before the frame profiler.
 
 See [`patches/README.md`](patches/README.md) for the per-patch detail.
 
@@ -277,6 +286,33 @@ frees two conditionals instead of adding a 32nd. See
 [`docs/blob-shadow-backport-spec.md`](docs/blob-shadow-backport-spec.md) for the
 port notes and `test_project/blob_shadow_visual.gd` for the acceptance check.
 
+## Glow map (experimental)
+
+`Environment.glow_map` and `glow_map_strength` come from the Godot 3.7 glow-map
+feature (upstream PR #93133), brought to this fork by
+`patches/zzzzz_feature_glow_map_gles3.patch`: a texture multiplies the glow
+result, which is how a "lens dirt" effect is built. It is a post-process on the
+GLES3 renderer — the map is sampled in `tonemap.glsl`, not in the scene shader,
+so it costs no scene-ubershader conditional. `glow_map_strength` defaults to
+`0.8` and is forced to `0` until a map is assigned, so a scene with glow but no
+map does not sample the texture. GLES2 and the dummy rasterizer carry the API
+but ignore the map. Set it from code or the editor:
+
+```gdscript
+environment.glow_enabled = true
+environment.glow_map = preload("res://lens_dirt.png")
+environment.glow_map_strength = 0.8
+```
+
+See [`docs/glow-map-backport-spec.md`](docs/glow-map-backport-spec.md) for the
+port notes and `test_project/glow_map_visual.gd` for the acceptance check.
+
+[`demos/glow_map/`](demos/glow_map/) is the visual demo: a dark room with neon
+bars where `M` toggles the map and `[/]` sweeps the strength. Run it with the
+nightly editor, `godot.box3d.linux.x86_64.editor --path demos/glow_map`; the
+nightly release also carries `glow_map_preview.gif` and `glow_map_compare.png`
+so it can be seen without running anything.
+
 ## Tests
 
 Headless acceptance scenes run against a built engine binary:
@@ -310,6 +346,7 @@ GODOT=../godot/bin/godot.x11.tools.64 scripts/test.sh
 | `m22_trimesh_jitter` | a capsule on mesh geometry does not buzz, at either triangle winding |
 | `m23_flush_spawn` … `m28_layer_asymmetry` | the Box3D bug-repro scenes (`scripts/test.sh` lists them) |
 | `m29_blob_shadow_api` | `BlobShadow`/`BlobFocus` and blob-shadow `Light` params: RID lifetime, type switch, radius/offset round-trip, enable/disable |
+| `m30_glow_map_api` | `Environment.glow_map`/`glow_map_strength` and `VisualServer.environment_set_glow_map`: binding, defaults, texture/strength round-trip, map clear/reassign |
 
 The blob shadow feature also has a pixel test, which needs a real GL context:
 
@@ -321,6 +358,19 @@ xvfb-run -a -s "-screen 0 1024x600x24" \
 It renders the same frame with and without the caster and prints `BLOB_OK` when
 the shadow region darkens and a control region does not (`--video-driver GLES2`
 covers the GLES2 path).
+
+The glow map has a pixel test too (GLES3 from the command line; GLES2 asserts
+the map is ignored):
+
+```bash
+xvfb-run -a -s "-screen 0 1024x600x24" \
+  ../godot/bin/godot.x11.opt.tools.64 --path test_project \
+  --video-driver GLES3 -s glow_map_visual.gd
+```
+
+It captures a glowing emitter with a black glow map and without it, and prints
+`GLOW_OK` when the halo darkens with the map and a control region does not
+(`--video-driver GLES2` prints `GLOW_GLES2_OK`).
 
 ## Documentation
 
@@ -334,6 +384,9 @@ covers the GLES2 path).
 - **Blob shadow backport**: `docs/blob-shadow-backport-spec.md` — the Godot 4
   `BlobShadow`/`BlobFocus` → GLES3/GLES2 port, the conditional-budget fix and
   the 3.6 interpolation adaptation.
+- **Glow map backport**: `docs/glow-map-backport-spec.md` — the Godot 3.7 glow
+  map → GLES3 port, the tonemap texture-unit rebalance and the
+  `glow_map_strength` initialization fix.
 - **FRT desktop parity / Wayland**: `docs/desktop_parity.md` — the desktop-GL
   switch, the missing platform pieces and what remains.
 - **Box3D engine** (`box3d/thirdparty/box3d/docs/`): upstream's own guide —

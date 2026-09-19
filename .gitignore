@@ -8,3 +8,6 @@
 /.frt-env/
 # Fuentes del runtime TheGates de thegates_env.sh (modulo the_gates + thirdparty)
 /.thegates-env/
+
+# Preview generado del demo de glow map (el nightly lo adjunta al release)
+/demos/glow_map/media/
