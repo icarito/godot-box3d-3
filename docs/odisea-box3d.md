@@ -110,9 +110,14 @@ GLES2), el perfil más restrictivo del proyecto.
      dinámicos: el solve paralelo es *blocking* y solo parte el trabajo cuando
      las islas son grandes (`itemCount > 4 * workerCount * minRange`), así que
      en escenas con pocos cuerpos da ~0. Se acota a [1, B3_MAX_WORKERS]. En el
-     RG351V (4×A35, 1 GB) medido con `workers=2` en RingHub: sin cambio
-     (34-35 fps, phys 7 ms), como se esperaba por pocos cuerpos. Ojo con el
-     determinismo si se graban replays con workers > 1.
+     RG351V (4×A35, 1 GB) medido en RingHub (recorrido con movimiento, audio
+     muteado): **workers=2 es una regresión fuerte** — fps 35→18 (p5 34→10),
+     phys 7→17 ms, proc 32→42 ms. Con pocos cuerpos no hay nada que repartir y
+     se paga el scheduler. En este device, dejar 1. Ojo con el determinismo si
+     se graban replays con workers > 1.
+     (La clave en override.cfg va sección-relativa: bajo `[physics]` es
+     `3d/box3d_workers=2`; escribir `physics/3d/box3d_workers=2` crea
+     `physics/physics/3d/...` y el engine no la lee.)
    - `physics/common/max_physics_steps_per_frame=4` está bien; Box3D usa el
      step fijo del motor igual que Bullet.
 
