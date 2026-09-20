@@ -984,7 +984,9 @@ Box3DSpace::Box3DSpace() {
 	// (clamped to [1, B3_MAX_WORKERS] by the world) on devices with spare cores and
 	// scenes with many dynamic bodies; the parallel solve is blocking, so it only pays
 	// off when islands are large enough for b3ParallelFor to split the range.
-	int box3d_workers = 1;
+	// Default = mitad de los cores (el optimo medido en desktop); el perfil
+	// low-end lo fija explicito en 1 via override.cfg porque ahi regresiona.
+	int box3d_workers = MAX(1, OS::get_singleton()->get_processor_count() / 2);
 	if (ProjectSettings::get_singleton()->has_setting("physics/3d/box3d_workers")) {
 		box3d_workers = (int)ProjectSettings::get_singleton()->get_setting("physics/3d/box3d_workers");
 	}

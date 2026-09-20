@@ -4,6 +4,10 @@
 
 #include "box3d_physics_server.h"
 
+#include "core/class_db.h"
+#include "core/os/os.h"
+#include "core/project_settings.h"
+
 #define GET_OR_FAIL(m_type, m_var, m_owner, m_rid)   \
 	m_type *m_var = m_owner.getornull(m_rid);        \
 	ERR_FAIL_COND(!m_var)
@@ -1504,6 +1508,85 @@ int Box3DPhysicsServer::get_process_info(PhysicsServer::ProcessInfo p_info) {
 }
 
 Box3DPhysicsServer *Box3DPhysicsServer::singleton = nullptr;
+
+// --- Perillas runtime (Box3D) -------------------------------------------------
+// Aplican a los spaces ya creados y persisten en ProjectSettings para que los que
+// se creen despues las hereden (Box3DSpace las lee en su constructor).
+
+void Box3DPhysicsServer::set_box3d_worker_count(int p_count) {
+	int count = CLAMP(p_count, 1, B3_MAX_WORKERS);
+	ProjectSettings::get_singleton()->set_setting("physics/3d/box3d_workers", count);
+	for (int i = 0; i < active_spaces.size(); i++) {
+		Box3DSpace *space = active_spaces[i];
+		if (space != nullptr && B3_IS_NON_NULL(space->world)) {
+			b3World_SetWorkerCount(space->world, count);
+		}
+	}
+}
+
+int Box3DPhysicsServer::get_box3d_worker_count() const {
+	if (ProjectSettings::get_singleton()->has_setting("physics/3d/box3d_workers")) {
+		return (int)ProjectSettings::get_singleton()->get_setting("physics/3d/box3d_workers");
+	}
+	return MAX(1, OS::get_singleton()->get_processor_count() / 2);
+}
+
+void Box3DPhysicsServer::set_box3d_substeps(int p_steps) {
+	int steps = CLAMP(p_steps, 1, 8);
+	ProjectSettings::get_singleton()->set_setting("physics/3d/box3d_substeps", steps);
+	for (int i = 0; i < active_spaces.size(); i++) {
+		if (active_spaces[i] != nullptr) {
+			active_spaces[i]->sub_steps = steps;
+		}
+	}
+}
+
+int Box3DPhysicsServer::get_box3d_substeps() const {
+	if (ProjectSettings::get_singleton()->has_setting("physics/3d/box3d_substeps")) {
+		return (int)ProjectSettings::get_singleton()->get_setting("physics/3d/box3d_substeps");
+	}
+	return 2;
+}
+
+void Box3DPhysicsServer::set_box3d_warm_starting(bool p_enabled) {
+	ProjectSettings::get_singleton()->set_setting("physics/3d/box3d_warm_starting", p_enabled);
+	for (int i = 0; i < active_spaces.size(); i++) {
+		Box3DSpace *space = active_spaces[i];
+		if (space != nullptr && B3_IS_NON_NULL(space->world)) {
+			b3World_EnableWarmStarting(space->world, p_enabled);
+		}
+	}
+}
+
+void Box3DPhysicsServer::set_box3d_speculative(bool p_enabled) {
+	ProjectSettings::get_singleton()->set_setting("physics/3d/box3d_speculative", p_enabled);
+	for (int i = 0; i < active_spaces.size(); i++) {
+		Box3DSpace *space = active_spaces[i];
+		if (space != nullptr && B3_IS_NON_NULL(space->world)) {
+			b3World_EnableSpeculative(space->world, p_enabled);
+		}
+	}
+}
+
+void Box3DPhysicsServer::set_box3d_sleeping(bool p_enabled) {
+	ProjectSettings::get_singleton()->set_setting("physics/3d/box3d_sleeping", p_enabled);
+	for (int i = 0; i < active_spaces.size(); i++) {
+		Box3DSpace *space = active_spaces[i];
+		if (space != nullptr && B3_IS_NON_NULL(space->world)) {
+			b3World_EnableSleeping(space->world, p_enabled);
+		}
+	}
+}
+
+void Box3DPhysicsServer::_bind_methods() {
+	ClassDB::bind_method(D_METHOD("set_box3d_worker_count", "count"), &Box3DPhysicsServer::set_box3d_worker_count);
+	ClassDB::bind_method(D_METHOD("get_box3d_worker_count"), &Box3DPhysicsServer::get_box3d_worker_count);
+	ClassDB::bind_method(D_METHOD("set_box3d_substeps", "steps"), &Box3DPhysicsServer::set_box3d_substeps);
+	ClassDB::bind_method(D_METHOD("get_box3d_substeps"), &Box3DPhysicsServer::get_box3d_substeps);
+	ClassDB::bind_method(D_METHOD("set_box3d_warm_starting", "enabled"), &Box3DPhysicsServer::set_box3d_warm_starting);
+	ClassDB::bind_method(D_METHOD("set_box3d_speculative", "enabled"), &Box3DPhysicsServer::set_box3d_speculative);
+	ClassDB::bind_method(D_METHOD("set_box3d_sleeping", "enabled"), &Box3DPhysicsServer::set_box3d_sleeping);
+}
 
 Box3DPhysicsServer::Box3DPhysicsServer() {
 	singleton = this;

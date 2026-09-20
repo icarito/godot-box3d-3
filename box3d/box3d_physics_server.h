@@ -18,10 +18,26 @@ class Box3DPhysicsServer : public PhysicsServer {
 
 	static Box3DPhysicsServer *singleton;
 
+protected:
+	static void _bind_methods();
+
 public:
 	static Box3DShape *shape_from_rid(RID p_rid) {
 		return singleton ? singleton->shape_owner.getornull(p_rid) : nullptr;
 	}
+	static Box3DPhysicsServer *get_singleton() { return singleton; }
+
+	// Perillas de Box3D cambiables en runtime: aplican a los spaces vivos y se
+	// persisten en ProjectSettings para que los spaces creados despues hereden.
+	// El worker count arranca en la mitad de los cores si el setting no esta
+	// (serial en el perfil low-end, que lo fija explicito en 1).
+	void set_box3d_worker_count(int p_count);
+	int get_box3d_worker_count() const;
+	void set_box3d_substeps(int p_steps);
+	int get_box3d_substeps() const;
+	void set_box3d_warm_starting(bool p_enabled);
+	void set_box3d_speculative(bool p_enabled);
+	void set_box3d_sleeping(bool p_enabled);
 
 public:
 	virtual RID shape_create(ShapeType p_shape);
