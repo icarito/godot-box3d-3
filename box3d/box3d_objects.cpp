@@ -977,8 +977,18 @@ void Box3DArea::report_area(uint32_t p_status, Box3DArea *p_area, int p_area_sha
 
 Box3DSpace::Box3DSpace() {
 	b3WorldDef def = b3DefaultWorldDef();
-	// ponytail: single threaded. Raise once M7 shows threading keeps determinism.
-	def.workerCount = 1;
+	// Worker count for Box3D's internal task scheduler (solver islands / b3ParallelFor).
+	// Default 1 = fully serial and bit-reproducible: is what the deterministic replay
+	// contract (Odisea AGENTS §5.3) and the low-end Perfil assume, so nothing changes
+	// unless a profile opts in. Raise through `physics/3d/box3d_workers`
+	// (clamped to [1, B3_MAX_WORKERS] by the world) on devices with spare cores and
+	// scenes with many dynamic bodies; the parallel solve is blocking, so it only pays
+	// off when islands are large enough for b3ParallelFor to split the range.
+	int box3d_workers = 1;
+	if (ProjectSettings::get_singleton()->has_setting("physics/3d/box3d_workers")) {
+		box3d_workers = (int)ProjectSettings::get_singleton()->get_setting("physics/3d/box3d_workers");
+	}
+	def.workerCount = CLAMP(box3d_workers, 1, B3_MAX_WORKERS);
 	world = b3CreateWorld(&def);
 	b3World_SetCustomFilterCallback(world, godot_collision_filter, nullptr);
 	// Box3D ships warm starting off; it sharpens stacking convergence at the

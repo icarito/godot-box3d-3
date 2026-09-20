@@ -102,6 +102,17 @@ GLES2), el perfil más restrictivo del proyecto.
    - `physics/3d/box3d_substeps` (default 2): subir si las pilas se sienten
      blandas; **ojo**, cambiar sub-steps cambia trayectorias → los replays
      `.oys` grabados deben re-grabarse tras cambiarlo.
+   - `physics/3d/box3d_workers` (default 1 = serial): workers de Box3D para su
+     scheduler interno (`b3CreateScheduler` + `b3ParallelFor`). 1 deja el step
+     100% serial y bit-reproducible — es lo que asumen el contrato de replay
+     determinista (AGENTS §5.3) y el Perfil low-end, así que no lo subas ahí.
+     Subirlo (2-3) en devices con cores de sobra y escenas con MUCHOS cuerpos
+     dinámicos: el solve paralelo es *blocking* y solo parte el trabajo cuando
+     las islas son grandes (`itemCount > 4 * workerCount * minRange`), así que
+     en escenas con pocos cuerpos da ~0. Se acota a [1, B3_MAX_WORKERS]. En el
+     RG351V (4×A35, 1 GB) medido con `workers=2` en RingHub: sin cambio
+     (34-35 fps, phys 7 ms), como se esperaba por pocos cuerpos. Ojo con el
+     determinismo si se graban replays con workers > 1.
    - `physics/common/max_physics_steps_per_frame=4` está bien; Box3D usa el
      step fijo del motor igual que Bullet.
 
