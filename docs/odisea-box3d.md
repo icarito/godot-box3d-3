@@ -118,6 +118,11 @@ GLES2), el perfil más restrictivo del proyecto.
      (La clave en override.cfg va sección-relativa: bajo `[physics]` es
      `3d/box3d_workers=2`; escribir `physics/3d/box3d_workers=2` crea
      `physics/physics/3d/...` y el engine no la lee.)
+     **Desktop (8 cores, benchmark de 336 cajas apiladas, TIME_PHYSICS_PROCESS
+     promedio de 300 frames):** workers=1 → 4.45 ms; 2 → 3.01 ms (−32%);
+     **4 → 2.67 ms (−40%, mejor)**; 8 → 3.39 ms (oversubscribe, max 7.8 ms).
+     O sea: en multi-core y con islas grandes sí mueve la aguja; el óptimo es
+     ~la mitad de los cores. En el RG351V en cambio regresiona (arriba).
    - `physics/common/max_physics_steps_per_frame=4` está bien; Box3D usa el
      step fijo del motor igual que Bullet.
 
