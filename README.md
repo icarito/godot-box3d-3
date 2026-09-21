@@ -532,6 +532,13 @@ each backend compiled into the engine, reporting the average
 settled case see `test_project/bench/bench_settle.gd` (run it with
 `godot --path test_project --no-window res://bench/bench_settle.tscn`).
 
+For a phase breakdown of a step, call `PhysicsServer.get_box3d_profile()` from
+GDScript: it returns Box3D's own timings for the last step (`step`, `pairs`,
+`collide`, `solve`, `integrateVelocities`, `integratePositions`,
+`sleepIslands`, ...) summed over the active spaces. That is how you tell
+whether a frame pays for broadphase, contact generation or the solver before
+changing anything (test `m32_box3d_profile`).
+
 Three runs on the reference machine, `target=release_debug`:
 
 | Backend | avg physics ms/frame |

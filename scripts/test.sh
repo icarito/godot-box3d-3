@@ -37,6 +37,7 @@ scenes=(
 	res://tests/m29_blob_shadow_api.tscn
 	res://tests/m30_glow_map_api.tscn
 	res://tests/m31_audio_mute_api.tscn
+	res://tests/m32_box3d_profile.tscn
 )
 
 status=0

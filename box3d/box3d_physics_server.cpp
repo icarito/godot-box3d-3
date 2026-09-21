@@ -1629,6 +1629,74 @@ float Box3DPhysicsServer::get_box3d_contact_recycle_distance() const {
 	return 0.05f;
 }
 
+// Box3D's own per-phase timings (ms for the last step), summed over the active
+// spaces. This is the profiling hook the engine lacked: FRT_PERF says how much
+// the whole step costs, this says where it went (broadphase, contacts, solve,
+// integrate, sleep islands). Read-only, no side effects.
+Dictionary Box3DPhysicsServer::get_box3d_profile() const {
+	b3Profile t = { 0 };
+	int worlds = 0;
+	for (int i = 0; i < active_spaces.size(); i++) {
+		Box3DSpace *space = active_spaces[i];
+		if (space == nullptr || !B3_IS_NON_NULL(space->world)) {
+			continue;
+		}
+		const b3Profile p = b3World_GetProfile(space->world);
+#define BOX3D_PROFILE_ADD(field) t.field += p.field
+		BOX3D_PROFILE_ADD(step);
+		BOX3D_PROFILE_ADD(pairs);
+		BOX3D_PROFILE_ADD(collide);
+		BOX3D_PROFILE_ADD(solve);
+		BOX3D_PROFILE_ADD(solverSetup);
+		BOX3D_PROFILE_ADD(constraints);
+		BOX3D_PROFILE_ADD(prepareConstraints);
+		BOX3D_PROFILE_ADD(integrateVelocities);
+		BOX3D_PROFILE_ADD(warmStart);
+		BOX3D_PROFILE_ADD(solveImpulses);
+		BOX3D_PROFILE_ADD(integratePositions);
+		BOX3D_PROFILE_ADD(relaxImpulses);
+		BOX3D_PROFILE_ADD(storeImpulses);
+		BOX3D_PROFILE_ADD(splitIslands);
+		BOX3D_PROFILE_ADD(transforms);
+		BOX3D_PROFILE_ADD(sensorHits);
+		BOX3D_PROFILE_ADD(jointEvents);
+		BOX3D_PROFILE_ADD(hitEvents);
+		BOX3D_PROFILE_ADD(refit);
+		BOX3D_PROFILE_ADD(bullets);
+		BOX3D_PROFILE_ADD(sleepIslands);
+		BOX3D_PROFILE_ADD(sensors);
+#undef BOX3D_PROFILE_ADD
+		worlds++;
+	}
+	Dictionary out;
+	out["worlds"] = worlds;
+#define BOX3D_PROFILE_OUT(field) out[#field] = t.field
+	BOX3D_PROFILE_OUT(step);
+	BOX3D_PROFILE_OUT(pairs);
+	BOX3D_PROFILE_OUT(collide);
+	BOX3D_PROFILE_OUT(solve);
+	BOX3D_PROFILE_OUT(solverSetup);
+	BOX3D_PROFILE_OUT(constraints);
+	BOX3D_PROFILE_OUT(prepareConstraints);
+	BOX3D_PROFILE_OUT(integrateVelocities);
+	BOX3D_PROFILE_OUT(warmStart);
+	BOX3D_PROFILE_OUT(solveImpulses);
+	BOX3D_PROFILE_OUT(integratePositions);
+	BOX3D_PROFILE_OUT(relaxImpulses);
+	BOX3D_PROFILE_OUT(storeImpulses);
+	BOX3D_PROFILE_OUT(splitIslands);
+	BOX3D_PROFILE_OUT(transforms);
+	BOX3D_PROFILE_OUT(sensorHits);
+	BOX3D_PROFILE_OUT(jointEvents);
+	BOX3D_PROFILE_OUT(hitEvents);
+	BOX3D_PROFILE_OUT(refit);
+	BOX3D_PROFILE_OUT(bullets);
+	BOX3D_PROFILE_OUT(sleepIslands);
+	BOX3D_PROFILE_OUT(sensors);
+#undef BOX3D_PROFILE_OUT
+	return out;
+}
+
 void Box3DPhysicsServer::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_box3d_worker_count", "count"), &Box3DPhysicsServer::set_box3d_worker_count);
 	ClassDB::bind_method(D_METHOD("get_box3d_worker_count"), &Box3DPhysicsServer::get_box3d_worker_count);
@@ -1641,6 +1709,7 @@ void Box3DPhysicsServer::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_box3d_sleep_threshold"), &Box3DPhysicsServer::get_box3d_sleep_threshold);
 	ClassDB::bind_method(D_METHOD("set_box3d_contact_recycle_distance", "distance"), &Box3DPhysicsServer::set_box3d_contact_recycle_distance);
 	ClassDB::bind_method(D_METHOD("get_box3d_contact_recycle_distance"), &Box3DPhysicsServer::get_box3d_contact_recycle_distance);
+	ClassDB::bind_method(D_METHOD("get_box3d_profile"), &Box3DPhysicsServer::get_box3d_profile);
 }
 
 Box3DPhysicsServer::Box3DPhysicsServer() {
