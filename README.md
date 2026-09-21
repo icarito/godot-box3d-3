@@ -472,6 +472,16 @@ It captures a glowing emitter with a black glow map and without it, and prints
      regenerating their contacts every step, and 0 disables recycling. Applied
      to the live worlds and to new ones; runtime setter
      `set_box3d_contact_recycle_distance`.
+   - Optional tuning: `physics/3d/box3d_trimesh_one_sided` (default off). A
+     concave (trimesh) shape is normally built with every triangle duplicated,
+     both windings, because a Box3D mesh triangle is one-sided while Godot
+     collides a ConcavePolygonShape from both faces. Turning this on keeps a
+     single winding: half the triangles and half the mesh BVH, so sweeps,
+     queries and solver traversal touch half as many triangles. The catch is
+     exactly the one the duplicate exists for: a surface whose winding faces
+     away from the contact has no collision (a box falls through an
+     inconsistently wound floor). Only for baked level geometry whose winding
+     is known and consistent. Read once at startup.
    - Optional tuning: `physics/3d/box3d_capacity_*` pre-size the world buffers
      to avoid reallocations mid-step: `static_shapes`, `dynamic_shapes`,
      `static_bodies`, `dynamic_bodies` and `contacts` (each an int, 0 = let

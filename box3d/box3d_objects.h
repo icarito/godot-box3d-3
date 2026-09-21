@@ -19,6 +19,12 @@ class Box3DBody;
 class Box3DEntity;
 class Box3DJoint;
 
+/// True when `physics/3d/box3d_trimesh_one_sided` is set: concave shapes are
+/// built with a single winding (halves the mesh BVH) instead of the default
+/// doubled one. The mesh query paths read it to know whether to skip the
+/// mirrored triangles.
+bool box3d_trimesh_one_sided();
+
 /// A Godot shape RID is a geometry definition, not a Box3D shape: the same RID
 /// can be attached to several bodies and Box3D shapes always belong to one body.
 /// The b3ShapeId instances live in Box3DBody::ShapeInstance.

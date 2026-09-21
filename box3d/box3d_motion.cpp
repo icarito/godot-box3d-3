@@ -562,7 +562,7 @@ bool query_contacts(Box3DBody *p_body, const Transform &p_xform, real_t p_margin
 
 				b3AABB bounds = local_bounds(ours, to_world.affine_inverse(), p_margin);
 				if (type == b3_meshShape) {
-					tri_ctx.skip_mirrors = true;
+					tri_ctx.skip_mirrors = !box3d_trimesh_one_sided();
 					b3Mesh mesh = b3Shape_GetMesh(candidates.shapes[c]);
 					b3QueryMesh(&mesh, bounds, triangle_callback, &tri_ctx);
 				} else {
@@ -829,7 +829,7 @@ void sweep_meshes(Box3DBody *p_body, const Box3DWorldProxy &p_ours, const Vector
 				to_local.basis.xform(p_motion));
 
 		if (type == b3_meshShape) {
-			ctx.skip_mirrors = true;
+			ctx.skip_mirrors = !box3d_trimesh_one_sided();
 			b3Mesh mesh = b3Shape_GetMesh(candidates.shapes[c]);
 			b3QueryMesh(&mesh, bounds, mesh_sweep_callback, &ctx);
 		} else {
