@@ -458,6 +458,14 @@ It captures a glowing emitter with a black glow map and without it, and prints
      Box3D ships with warm starting disabled for determinism; enabling it
      replays each contact's previous impulses into the solver, which
      sharpens stacked bodies and long contact chains at a small step cost.
+   - Optional tuning: `physics/3d/box3d_sleep_threshold` (default 0.05 m/s,
+     Box3D's own). A body falls asleep once its speed stays under this for
+     `B3_TIME_TO_SLEEP` (0.5 s); raising it lets slowly-settling props drop
+     asleep sooner, which is the lever on a low-end device where every awake
+     island costs work each tick. `physics/3d/box3d_sleeping` (default on)
+     turns sleeping off entirely. Both apply to the live bodies and to every
+     body created afterwards, and are also settable at runtime through the
+     physics server (`set_box3d_sleep_threshold`).
 
 ## Troubleshooting
 

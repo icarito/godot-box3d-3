@@ -93,6 +93,11 @@ void Box3DBody::_create_in_world() {
 	def.isAwake = !sleeping;
 	def.isBullet = ccd;
 	def.userData = this;
+	// Per-scene sleep speed threshold (default 0.05 m/s is Box3D's own). Raised
+	// on low-end holds to let slowly-settling props drop asleep sooner.
+	if (ProjectSettings::get_singleton()->has_setting("physics/3d/box3d_sleep_threshold")) {
+		def.sleepThreshold = (float)ProjectSettings::get_singleton()->get_setting("physics/3d/box3d_sleep_threshold");
+	}
 
 	id = b3CreateBody(space->world, &def);
 	ERR_FAIL_COND(B3_IS_NULL(id));

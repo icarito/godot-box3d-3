@@ -1578,6 +1578,36 @@ void Box3DPhysicsServer::set_box3d_sleeping(bool p_enabled) {
 	}
 }
 
+// Box3D's sleep speed threshold is per body (default 0.05 m/s, box3d.h
+// b3Body_SetSleepThreshold). A scene with many slowly-settling props pays the
+// island rebuild every tick until each one drops under the threshold, so on a
+// low-end device raising it lets the pile sleep sooner. Applied to every body
+// at creation and to the live bodies here; persisted so spaces created later
+// inherit it.
+void Box3DPhysicsServer::set_box3d_sleep_threshold(float p_threshold) {
+	float threshold = CLAMP(p_threshold, 0.001f, 10.0f);
+	ProjectSettings::get_singleton()->set_setting("physics/3d/box3d_sleep_threshold", threshold);
+	for (int i = 0; i < active_spaces.size(); i++) {
+		Box3DSpace *space = active_spaces[i];
+		if (space == nullptr) {
+			continue;
+		}
+		for (List<Box3DBody *>::Element *e = space->bodies.front(); e; e = e->next()) {
+			Box3DBody *body = e->get();
+			if (body != nullptr && B3_IS_NON_NULL(body->id)) {
+				b3Body_SetSleepThreshold(body->id, threshold);
+			}
+		}
+	}
+}
+
+float Box3DPhysicsServer::get_box3d_sleep_threshold() const {
+	if (ProjectSettings::get_singleton()->has_setting("physics/3d/box3d_sleep_threshold")) {
+		return (float)ProjectSettings::get_singleton()->get_setting("physics/3d/box3d_sleep_threshold");
+	}
+	return 0.05f;
+}
+
 void Box3DPhysicsServer::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_box3d_worker_count", "count"), &Box3DPhysicsServer::set_box3d_worker_count);
 	ClassDB::bind_method(D_METHOD("get_box3d_worker_count"), &Box3DPhysicsServer::get_box3d_worker_count);
@@ -1586,6 +1616,8 @@ void Box3DPhysicsServer::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_box3d_warm_starting", "enabled"), &Box3DPhysicsServer::set_box3d_warm_starting);
 	ClassDB::bind_method(D_METHOD("set_box3d_speculative", "enabled"), &Box3DPhysicsServer::set_box3d_speculative);
 	ClassDB::bind_method(D_METHOD("set_box3d_sleeping", "enabled"), &Box3DPhysicsServer::set_box3d_sleeping);
+	ClassDB::bind_method(D_METHOD("set_box3d_sleep_threshold", "threshold"), &Box3DPhysicsServer::set_box3d_sleep_threshold);
+	ClassDB::bind_method(D_METHOD("get_box3d_sleep_threshold"), &Box3DPhysicsServer::get_box3d_sleep_threshold);
 }
 
 Box3DPhysicsServer::Box3DPhysicsServer() {
