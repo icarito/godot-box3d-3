@@ -131,10 +131,13 @@ GLES2), el perfil más restrictivo del proyecto.
 Ideas ya identificadas (ver README "Roadmap"), en orden de valor para este
 proyecto:
 
-- **Trimesh one-sided opcional**: mitades el traversal y la memoria de BVH
-  para la geometría horneada del domo (hoy el módulo duplica triángulos para
-  las dos caras). Requiere una bandera por shape y saltar el espejo en cada
-  query — es el único cambio grande pendiente del módulo.
+- **Trimesh one-sided** (implementado, opt-in con
+  `physics/3d/box3d_trimesh_one_sided`, default off): mitades el traversal y la
+  memoria de BVH para la geometría horneada del domo. Es un ajuste global de
+  proyecto, no una bandera por shape (evita mapear shape→ShapeInstance en cada
+  query); exige que TODA la geometría trimesh tenga winding consistente hacia
+  arriba, si no el cuerpo cae a través de la cara trasera. Con el flag on, m25
+  (winding B) y m26 (CSG floor) fallan a propósito.
 - **Centering de height fields** (aún sin uso en Odisea, 0 usos de
   HeightMapShape).
 - **Contact recycle distance**: exponer `b3World_SetContactRecycleDistance`

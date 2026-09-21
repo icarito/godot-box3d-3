@@ -8,6 +8,12 @@
 #include "core/os/os.h"
 #include "core/project_settings.h"
 
+bool box3d_trimesh_one_sided() {
+	static const bool one_sided = ProjectSettings::get_singleton()->has_setting("physics/3d/box3d_trimesh_one_sided") &&
+			(bool)ProjectSettings::get_singleton()->get_setting("physics/3d/box3d_trimesh_one_sided");
+	return one_sided;
+}
+
 static b3BodyType b3_body_type(PhysicsServer::BodyMode p_mode) {
 	switch (p_mode) {
 		case PhysicsServer::BODY_MODE_STATIC:
@@ -93,6 +99,11 @@ void Box3DBody::_create_in_world() {
 	def.isAwake = !sleeping;
 	def.isBullet = ccd;
 	def.userData = this;
+	// Per-scene sleep speed threshold (default 0.05 m/s is Box3D's own). Raised
+	// on low-end holds to let slowly-settling props drop asleep sooner.
+	if (ProjectSettings::get_singleton()->has_setting("physics/3d/box3d_sleep_threshold")) {
+		def.sleepThreshold = (float)ProjectSettings::get_singleton()->get_setting("physics/3d/box3d_sleep_threshold");
+	}
 
 	id = b3CreateBody(space->world, &def);
 	ERR_FAIL_COND(B3_IS_NULL(id));
@@ -391,8 +402,15 @@ void Box3DBody::_create_shape(int p_idx) {
 			// still doubled; only the per-triangle work is skipped. Halving the
 			// traversal too would mean a separate mirrored shape, which every
 			// query path would then have to know to skip.
+			//
+			// physics/3d/box3d_trimesh_one_sided opts out of the duplicate
+			// entirely: the mesh keeps one winding, half the triangles and half
+			// the BVH. Only do it for baked level geometry whose winding is
+			// known (floors facing up); a back-facing surface then has no
+			// contact and a body can fall through it.
 			LocalVector<int> indices;
-			indices.resize(vertex_count * 2);
+			const bool one_sided = box3d_trimesh_one_sided();
+			indices.resize(one_sided ? vertex_count : vertex_count * 2);
 			for (int i = 0; i < vertex_count; i++) {
 				verts[i] = b3_vec(r[i]);
 			}
@@ -402,12 +420,18 @@ void Box3DBody::_create_shape(int p_idx) {
 			// paths do exactly that -- they are facing-agnostic, so the copies
 			// are pure duplicate work for them. Only the solver wants both.
 			for (int t = 0; t < triangles; t++) {
-				indices[t * 6 + 0] = t * 3 + 0;
-				indices[t * 6 + 1] = t * 3 + 1;
-				indices[t * 6 + 2] = t * 3 + 2;
-				indices[t * 6 + 3] = t * 3 + 0;
-				indices[t * 6 + 4] = t * 3 + 2;
-				indices[t * 6 + 5] = t * 3 + 1;
+				if (one_sided) {
+					indices[t * 3 + 0] = t * 3 + 0;
+					indices[t * 3 + 1] = t * 3 + 1;
+					indices[t * 3 + 2] = t * 3 + 2;
+				} else {
+					indices[t * 6 + 0] = t * 3 + 0;
+					indices[t * 6 + 1] = t * 3 + 1;
+					indices[t * 6 + 2] = t * 3 + 2;
+					indices[t * 6 + 3] = t * 3 + 0;
+					indices[t * 6 + 4] = t * 3 + 2;
+					indices[t * 6 + 5] = t * 3 + 1;
+				}
 			}
 			// Bake the local transform into the vertices before building, so the
 			// BVH is built once instead of built, thrown away and rebuilt.
@@ -420,7 +444,7 @@ void Box3DBody::_create_shape(int p_idx) {
 			mdef.vertices = verts.ptr();
 			mdef.indices = indices.ptr();
 			mdef.vertexCount = vertex_count;
-			mdef.triangleCount = triangles * 2;
+			mdef.triangleCount = one_sided ? triangles : triangles * 2;
 			mdef.weldVertices = true;
 			mdef.weldTolerance = B3_LINEAR_SLOP;
 			mdef.identifyEdges = true;
@@ -991,8 +1015,37 @@ Box3DSpace::Box3DSpace() {
 		box3d_workers = (int)ProjectSettings::get_singleton()->get_setting("physics/3d/box3d_workers");
 	}
 	def.workerCount = CLAMP(box3d_workers, 1, B3_MAX_WORKERS);
+	// Optional pre-sizing. Box3D grows these itself, but on a loaded level the
+	// growth lands mid-step as reallocations; a project that knows its counts
+	// (streaming a level, a fixed survival arena) can declare them up front.
+	// Zero, the default, means "let Box3D manage it".
+	{
+		struct CapacitySetting {
+			const char *key;
+			int *value;
+		};
+		const CapacitySetting capacity_settings[] = {
+			{ "physics/3d/box3d_capacity_static_shapes", &def.capacity.staticShapeCount },
+			{ "physics/3d/box3d_capacity_dynamic_shapes", &def.capacity.dynamicShapeCount },
+			{ "physics/3d/box3d_capacity_static_bodies", &def.capacity.staticBodyCount },
+			{ "physics/3d/box3d_capacity_dynamic_bodies", &def.capacity.dynamicBodyCount },
+			{ "physics/3d/box3d_capacity_contacts", &def.capacity.contactCount },
+		};
+		for (int i = 0; i < 5; i++) {
+			if (ProjectSettings::get_singleton()->has_setting(capacity_settings[i].key)) {
+				*capacity_settings[i].value = MAX(0, (int)ProjectSettings::get_singleton()->get_setting(capacity_settings[i].key));
+			}
+		}
+	}
 	world = b3CreateWorld(&def);
 	b3World_SetCustomFilterCallback(world, godot_collision_filter, nullptr);
+	// Contact recycling reuses a contact when the pair moved less than this
+	// distance since the last step (default 10 * linear slop = 0.05 m); 0 turns
+	// it off. Raising it stabilizes resting piles by not regenerating their
+	// manifolds every step, at the cost of a slightly stale contact.
+	if (ProjectSettings::get_singleton()->has_setting("physics/3d/box3d_contact_recycle_distance")) {
+		b3World_SetContactRecycleDistance(world, (float)ProjectSettings::get_singleton()->get_setting("physics/3d/box3d_contact_recycle_distance"));
+	}
 	// Box3D ships warm starting off; it sharpens stacking convergence at the
 	// cost of replaying previous impulses. Opt-in through project settings so
 	// existing scenes keep their recorded behavior.

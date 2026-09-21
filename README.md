@@ -458,6 +458,34 @@ It captures a glowing emitter with a black glow map and without it, and prints
      Box3D ships with warm starting disabled for determinism; enabling it
      replays each contact's previous impulses into the solver, which
      sharpens stacked bodies and long contact chains at a small step cost.
+   - Optional tuning: `physics/3d/box3d_sleep_threshold` (default 0.05 m/s,
+     Box3D's own). A body falls asleep once its speed stays under this for
+     `B3_TIME_TO_SLEEP` (0.5 s); raising it lets slowly-settling props drop
+     asleep sooner, which is the lever on a low-end device where every awake
+     island costs work each tick. `physics/3d/box3d_sleeping` (default on)
+     turns sleeping off entirely. Both apply to the live bodies and to every
+     body created afterwards, and are also settable at runtime through the
+     physics server (`set_box3d_sleep_threshold`).
+   - Optional tuning: `physics/3d/box3d_contact_recycle_distance` (default
+     0.05 m, Box3D's own). Box3D reuses a contact manifold when the pair moved
+     less than this since the last step; raising it keeps resting piles from
+     regenerating their contacts every step, and 0 disables recycling. Applied
+     to the live worlds and to new ones; runtime setter
+     `set_box3d_contact_recycle_distance`.
+   - Optional tuning: `physics/3d/box3d_trimesh_one_sided` (default off). A
+     concave (trimesh) shape is normally built with every triangle duplicated,
+     both windings, because a Box3D mesh triangle is one-sided while Godot
+     collides a ConcavePolygonShape from both faces. Turning this on keeps a
+     single winding: half the triangles and half the mesh BVH, so sweeps,
+     queries and solver traversal touch half as many triangles. The catch is
+     exactly the one the duplicate exists for: a surface whose winding faces
+     away from the contact has no collision (a box falls through an
+     inconsistently wound floor). Only for baked level geometry whose winding
+     is known and consistent. Read once at startup.
+   - Optional tuning: `physics/3d/box3d_capacity_*` pre-size the world buffers
+     to avoid reallocations mid-step: `static_shapes`, `dynamic_shapes`,
+     `static_bodies`, `dynamic_bodies` and `contacts` (each an int, 0 = let
+     Box3D grow them, which is the default).
 
 ## Troubleshooting
 
@@ -503,6 +531,13 @@ each backend compiled into the engine, reporting the average
 120-frame warmup. `scripts/bench.sh` covers the awake case only; for the
 settled case see `test_project/bench/bench_settle.gd` (run it with
 `godot --path test_project --no-window res://bench/bench_settle.tscn`).
+
+For a phase breakdown of a step, call `PhysicsServer.get_box3d_profile()` from
+GDScript: it returns Box3D's own timings for the last step (`step`, `pairs`,
+`collide`, `solve`, `integrateVelocities`, `integratePositions`,
+`sleepIslands`, ...) summed over the active spaces. That is how you tell
+whether a frame pays for broadphase, contact generation or the solver before
+changing anything (test `m32_box3d_profile`).
 
 Three runs on the reference machine, `target=release_debug`:
 
@@ -603,6 +638,7 @@ Feature complete for the Godot 3 gameplay layer:
   overlaps through the broadphase once per step (a scene with no override
   areas pays a single branch); contact read-back reuses one per-space buffer.
 
-Roadmap ideas: height field grid centering, single-sided trimesh option to
-halve BVH traversal, threaded stepping once determinism is verified across
-runs. See `docs/odisea-box3d.md` for the Odisea-facing optimization notes.
+Roadmap ideas: height field grid centering, threaded stepping once
+determinism is verified across runs. Single-sided trimesh shipped as the
+opt-in `physics/3d/box3d_trimesh_one_sided` (see Setup / porting a project).
+See `docs/odisea-box3d.md` for the Odisea-facing optimization notes.
