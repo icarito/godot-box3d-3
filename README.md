@@ -631,6 +631,7 @@ Feature complete for the Godot 3 gameplay layer:
   overlaps through the broadphase once per step (a scene with no override
   areas pays a single branch); contact read-back reuses one per-space buffer.
 
-Roadmap ideas: height field grid centering, single-sided trimesh option to
-halve BVH traversal, threaded stepping once determinism is verified across
-runs. See `docs/odisea-box3d.md` for the Odisea-facing optimization notes.
+Roadmap ideas: height field grid centering, threaded stepping once
+determinism is verified across runs. Single-sided trimesh shipped as the
+opt-in `physics/3d/box3d_trimesh_one_sided` (see Setup / porting a project).
+See `docs/odisea-box3d.md` for the Odisea-facing optimization notes.
