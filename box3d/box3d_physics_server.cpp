@@ -1608,6 +1608,27 @@ float Box3DPhysicsServer::get_box3d_sleep_threshold() const {
 	return 0.05f;
 }
 
+// How far a contact pair may move since the last step and still reuse its
+// manifold (Box3D default: 10 * linear slop = 0.05 m). 0 disables recycling.
+// Raising it keeps resting piles from regenerating contacts every step.
+void Box3DPhysicsServer::set_box3d_contact_recycle_distance(float p_distance) {
+	float distance = MAX(0.0f, p_distance);
+	ProjectSettings::get_singleton()->set_setting("physics/3d/box3d_contact_recycle_distance", distance);
+	for (int i = 0; i < active_spaces.size(); i++) {
+		Box3DSpace *space = active_spaces[i];
+		if (space != nullptr && B3_IS_NON_NULL(space->world)) {
+			b3World_SetContactRecycleDistance(space->world, distance);
+		}
+	}
+}
+
+float Box3DPhysicsServer::get_box3d_contact_recycle_distance() const {
+	if (ProjectSettings::get_singleton()->has_setting("physics/3d/box3d_contact_recycle_distance")) {
+		return (float)ProjectSettings::get_singleton()->get_setting("physics/3d/box3d_contact_recycle_distance");
+	}
+	return 0.05f;
+}
+
 void Box3DPhysicsServer::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_box3d_worker_count", "count"), &Box3DPhysicsServer::set_box3d_worker_count);
 	ClassDB::bind_method(D_METHOD("get_box3d_worker_count"), &Box3DPhysicsServer::get_box3d_worker_count);
@@ -1618,6 +1639,8 @@ void Box3DPhysicsServer::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_box3d_sleeping", "enabled"), &Box3DPhysicsServer::set_box3d_sleeping);
 	ClassDB::bind_method(D_METHOD("set_box3d_sleep_threshold", "threshold"), &Box3DPhysicsServer::set_box3d_sleep_threshold);
 	ClassDB::bind_method(D_METHOD("get_box3d_sleep_threshold"), &Box3DPhysicsServer::get_box3d_sleep_threshold);
+	ClassDB::bind_method(D_METHOD("set_box3d_contact_recycle_distance", "distance"), &Box3DPhysicsServer::set_box3d_contact_recycle_distance);
+	ClassDB::bind_method(D_METHOD("get_box3d_contact_recycle_distance"), &Box3DPhysicsServer::get_box3d_contact_recycle_distance);
 }
 
 Box3DPhysicsServer::Box3DPhysicsServer() {

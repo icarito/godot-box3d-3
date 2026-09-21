@@ -996,8 +996,37 @@ Box3DSpace::Box3DSpace() {
 		box3d_workers = (int)ProjectSettings::get_singleton()->get_setting("physics/3d/box3d_workers");
 	}
 	def.workerCount = CLAMP(box3d_workers, 1, B3_MAX_WORKERS);
+	// Optional pre-sizing. Box3D grows these itself, but on a loaded level the
+	// growth lands mid-step as reallocations; a project that knows its counts
+	// (streaming a level, a fixed survival arena) can declare them up front.
+	// Zero, the default, means "let Box3D manage it".
+	{
+		struct CapacitySetting {
+			const char *key;
+			int *value;
+		};
+		const CapacitySetting capacity_settings[] = {
+			{ "physics/3d/box3d_capacity_static_shapes", &def.capacity.staticShapeCount },
+			{ "physics/3d/box3d_capacity_dynamic_shapes", &def.capacity.dynamicShapeCount },
+			{ "physics/3d/box3d_capacity_static_bodies", &def.capacity.staticBodyCount },
+			{ "physics/3d/box3d_capacity_dynamic_bodies", &def.capacity.dynamicBodyCount },
+			{ "physics/3d/box3d_capacity_contacts", &def.capacity.contactCount },
+		};
+		for (int i = 0; i < 5; i++) {
+			if (ProjectSettings::get_singleton()->has_setting(capacity_settings[i].key)) {
+				*capacity_settings[i].value = MAX(0, (int)ProjectSettings::get_singleton()->get_setting(capacity_settings[i].key));
+			}
+		}
+	}
 	world = b3CreateWorld(&def);
 	b3World_SetCustomFilterCallback(world, godot_collision_filter, nullptr);
+	// Contact recycling reuses a contact when the pair moved less than this
+	// distance since the last step (default 10 * linear slop = 0.05 m); 0 turns
+	// it off. Raising it stabilizes resting piles by not regenerating their
+	// manifolds every step, at the cost of a slightly stale contact.
+	if (ProjectSettings::get_singleton()->has_setting("physics/3d/box3d_contact_recycle_distance")) {
+		b3World_SetContactRecycleDistance(world, (float)ProjectSettings::get_singleton()->get_setting("physics/3d/box3d_contact_recycle_distance"));
+	}
 	// Box3D ships warm starting off; it sharpens stacking convergence at the
 	// cost of replaying previous impulses. Opt-in through project settings so
 	// existing scenes keep their recorded behavior.

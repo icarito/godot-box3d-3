@@ -40,6 +40,8 @@ public:
 	void set_box3d_sleeping(bool p_enabled);
 	void set_box3d_sleep_threshold(float p_threshold);
 	float get_box3d_sleep_threshold() const;
+	void set_box3d_contact_recycle_distance(float p_distance);
+	float get_box3d_contact_recycle_distance() const;
 
 public:
 	virtual RID shape_create(ShapeType p_shape);

@@ -466,6 +466,16 @@ It captures a glowing emitter with a black glow map and without it, and prints
      turns sleeping off entirely. Both apply to the live bodies and to every
      body created afterwards, and are also settable at runtime through the
      physics server (`set_box3d_sleep_threshold`).
+   - Optional tuning: `physics/3d/box3d_contact_recycle_distance` (default
+     0.05 m, Box3D's own). Box3D reuses a contact manifold when the pair moved
+     less than this since the last step; raising it keeps resting piles from
+     regenerating their contacts every step, and 0 disables recycling. Applied
+     to the live worlds and to new ones; runtime setter
+     `set_box3d_contact_recycle_distance`.
+   - Optional tuning: `physics/3d/box3d_capacity_*` pre-size the world buffers
+     to avoid reallocations mid-step: `static_shapes`, `dynamic_shapes`,
+     `static_bodies`, `dynamic_bodies` and `contacts` (each an int, 0 = let
+     Box3D grow them, which is the default).
 
 ## Troubleshooting
 
