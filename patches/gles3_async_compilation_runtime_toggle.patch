@@ -26,7 +26,7 @@ diff --git a/drivers/gles3/rasterizer_storage_gles3.cpp b/drivers/gles3/rasteriz
 index 6fdd8c4..15a9adc 100644
 --- a/drivers/gles3/rasterizer_storage_gles3.cpp
 +++ b/drivers/gles3/rasterizer_storage_gles3.cpp
-@@ -2540,6 +2540,19 @@ void RasterizerStorageGLES3::shader_remove_custom_define(RID p_shader, const Str
+@@ -2540,6 +2540,26 @@ void RasterizerStorageGLES3::shader_remove_custom_define(RID p_shader, const Str
  	_shader_make_dirty(shader);
  }
  
@@ -36,6 +36,13 @@ index 6fdd8c4..15a9adc 100644
 +// donde no hay nada que cubrir -- el ubershader solo rinde si hay algo detras que
 +// mostrar mientras compila la variante real.
 +void RasterizerStorageGLES3::set_shader_async_compilation_enabled(bool p_enabled) {
++	// En modo sincrono no hay cola async que encender: async_compilation_max_simultaneous
++	// sale de initialize() SOLO cuando el modo es >= 1, asi que encenderla desde el juego
++	// leia un entero sin inicializar. En nativo salia 0 y no se notaba; en el heap de wasm
++	// salia basura y la cola de compilacion indexaba fuera de rango.
++	if (!config.async_compilation_enabled) {
++		return;
++	}
 +	if (p_enabled) {
 +		ShaderGLES3::max_simultaneous_compiles = config.async_compilation_max_simultaneous;
 +	} else {
@@ -69,7 +76,7 @@ index 9f7d480..b30df6a 100644
  		bool program_binary_supported;
  		bool parallel_shader_compile_supported;
  		bool async_compilation_enabled;
-+		int async_compilation_max_simultaneous;
++		int async_compilation_max_simultaneous = 1;
  		bool shader_cache_enabled;
  	} config;
  
