@@ -38,6 +38,7 @@ scenes=(
 	res://tests/m30_glow_map_api.tscn
 	res://tests/m31_audio_mute_api.tscn
 	res://tests/m32_box3d_profile.tscn
+	res://tests/m33_compound.tscn
 )
 
 status=0

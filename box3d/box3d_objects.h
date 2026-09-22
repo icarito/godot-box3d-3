@@ -93,6 +93,14 @@ public:
 		b3MeshData *mesh_data = nullptr;
 		b3HeightFieldData *height_data = nullptr;
 
+		// Baked compound (SHAPE_CUSTOM). b3ConvertBytesToCompound fixes up the
+		// tree pointers INSIDE the caller's buffer, so this instance keeps its
+		// own mutable copy of the serialized bytes and the compound data points
+		// into it. Freeing the buffer is enough: b3DestroyCompound must not be
+		// called on a compound that lives in caller-owned bytes.
+		b3CompoundData *compound_data = nullptr;
+		PoolVector<uint8_t> compound_bytes;
+
 		// Cached motion-path parameters, filled by create_shape(). Capsules ride
 		// the kinematic recovery loop and ray shapes the ray separation pass,
 		// both per tick; re-reading the shape Variant's Dictionary there costs

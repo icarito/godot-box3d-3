@@ -352,6 +352,10 @@ void Box3DBody::free_shape_geometry(int p_idx) {
 		b3DestroyHeightField(si.height_data);
 		si.height_data = nullptr;
 	}
+	// The compound lives inside compound_bytes, so dropping the buffer is all
+	// that is needed (b3DestroyCompound on it would free memory we do not own).
+	si.compound_data = nullptr;
+	si.compound_bytes.resize(0);
 }
 
 void Box3DBody::_create_shape(int p_idx) {
@@ -488,6 +492,44 @@ void Box3DBody::_create_shape(int p_idx) {
 		case PhysicsServer::SHAPE_RAY: {
 			// Box3D has no ray shape: rays take part in casts only, never in
 			// contact solving, so a ray shape on a body is a no-op here.
+		} break;
+		case PhysicsServer::SHAPE_CUSTOM: {
+			// Baked compound (Box3DCompoundShape). Static-body only: Box3D
+			// refuses compounds on dynamic/kinematic bodies.
+			if (b3Body_GetType(id) != b3_staticBody) {
+				ERR_PRINT_ONCE("Box3D: los compounds son solo para static bodies, se ignora la forma.");
+				return;
+			}
+			ERR_FAIL_COND_MSG(si.shape->data.get_type() != Variant::POOL_BYTE_ARRAY,
+					"Box3D: SHAPE_CUSTOM espera los bytes de un compound (PoolByteArray).");
+			PoolByteArray src = si.shape->data;
+			ERR_FAIL_COND_MSG(src.size() < (int)sizeof(b3CompoundData), "Box3D: bytes de compound demasiado cortos.");
+			free_shape_geometry(p_idx);
+			si.compound_bytes.resize(src.size());
+			{
+				PoolByteArray::Read r = src.read();
+				PoolVector<uint8_t>::Write w = si.compound_bytes.write();
+				memcpy(w.ptr(), r.ptr(), src.size());
+			}
+			b3CompoundData *compound = nullptr;
+			{
+				// El write vive solo durante el fixup: el compound queda apuntando
+				// dentro de compound_bytes, que sigue siendo del ShapeInstance.
+				PoolVector<uint8_t>::Write w2 = si.compound_bytes.write();
+				compound = b3ConvertBytesToCompound((uint8_t *)w2.ptr(), si.compound_bytes.size());
+			}
+			if (compound == nullptr) {
+				si.compound_bytes.resize(0);
+				ERR_PRINT("Box3D: bytes de compound invalidos (version/offsets), se ignora la forma.");
+				return;
+			}
+			si.compound_data = compound;
+			si.id = b3CreateBakedCompoundShape(id, &def, compound);
+			if (B3_IS_NULL(si.id)) {
+				si.compound_data = nullptr;
+				si.compound_bytes.resize(0);
+				ERR_PRINT("Box3D: b3CreateBakedCompoundShape fallo, se ignora la forma.");
+			}
 		} break;
 		default: {
 			si.id = b3_create_godot_shape(id, def, si.shape, shape_xform);

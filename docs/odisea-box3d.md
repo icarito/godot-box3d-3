@@ -149,10 +149,60 @@ proyecto:
 - **Stepping con workers opt-in**: rompe el determinismo que Odisea valida
   en CI; solo como setting opt-in para screenshots/benchmarks, nunca default.
 
+## Compounds: tiles estáticos grandes (streaming)
+
+`Box3DCompound` + `Box3DCompoundShape` exponen los compounds de Box3D a
+GDScript. Un compound es **una sola shape** que agrupa esferas, cápsulas,
+hulls y meshes bajo un árbol AABB interno: la simulación la ve como una shape,
+las queries bajan el árbol y sólo tocan lo que corresponde. Es el mecanismo
+pensado para geometría estática grande (tiles de nivel, cáscaras de edificio,
+terreno) y para **streaming**: los tiles se hornean offline, se guardan como
+bytes planos y se adjuntan/desadjuntan a static bodies al cargar/descargar una
+región, sin copiar el buffer.
+
+**Restricciones (las impone Box3D):** sólo `static body`, e inmutables una vez
+creadas. En un body dinámico/kinemático el backend ignora la forma y avisa por
+consola.
+
+Workflow desde GDScript:
+
+```gdscript
+# 1. hornear (offline o al cargar la escena fuente)
+var comp := Box3DCompound.new()
+comp.add_mesh(faces, Transform(), Vector3.ONE)      # sopa de triángulos (multiplo de 3)
+comp.add_hull(points, xform)                        # convex hull
+comp.add_box(Vector3(0.5, 0.5, 0.5), xform)         # caja (se hornea como hull de 8 puntos)
+comp.add_sphere(0.4, xform)
+comp.add_capsule(0.3, 1.0, xform)                   # Z-alineada, alto = tramo medio
+var bytes := comp.bake()                            # PoolByteArray serializado
+print(comp.get_child_count(), bytes.size(), Box3DCompound.new().is_valid_compound(bytes))
+
+# 2. guardar los bytes (user://, .tres, cache de streaming) y en runtime:
+var shape := Box3DCompoundShape.new()
+shape.set_compound_bytes(bytes)
+%CollisionShape.shape = shape                        # y el body debe ser StaticBody
+```
+
+`bake()` devuelve el buffer serializado (versión + offsets del árbol);
+`is_valid_compound()` valida header/offsets sin quedarse con el buffer (lo usa
+el streaming para descartar un cache corrupto antes de adjuntarlo). El backend
+copia los bytes a un buffer mutable por `ShapeInstance`, hace el fixup de
+punteros y crea la compound con `b3CreateBakedCompoundShape`; al liberar la
+instancia se suelta el buffer (el compound vive dentro de esos bytes).
+
+Gotcha de serialización: el compound horneado depende de las versiones de
+árbol/mesh/hull del build que lo horneó. Un cache de bytes de una versión
+anterior del engine puede quedar inválido; `is_valid_compound()` lo detecta
+(version mismatch) y conviene re-hornear en vez de fallar en runtime.
+
+Test de aceptación: `test_project/tests/m33_compound.tscn` (hornea
+mesh+caja+esfera+cápsula, valida bytes buenos/corruptos y verifica las queries
+contra cada hijo).
+
 ## Cómo validar cada cambio
 
 ```bash
-# módulo: 27 escenas de aceptación
+# módulo: 28 escenas de aceptación
 GODOT=../godot/bin/godot.x11.opt.tools.64 scripts/test.sh
 
 # módulo: benchmarks (despierto / asentado)
@@ -167,7 +217,7 @@ GODOT_BIN=<binario box3d> ./runtest.sh --oys test_locomocion_walk
 GODOT_BIN=<binario box3d> ./runtest.sh
 ```
 
-Estado de hoy: 27/27 escenas del módulo pasan; en Odisea, los replays de
+Estado de hoy: 28/28 escenas del módulo pasan; en Odisea, los replays de
 física (`test_salto_vertical`, `test_salto_desplazamiento`,
 `test_locomocion_walk`, `test_push_integration`, `test_push_clipping`)
 pasan con Box3D. `test_cargol_basic` falla por migración (RigidBody

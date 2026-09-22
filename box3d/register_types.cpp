@@ -1,5 +1,6 @@
 #include "register_types.h"
 
+#include "box3d_compound.h"
 #include "box3d_physics_server.h"
 
 #include "core/class_db.h"
@@ -17,6 +18,10 @@ void register_box3d_types() {
 	// (worker count, substeps, warm starting, speculative, sleeping) sobre el
 	// singleton PhysicsServer activo.
 	ClassDB::register_class<Box3DPhysicsServer>();
+	// Compounds para geometria estatica grande (tiles de nivel): horneado +
+	// serializacion a bytes y la Shape que los adjunta a un static body.
+	ClassDB::register_class<Box3DCompound>();
+	ClassDB::register_class<Box3DCompoundShape>();
 #endif
 }
 
