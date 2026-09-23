@@ -4,6 +4,15 @@ name: Release
 # editor/headless binaries and matching export templates. A custom module is
 # useless to a CI that cannot compile Godot itself, which is most of them, and
 # exporting with stock templates silently falls back to Bullet.
+#
+# La matriz esta partida en dos a proposito:
+#   build     -> lo que el juego necesita para publicar (editor, headless y las
+#                plantillas de export de cada plataforma). publish crea el release
+#                apenas termina, sin esperar nada mas.
+#   thegates  -> renderers de TheGates (Linux/macOS/Windows). Son los jobs mas
+#                lentos (clang 22, runner macOS) y no le hacen falta al juego
+#                para exportar: corren en paralelo y publish-thegates sube sus
+#                assets al release ya creado cuando terminan.
 on:
   push:
     tags: ["v*"]
@@ -57,19 +66,6 @@ jobs:
           - target: frt-editor
             name: frt-linux-editor
             os: ubuntu-22.04
-          # El renderer que el launcher de TheGates baja del backend para los
-          # gates godot_version = "3.6": template x11 con los modules Box3D y
-          # the_gates. Como con FRT, el nombre NO termina en "templates" a
-          # proposito: no es un slot de template, es un asset suelto.
-          - target: thegates-renderer
-            name: thegates-renderer
-            os: ubuntu-22.04
-          - target: thegates-renderer-macos
-            name: thegates-renderer-macos
-            os: macos-14
-          - target: thegates-renderer-windows
-            name: thegates-renderer-windows
-            os: ubuntu-22.04
           - target: windows-templates
             name: windows-templates
             os: ubuntu-22.04
@@ -85,224 +81,35 @@ jobs:
           - target: ios-templates
             name: ios-templates
             os: macos-14
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
+    uses: ./.github/workflows/build-target.yml
+    with:
+      target: ${{ matrix.target }}
+      name: ${{ matrix.name }}
+      os: ${{ matrix.os }}
 
-      - name: Install build dependencies (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            build-essential scons pkg-config libx11-dev libxcursor-dev \
-            libxinerama-dev libgl1-mesa-dev libglu1-mesa-dev libasound2-dev \
-            libpulse-dev libudev-dev libxi-dev libxrandr-dev yasm \
-            libsdl2-dev
-
-      # The thegates module compiles the fork's Chromium sandbox subset with clang.
-      # That snapshot tracks current Chromium and needs a current clang (14 and 18
-      # both fail on it); clang 22 comes from apt.llvm.org so the renderer keeps
-      # building against 22.04's glibc.
-      - name: Set up clang 22
-        if: matrix.target == 'thegates-renderer'
-        run: |
-          wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s -- 22
-          sudo ln -sf /usr/bin/clang-22 /usr/bin/clang
-          sudo ln -sf /usr/bin/clang++-22 /usr/bin/clang++
-          clang++ --version | head -1
-
-      - name: Install build dependencies (macOS)
-        if: runner.os == 'macOS'
-        run: brew install scons
-
-      # Ubuntu's default MinGW uses the win32 thread model, whose libstdc++ has
-      # no std::thread or std::mutex, so Godot's core/os/mutex.h does not
-      # compile. The -posix variants are the ones that do.
-      - name: Set up MinGW (POSIX threads)
-        if: matrix.target == 'windows-templates' || matrix.target == 'thegates-renderer-windows'
-        run: |
-          sudo apt-get install -y --no-install-recommends mingw-w64
-          sudo update-alternatives --set x86_64-w64-mingw32-gcc /usr/bin/x86_64-w64-mingw32-gcc-posix
-          sudo update-alternatives --set x86_64-w64-mingw32-g++ /usr/bin/x86_64-w64-mingw32-g++-posix
-          x86_64-w64-mingw32-g++ --version | head -1
-
-      - name: Set up Emscripten
-        if: matrix.target == 'html5-templates'
-        uses: mymindstorm/setup-emsdk@v14
-        with:
-          version: 3.1.39
-
-      - name: Set up JDK
-        if: matrix.target == 'android-templates'
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: 17
-
-      # Runners ship the Android SDK but not its cmdline-tools on PATH, so
-      # sdkmanager is only callable after this.
-      - name: Set up Android SDK
-        if: matrix.target == 'android-templates'
-        uses: android-actions/setup-android@v3
-        with:
-          # Its default also asks for the legacy "tools" package, which Google's
-          # repository no longer serves: sdkmanager exits 1 and the job dies here.
-          packages: platform-tools
-
-      - name: Set up Android NDK
-        if: matrix.target == 'android-templates'
-        run: |
-          # Godot 3.6 pins this NDK; a different one fails the ABI checks.
-          yes | sdkmanager --install "ndk;23.2.8568313" "platforms;android-34" "build-tools;34.0.0" >/dev/null
-          echo "ANDROID_NDK_ROOT=$ANDROID_SDK_ROOT/ndk/23.2.8568313" >> $GITHUB_ENV
-          echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/23.2.8568313" >> $GITHUB_ENV
-
-      # Godot is rebuilt from scratch on a cold cache, which is most of the job.
-      - name: Cache SCons objects
-        uses: actions/cache@v4
-        with:
-          # Absolute: a literal ~ in SCONS_CACHE is not expanded, and scons then
-          # fails outright trying to create a directory called "~".
-          path: ${{ github.workspace }}/.scons_cache
-          key: ${{ matrix.name }}-${{ hashFiles('box3d/**', 'patches/**', 'scripts/build.sh') }}
-          restore-keys: ${{ matrix.name }}-
-
-      # El toolchain (SDK buildroot + SDL2 arm64) vale ~500 MB y tarda minutos en
-      # preparar; cacheado por el hash del script que lo arma.
-      - name: Cache FRT cross toolchain
-        if: matrix.target == 'frt-arm64-templates'
-        uses: actions/cache@v4
-        with:
-          path: .frt-env
-          key: frt-env-${{ hashFiles('scripts/frt_env.sh') }}
-
-      - name: Set up FRT cross toolchain
-        if: matrix.target == 'frt-arm64-templates'
-        run: |
-          scripts/frt_env.sh
-          echo "GODOT_SDK_LINUX_ARM64=$GITHUB_WORKSPACE/.frt-env/aarch64-godot-linux-gnu_sdk-buildroot" >> "$GITHUB_ENV"
-          echo "SDL2_ARM64=$GITHUB_WORKSPACE/.frt-env/sdl2/arm64" >> "$GITHUB_ENV"
-
-      - name: Build
-        env:
-          SCONS_CACHE: ${{ github.workspace }}/.scons_cache
-          # Godot trims the SCons cache to SCONS_CACHE_LIMIT MB after every build
-          # (methods.py, default 1024). The Android job writes eight configurations
-          # -- four ABIs x release/release_debug -- into one cache, so each arch was
-          # evicting the objects the previous one had just stored. Measured on
-          # v0.2.1-rc1: 8539 compiles against 4563 cache hits, and a job that stayed
-          # at 35-40 min while every single-config job finished in one. The entry
-          # uploads compressed (1 GB on disk was 244 MB stored), so the repo's 10 GB
-          # cache budget absorbs this comfortably.
-          SCONS_CACHE_LIMIT: 8192
-          GODOT_DIR: ${{ github.workspace }}/../${{ env.GODOT_DIR_REL }}
-        run: scripts/build.sh ${{ matrix.target }}
-
-      # Templates are renamed to the slots Godot looks for; the editor and
-      # headless binaries keep descriptive names, nothing looks those up.
-      - name: Collect artifacts
-        env:
-          BIN: ${{ github.workspace }}/../${{ env.GODOT_DIR_REL }}/bin
-        run: |
-          set -euo pipefail
-          mkdir -p out
-          case "${{ matrix.target }}" in
-            editor)
-              cp "$BIN/godot.x11.opt.tools.64" out/godot.box3d.linux.x86_64.editor
-              ;;
-            headless)
-              cp "$BIN/godot_server.x11.opt.tools.64" out/godot.box3d.linux.x86_64.headless
-              ;;
-            linux-templates)
-              cp "$BIN/godot.x11.opt.64" out/linux_x11_64_release
-              cp "$BIN/godot.x11.opt.debug.64" out/linux_x11_64_debug
-              ;;
-            linux-arm64-templates)
-              cp "$BIN/godot.x11.opt.64" out/linux_x11_arm64_release
-              cp "$BIN/godot.x11.opt.debug.64" out/linux_x11_arm64_debug
-              ;;
-            frt-arm64-templates)
-              # Nombres en la linea de godot.box3d.<plataforma>.<flavor>: lo que
-              # un consumidor (PortMaster, godot_bin.sh) baja del release.
-              cp "$BIN/godot.frt.opt.arm64" out/godot.box3d.frt.arm64.release
-              cp "$BIN/godot.frt.opt.debug.arm64" out/godot.box3d.frt.arm64.debug
-              ;;
-            frt-x86_64-templates)
-              cp "$BIN/godot.frt.opt.x86_64" out/godot.box3d.frt.x86_64.release
-              cp "$BIN/godot.frt.opt.debug.x86_64" out/godot.box3d.frt.x86_64.debug
-              ;;
-            frt-editor)
-              cp "$BIN/godot.frt.opt.tools.x86_64" out/godot.box3d.frt.linux.x86_64.editor
-              ;;
-            thegates-renderer)
-              # Binarios con nombre godot.box3d.<plataforma>.<flavor> y, aparte,
-              # el zip con el contrato del backend de TheGates:
-              # /api/download_renderer/linux-3.6 es un zip cuyo root trae el
-              # binario con el nombre que renderer_executable.tres deriva
-              # (Renderer-godot_v<version>.x86_64).
-              cp "$BIN/godot.x11.opt.64" out/godot.box3d.thegates.linux.x86_64
-              cp "$BIN/godot.x11.opt.debug.64" out/godot.box3d.thegates.linux.x86_64.debug
-              mkdir -p stage
-              cp "$BIN/godot.x11.opt.64" stage/Renderer-godot_v3.6.x86_64
-              chmod +x stage/Renderer-godot_v3.6.x86_64
-              (cd stage && zip -q -r9 ../out/linux-3.6 Renderer-godot_v3.6.x86_64)
-              ;;
-            thegates-renderer-macos)
-              # macos-3.6: el binario universal con el nombre que el launcher
-              # busca en macOS (Renderer-godot_v<version>.universal).
-              cp "$BIN/godot.osx.opt.thegates.universal" out/godot.box3d.thegates.macos.universal
-              mkdir -p stage
-              cp "$BIN/godot.osx.opt.thegates.universal" stage/Renderer-godot_v3.6.universal
-              chmod +x stage/Renderer-godot_v3.6.universal
-              (cd stage && zip -q -r9 ../out/macos-3.6 Renderer-godot_v3.6.universal)
-              ;;
-            thegates-renderer-windows)
-              # windows-3.6: el .exe con el nombre que el launcher busca en Windows.
-              x86_64-w64-mingw32-strip "$BIN/godot.windows.opt.64.exe" || true
-              cp "$BIN/godot.windows.opt.64.exe" out/godot.box3d.thegates.windows.x86_64.exe
-              mkdir -p stage
-              cp "$BIN/godot.windows.opt.64.exe" stage/Renderer-godot_v3.6.exe
-              (cd stage && zip -q -r9 ../out/windows-3.6 Renderer-godot_v3.6.exe)
-              ;;
-            windows-templates)
-              cp "$BIN/godot.windows.opt.64.exe" out/windows_64_release.exe
-              cp "$BIN/godot.windows.opt.debug.64.exe" out/windows_64_debug.exe
-              ;;
-            html5-templates)
-              cp "$BIN/godot.javascript.opt.zip" out/webassembly_release.zip
-              cp "$BIN/godot.javascript.opt.debug.zip" out/webassembly_debug.zip
-              cp "$BIN/godot.javascript.opt.threads.zip" out/webassembly_threads_release.zip
-              cp "$BIN/godot.javascript.opt.debug.threads.zip" out/webassembly_threads_debug.zip
-              ;;
-            android-templates)
-              cp "$BIN/android_release.apk" out/android_release.apk
-              cp "$BIN/android_debug.apk" out/android_debug.apk
-              cp "$BIN/android_source.zip" out/android_source.zip
-              ;;
-            macos-templates)
-              cp "$BIN/osx.zip" out/osx.zip
-              ;;
-            ios-templates)
-              cp "$BIN/iphone.zip" out/iphone.zip
-              ;;
-          esac
-          # Belt and braces: production=yes already omits them, but a stray
-          # symbol table costs hundreds of megabytes on every CI download.
-          case "${{ matrix.target }}" in
-            windows-templates) x86_64-w64-mingw32-strip out/* || true ;;
-            editor|headless|linux-templates|linux-arm64-templates|frt-arm64-templates|frt-x86_64-templates|frt-editor) strip out/* || true ;;
-            # El zip linux-3.6 no se toca: strip no distingue un zip de un ELF.
-            thegates-renderer) strip out/godot.* || true ;;
-          esac
-          ls -lh out
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.name }}
-          path: out/*
-          if-no-files-found: error
+  thegates:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # El renderer que el launcher de TheGates baja del backend para los
+          # gates godot_version = "3.6": template x11 con los modules Box3D y
+          # the_gates. Como con FRT, el nombre NO termina en "templates" a
+          # proposito: no es un slot de template, es un asset suelto.
+          - target: thegates-renderer
+            name: thegates-renderer
+            os: ubuntu-22.04
+          - target: thegates-renderer-macos
+            name: thegates-renderer-macos
+            os: macos-14
+          - target: thegates-renderer-windows
+            name: thegates-renderer-windows
+            os: ubuntu-22.04
+    uses: ./.github/workflows/build-target.yml
+    with:
+      target: ${{ matrix.target }}
+      name: ${{ matrix.name }}
+      os: ${{ matrix.os }}
 
   publish:
     needs: build
@@ -348,15 +155,15 @@ jobs:
           # slots are for CI: an export job needs one or two of them, and making
           # it pull half a gigabyte of every other platform to get them is the
           # kind of thing that quietly doubles a pipeline's runtime.
+          #
+          # Los renderers de TheGates NO van aca: los sube publish-thegates
+          # cuando terminan, asi el release sale sin esperarlos.
           files: |
             artifacts/linux-editor/*
             artifacts/frt-linux-editor/*
             artifacts/linux-headless/*
             artifacts/frt-arm64/*
             artifacts/frt-x86_64/*
-            artifacts/thegates-renderer/*
-            artifacts/thegates-renderer-macos/*
-            artifacts/thegates-renderer-windows/*
             templates/*
             *.tpz
 
@@ -375,8 +182,7 @@ jobs:
           TAG="${{ github.event.inputs.tag || github.ref_name }}"
           mkdir -p publish
           for d in artifacts/linux-editor artifacts/frt-linux-editor artifacts/linux-headless \
-                   artifacts/frt-arm64 artifacts/frt-x86_64 artifacts/thegates-renderer \
-                   artifacts/thegates-renderer-macos artifacts/thegates-renderer-windows templates; do
+                   artifacts/frt-arm64 artifacts/frt-x86_64 templates; do
             [ -d "$d" ] && cp -a "$d"/. publish/ 2>/dev/null || true
           done
           cp -a ./*.tpz publish/ 2>/dev/null || true
@@ -427,3 +233,43 @@ jobs:
             done
           fi
           echo "assets en el release: $(release_assets | wc -l)"
+
+  # Los renderers de TheGates llegan despues: el release (con editor, headless y
+  # plantillas) ya esta publicado y el juego ya puede exportar. Aca solo se suman
+  # sus assets. needs incluye publish para no competir por la creacion del release.
+  publish-thegates:
+    needs: [publish, thegates]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          pattern: thegates-*
+          merge-multiple: false
+
+      - name: Upload TheGates assets to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          shopt -s nullglob
+          ASSETS=(artifacts/thegates-*/*)
+          if [ ${#ASSETS[@]} -eq 0 ]; then
+            echo "::warning::no hay artifacts de TheGates para subir"
+            exit 0
+          fi
+          for f in "${ASSETS[@]}"; do
+            echo "subiendo $(basename "$f")"
+            for a in 1 2 3 4 5; do
+              if timeout 1800 gh release upload "$TAG" "$f" --repo "$GITHUB_REPOSITORY" --clobber; then
+                break
+              fi
+              echo "::warning::reintento $a subiendo $(basename "$f")"
+              sleep 20
+            done
+          done
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' | sort
