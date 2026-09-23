@@ -1,0 +1,50 @@
+diff --git a/src/compound.c b/src/compound.c
+index 38b5571..017e25a 100644
+--- a/src/compound.c
++++ b/src/compound.c
+@@ -692,6 +692,45 @@ b3CompoundData* b3ConvertBytesToCompound( uint8_t* bytes, int byteCount )
+ 		return NULL;
+ 	}
+ 
++	// The header layout depends on the compiler ABI (pointer size and struct alignment).
++	// A blob baked by a build with a different layout keeps the same version, byteCount,
++	// nodeOffset and proxyOffset because those fields sit at identical offsets, so every
++	// check above still passes while the embedded tree metadata is read from the wrong
++	// bytes. The tree then reports zero proxies and every compound query silently misses.
++	// Reconstruct the bake invariants from the header and reject anything that does not
++	// line up, so a stale or mismatched blob fails loudly instead of producing zero
++	// collisions.
++	{
++		int headerSize = (int)b3AlignUp8( sizeof( b3CompoundData ) );
++		if ( compound->nodeOffset != headerSize )
++		{
++			return NULL;
++		}
++
++		if ( compound->tree.proxyCount <= 0 || compound->tree.nodeEnd < 2 )
++		{
++			return NULL;
++		}
++
++		if ( compound->proxyOffset != compound->nodeOffset + (int)b3AlignUp8( compound->tree.nodeEnd * sizeof( b3TreeNode ) ) )
++		{
++			return NULL;
++		}
++
++		if ( compound->materialOffset != compound->proxyOffset + (int)b3AlignUp8( compound->tree.proxyCount * sizeof( b3TreeProxy ) ) )
++		{
++			return NULL;
++		}
++
++		if ( compound->materialOffset <= 0 || compound->capsuleOffset <= 0 || compound->hullOffset <= 0 ||
++			 compound->meshOffset <= 0 || compound->sphereOffset <= 0 || compound->materialOffset > compound->byteCount ||
++			 compound->capsuleOffset > compound->byteCount || compound->hullOffset > compound->byteCount ||
++			 compound->meshOffset > compound->byteCount || compound->sphereOffset > compound->byteCount )
++		{
++			return NULL;
++		}
++	}
++
+ 	// this mutates the input bytes
+ 	compound->tree.nodes = (b3TreeNode*)( (intptr_t)compound + compound->nodeOffset );
+ 	compound->tree.proxies = (b3TreeProxy*)( (intptr_t)compound + compound->proxyOffset );
