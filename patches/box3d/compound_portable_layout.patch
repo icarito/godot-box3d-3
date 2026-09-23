@@ -1,0 +1,58 @@
+diff --git a/include/box3d/types.h b/include/box3d/types.h
+index 08358b5..dc7ed14 100644
+--- a/include/box3d/types.h
++++ b/include/box3d/types.h
+@@ -2486,6 +2486,16 @@ typedef struct b3CompoundDef
+ /// Accessors are provided for user relevant data.
+ /// Note: you don't need to use this to create runtime compounds. For runtime compounds you can
+ /// add multiple shapes to a body using the regular shape creation functions.
++///
++/// The header is written once (bake) and read elsewhere (play), possibly by a
++/// differently sized ABI: the 64-bit editor bakes the chunk compounds and the
++/// wasm32 HTML5 runtime reads them back. So every field that carries an offset
++/// must sit at a fixed byte position on every platform. `b3DynamicTree` embeds
++/// raw pointers, so it is placed LAST inside an anonymous union that pins its
++/// slot to B3_COMPOUND_TREE_BYTES, keeping sizeof(b3CompoundData) identical
++/// between 32-bit and 64-bit builds.
++#define B3_COMPOUND_TREE_BYTES 112
++
+ typedef struct b3CompoundData
+ {
+ 	/// The compound version is always first.
+@@ -2500,10 +2510,6 @@ typedef struct b3CompoundData
+ 	/// Offset of the tree proxy array in bytes from the struct address.
+ 	int proxyOffset;
+ 
+-	/// Immutable dynamic tree. The node and proxy pointers must be fixed up using the offsets
+-	/// above. A baked tree is never inserted into, so the parent array stays null.
+-	b3DynamicTree tree;
+-
+ 	/// Offset of the material array in bytes from the struct address.
+ 	int materialOffset;
+ 
+@@ -2539,8 +2545,25 @@ typedef struct b3CompoundData
+ 
+ 	/// The number of spheres.
+ 	int sphereCount;
++
++	/// Immutable dynamic tree. The node and proxy pointers must be fixed up using the offsets
++	/// above. A baked tree is never inserted into, so the parent array stays null.
++	/// MUST stay last: see the header-size note above.
++	union
++	{
++		b3DynamicTree tree;
++		uint8_t treeStorage[B3_COMPOUND_TREE_BYTES];
++	};
+ } b3CompoundData;
+ 
++#if defined( __cplusplus )
++static_assert( sizeof( b3DynamicTree ) <= B3_COMPOUND_TREE_BYTES,
++			   "B3_COMPOUND_TREE_BYTES is smaller than b3DynamicTree on this platform" );
++#else
++_Static_assert( sizeof( b3DynamicTree ) <= B3_COMPOUND_TREE_BYTES,
++				"B3_COMPOUND_TREE_BYTES is smaller than b3DynamicTree on this platform" );
++#endif
++
+ /// A capsule that lives in a compound.
+ typedef struct b3CompoundCapsule
+ {

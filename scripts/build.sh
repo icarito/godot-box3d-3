@@ -94,6 +94,20 @@ if [ ! -e "$here/box3d/thirdparty/box3d/include/box3d/box3d.h" ]; then
 	exit 1
 fi
 
+# El thirdparty de box3d es un submódulo pineado al upstream, así que sus fixes
+# locales no pueden vivir en su repo: van en patches/box3d/*.patch y se aplican
+# acá. Igual que el engine, se parte de un checkout limpio para que un rebuild
+# local después de tocar un parche nunca los apile.
+box3d_dir="$here/box3d/thirdparty/box3d"
+if git -C "$box3d_dir" rev-parse --git-dir >/dev/null 2>&1; then
+	git -C "$box3d_dir" checkout --quiet -- .
+fi
+for patch in "$here"/patches/box3d/*.patch; do
+	[ -e "$patch" ] || continue
+	echo "==> Patch   box3d/$(basename "$patch")"
+	apply_patch "$patch" "$box3d_dir"
+done
+
 # Godot ships these two as archives assembled from a template bundle plus the
 # binaries, rather than as a single file scons emits.
 pack_macos() {
