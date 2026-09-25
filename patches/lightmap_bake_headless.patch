@@ -1,0 +1,73 @@
+diff --git a/modules/SCsub b/modules/SCsub
+index 678a614c95..5e3f9a2b4f 100644
+--- a/modules/SCsub
++++ b/modules/SCsub
+@@ -11,10 +11,21 @@ env_modules = env.Clone()
+ Export("env_modules")
+ 
+ env.Depends("modules_enabled.gen.h", Value(env.module_list))
+-env.CommandNoCache("modules_enabled.gen.h", Value(env.module_list), modules_builders.generate_modules_enabled)
++# This header decides which `register_*_types()` the generated cpp calls. It must
++# be a tracked, ordered dependency of that object: with `CommandNoCache` the
++# header stayed out of the signature database, so after the module set changed
++# between build variants (x11 editor vs javascript/server) the object could be
++# compiled against a stale header and SCons never rebuilt it. The module then
++# silently never registered (the CPU lightmapper's raycast module among them,
++# which makes BakedLightmap bake fail with BAKE_ERROR_NO_RAYCASTER, reported as
++# BAKE_ERROR_NO_LIGHTMAPPER).
++env.Command("modules_enabled.gen.h", Value(env.module_list), modules_builders.generate_modules_enabled)
+ 
+ env.modules_sources = []
+ env_modules.add_source_files(env.modules_sources, "register_module_types.gen.cpp")
++# Make the ordering explicit too: the include scanner did not record this
++# generated header as a dependency.
++env.Depends(env.modules_sources, "modules_enabled.gen.h")
+ 
+ for name, path in env.module_list.items():
+     if not os.path.isabs(path):
+diff --git a/modules/lightmapper_cpu/config.py b/modules/lightmapper_cpu/config.py
+index a3a33b3443..c3e05e6517 100644
+--- a/modules/lightmapper_cpu/config.py
++++ b/modules/lightmapper_cpu/config.py
+@@ -9,7 +9,9 @@ def can_build(env, platform):
+     if platform == "android":
+         return env["android_arch"] in ["arm64v8", "x86_64"]
+ 
+-    if platform in ["javascript", "server"]:
++    # Keep in sync with `modules/raycast/config.py`: the CPU lightmapper is also
++    # enabled on `server` so headless tools builds can bake lightmaps.
++    if platform == "javascript":
+         return False
+ 
+     if env["bits"] == "32":
+diff --git a/modules/lightmapper_cpu/lightmapper_cpu.cpp b/modules/lightmapper_cpu/lightmapper_cpu.cpp
+index f9d066dd64..9b421dabd1 100644
+--- a/modules/lightmapper_cpu/lightmapper_cpu.cpp
++++ b/modules/lightmapper_cpu/lightmapper_cpu.cpp
+@@ -208,7 +208,10 @@ Error LightmapperCPU::_layout_atlas(int p_max_size, Vector2i *r_atlas_size, int
+ void LightmapperCPU::_thread_func_callback(void *p_thread_data) {
+ 	ThreadData *thread_data = reinterpret_cast<ThreadData *>(p_thread_data);
+ #ifdef TOOLS_ENABLED
+-	const int num_threads = EDITOR_GET("editors/3d/lightmap_baking_number_of_cpu_threads");
++	// `EDITOR_GET` reads from the EditorSettings singleton, which only exists while
++	// the editor is running. A tools build can also bake from the command line
++	// (`--bake-lightmap`) without any editor: fall back to 0 (auto) then.
++	const int num_threads = EditorSettings::get_singleton() ? (int)EDITOR_GET("editors/3d/lightmap_baking_number_of_cpu_threads") : 0;
+ #else
+ 	const int num_threads = 0;
+ #endif
+diff --git a/modules/raycast/config.py b/modules/raycast/config.py
+index 7ae183d13a..c76f14fcce 100644
+--- a/modules/raycast/config.py
++++ b/modules/raycast/config.py
+@@ -9,7 +9,9 @@ def can_build(env, platform):
+     if platform == "android":
+         return env["android_arch"] in ["arm64v8", "x86_64"]
+ 
+-    if platform in ["javascript", "server"]:
++    # `server` (headless) builds need the CPU lightmapper too: the editor's bake
++    # has to be runnable without a window. Only tools builds reach this point.
++    if platform == "javascript":
+         return False
+ 
+     if env["bits"] == "32":
