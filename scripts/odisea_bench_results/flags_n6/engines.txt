@@ -1,0 +1,6 @@
+# Same-source, flags-only A/B (WS-C builds). Primary context: odisea.pck.prev.
+# label|absolute_path
+baseline|/storage/roms/ports/odisea/odisea.frt.aarch64
+base|/storage/kilo-bench/godot.base.arm64
+mtune|/storage/kilo-bench/godot.mtune.a35.arm64
+lto|/storage/kilo-bench/godot.lto.arm64

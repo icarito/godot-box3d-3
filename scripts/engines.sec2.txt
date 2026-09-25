@@ -1,0 +1,2 @@
+base|/storage/kilo-bench/godot.base.arm64
+lto|/storage/kilo-bench/godot.lto.arm64

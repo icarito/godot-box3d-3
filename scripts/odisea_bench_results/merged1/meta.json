@@ -1,0 +1,19 @@
+{
+ "session": "merged1 (primary1 3 + confirm1 5)",
+ "kernel": "7.1.2",
+ "arch": "aarch64",
+ "os_version": "20260901",
+ "governor_original": "ondemand",
+ "governor_pinned": "performance",
+ "governor_restore_cmd": "for c in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do echo ondemand > $c; done",
+ "replay": "replay_1790167671.json",
+ "replay_md5": "72d5f630633badad4796145793b4f969",
+ "pck": "/storage/roms/ports/odisea/odisea.pck.prev",
+ "pck_md5": "e69ba1f2f612d1a5f6664114b675383c",
+ "override_md5": "e60806795cabfe64e468b423cc36519b",
+ "shipped_engine_md5": "acf0ffd13ad08222a917f9e89166fa8c",
+ "runs": 3,
+ "timeout_s": 240,
+ "cooldown_target_c": 55,
+ "result_epoch": 1790308503
+}

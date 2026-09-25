@@ -1,0 +1,11 @@
+# Odisea engine manifest for the device bench harness.
+# label|absolute_path
+# NOTE: /storage/kilo-bench/odisea.frt.aarch64 is byte-identical to godot.oldpin.arm64
+# (md5 c911ab4c0c46f011b41c56d03f5ca67a); only one of the two is run.
+baseline|/storage/roms/ports/odisea/odisea.frt.aarch64
+oldpin|/storage/kilo-bench/godot.oldpin.arm64
+mcpu|/storage/kilo-bench/godot.mcpu.arm64
+gputimer|/storage/kilo-bench/godot.gputimer.arm64
+newpin|/storage/kilo-bench/godot.newpin.arm64
+nightly13|/storage/kilo-bench/godot.nightly13.arm64
+nightly14|/storage/kilo-bench/godot.nightly14.arm64

@@ -1,0 +1,49 @@
+Odisea device bench | session merged1 (primary1 3 + confirm1 5) | governor performance | runs/engine 3
+device aarch64 7.1.2 | replay replay_1790167671.json | main-pack /storage/roms/ports/odisea/odisea.pck.prev (e69ba1f2f612d1a5f6664114b675383c)
+governor restore: for c in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do echo ondemand > $c; done
+noise floor (baseline min-max spread across runs): fps_mean spread=0.954 | ms_process_mean spread=8.953 | ms_process_p50 spread=2.453 | ms_process_p95 spread=146.883 | ms_physics_mean spread=2.863 | ms_physics_p95 spread=4.872
+all timing stats are per render frame over the SAME replay (frames column must be constant across contexts;
+same frames => same workload, so fps/ms are directly comparable across contexts).
+
+engine     valid frames  fps mean[min-max]    ms_process mean[min-max] ms_physics mean[min-max] draws    nodos   objetos  vd:msP    vd:fps    vd:msPh   f100dbase enddrift 
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+baseline    8/8  1352    10.38 [9.88-10.84]   50.48 [46.34-55.30]    19.25 [17.77-20.64]    64.3     703     2736     ~noise    ~noise    ~noise    0.000     0.000    
+nightly13   8/8  1352    10.53 [9.90-11.05]   51.48 [47.09-55.95]    18.96 [17.54-19.97]    64.3     702     2734     ~noise    ~noise    ~noise    0.000     0.000    
+
+steady-state (frame>90) pooled percentiles, plus p95 verdicts vs baseline:
+engine     fps p50/p95   msPp50    msPp95    msPhp50   msPhp95   drawsp95  vd:msP95  vd:msPh95
+----------------------------------------------------------------------------------------------
+baseline   11.0/13.0     36.6      182.6     18.0      23.2      101.0     ~noise    ~noise   
+nightly13  11.0/13.0     37.0      189.0     17.8      23.9      100.0     ~noise    ~noise   
+
+[baseline] soc temp range: [60, 65] C
+[nightly13] soc temp range: [62, 66] C
+
+== top script systems by ms/call (median of valid runs): baseline
+   1. · scripts del tick              9.397
+   2. SessionManager                  5.997
+   3. · scripts del frame             4.538
+   4. SM.player_step                  4.130
+   5. PC.move                         2.301
+   6. PC.move.pre                     1.038
+   7. PC.move.slide                   0.844
+   8. PC.control                      0.782
+   9. SM.sync_nodes                   0.772
+  10. PC.post                         0.769
+  11. KinematicArm3D                  0.660
+  12. PC.move.pre.stepup              0.543
+
+== top script systems by ms/call (median of valid runs): nightly13
+   1. · scripts del tick              9.391
+   2. SessionManager                  6.010
+   3. · scripts del frame             4.401
+   4. SM.player_step                  4.129
+   5. PC.move                         2.320
+   6. PC.move.pre                     1.048
+   7. PC.move.slide                   0.857
+   8. SM.sync_nodes                   0.774
+   9. PC.post                         0.767
+  10. PC.control                      0.762
+  11. KinematicArm3D                  0.663
+  12. PC.move.pre.stepup              0.556
+

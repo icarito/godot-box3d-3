@@ -1,0 +1,191 @@
+{
+ "meta": {
+  "session": "pilot1",
+  "kernel": "7.1.2",
+  "arch": "aarch64",
+  "os_version": "20260901",
+  "governor_original": "ondemand",
+  "governor_pinned": "performance",
+  "governor_restore_cmd": "for c in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do echo ondemand > $c; done",
+  "replay": "replay_1790167671.json",
+  "replay_md5": "72d5f630633badad4796145793b4f969",
+  "pck_md5": "2f50f664fef53f9df8bfd6b75247edd6",
+  "override_md5": "e60806795cabfe64e468b423cc36519b",
+  "shipped_engine_md5": "acf0ffd13ad08222a917f9e89166fa8c",
+  "runs": 1,
+  "timeout_s": 240,
+  "cooldown_target_c": 55,
+  "result_epoch": 1790307260
+ },
+ "baseline": "baseline",
+ "noise_floor_baseline_spread": {
+  "fps_mean": null,
+  "ms_process_mean": null,
+  "ms_physics_mean": null
+ },
+ "engines": [
+  {
+   "label": "baseline",
+   "bin": "/storage/roms/ports/odisea/odisea.frt.aarch64",
+   "md5": "acf0ffd13ad08222a917f9e89166fa8c",
+   "runs_total": 1,
+   "runs_valid": 1,
+   "invalid": [],
+   "per_run": [
+    {
+     "run": 1,
+     "fps_mean": 10.969,
+     "ms_process_mean": 75.067,
+     "ms_physics_mean": 17.009,
+     "draw_calls_mean": 51.204,
+     "nodos_mean": 714.868,
+     "objetos_mean": 2777.763,
+     "seconds": 44,
+     "temp_soc_before": 55,
+     "temp_soc_after": 60,
+     "end_dist": 18.075,
+     "flags": []
+    }
+   ],
+   "agg": {
+    "fps_mean": {
+     "min": 10.969,
+     "mean": 10.969,
+     "max": 10.969,
+     "spread": 0.0,
+     "values": [
+      10.969
+     ]
+    },
+    "ms_process_mean": {
+     "min": 75.067,
+     "mean": 75.067,
+     "max": 75.067,
+     "spread": 0.0,
+     "values": [
+      75.067
+     ]
+    },
+    "ms_physics_mean": {
+     "min": 17.009,
+     "mean": 17.009,
+     "max": 17.009,
+     "spread": 0.0,
+     "values": [
+      17.009
+     ]
+    }
+   },
+   "pooled": {
+    "fps": {
+     "mean": 10.969,
+     "p50": 12.0,
+     "p95": 14.0,
+     "min": 5,
+     "max": 15,
+     "n": 1253
+    },
+    "ms_process": {
+     "mean": 75.067,
+     "p50": 34.955,
+     "p95": 280.431,
+     "min": 29.098,
+     "max": 656.094,
+     "n": 1253
+    },
+    "ms_physics": {
+     "mean": 17.009,
+     "p50": 16.312,
+     "p95": 20.131,
+     "min": 13.813,
+     "max": 22.718,
+     "n": 1253
+    },
+    "draw_calls": {
+     "mean": 51.204,
+     "p50": 51.0,
+     "p95": 91.0,
+     "min": 22,
+     "max": 109,
+     "n": 1253
+    },
+    "nodos": {
+     "mean": 714.868,
+     "p50": 728.0,
+     "p95": 728.0,
+     "min": 401,
+     "max": 732,
+     "n": 1253
+    },
+    "objetos": {
+     "mean": 2777.763,
+     "p50": 2788.0,
+     "p95": 2788.0,
+     "min": 2533,
+     "max": 2791,
+     "n": 1253
+    }
+   },
+   "top_systems": [
+    {
+     "sistema": "\u00b7 scripts del tick",
+     "ms_por_llamada_median": 9.362
+    },
+    {
+     "sistema": "SessionManager",
+     "ms_por_llamada_median": 5.978
+    },
+    {
+     "sistema": "\u00b7 scripts del frame",
+     "ms_por_llamada_median": 4.913
+    },
+    {
+     "sistema": "SM.player_step",
+     "ms_por_llamada_median": 3.969
+    },
+    {
+     "sistema": "PC.move",
+     "ms_por_llamada_median": 2.197
+    },
+    {
+     "sistema": "PC.move.pre",
+     "ms_por_llamada_median": 1.022
+    },
+    {
+     "sistema": "SM.sync_nodes",
+     "ms_por_llamada_median": 0.926
+    },
+    {
+     "sistema": "PC.post",
+     "ms_por_llamada_median": 0.767
+    },
+    {
+     "sistema": "PC.move.slide",
+     "ms_por_llamada_median": 0.749
+    },
+    {
+     "sistema": "PC.control",
+     "ms_por_llamada_median": 0.723
+    },
+    {
+     "sistema": "KinematicArm3D",
+     "ms_por_llamada_median": 0.659
+    },
+    {
+     "sistema": "SM.bookkeeping",
+     "ms_por_llamada_median": 0.517
+    }
+   ],
+   "temp_soc_range_c": [
+    55,
+    60
+   ],
+   "f100_median": {
+    "x": 10.7901,
+    "y": 5.8571,
+    "z": -5.6824
+   },
+   "end_dist_median": 18.075
+  }
+ ]
+}

@@ -1,0 +1,576 @@
+{
+ "session": "sec_lto",
+ "governor": "performance",
+ "governor_restore_cmd": "for c in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do echo ondemand > $c; done",
+ "noise_floor_baseline_spread": {
+  "fps_mean": 2.977,
+  "fps_p50": 4.0,
+  "fps_p95": 3.0,
+  "ms_process_mean": 24.85,
+  "ms_process_p50": 7.322,
+  "ms_process_p95": 102.942,
+  "ms_physics_mean": 4.263,
+  "ms_physics_p50": 4.47,
+  "ms_physics_p95": 5.344
+ },
+ "paired_noise_floor_spread_control_base_vs_baseline": {
+  "fps_mean": 5.331,
+  "fps_p50": 7.0,
+  "ms_process_mean": 25.707,
+  "ms_process_p50": 10.176,
+  "ms_physics_mean": 5.957
+ },
+ "engines": [
+  {
+   "label": "baseline",
+   "md5": "acf0ffd13ad08222a917f9e89166fa8c",
+   "runs_valid": 8,
+   "runs_total": 8,
+   "fps_mean_range": {
+    "min": 7.953,
+    "mean": 9.944,
+    "max": 10.93,
+    "spread": 2.977,
+    "values": [
+     7.953,
+     10.183,
+     9.636,
+     10.769,
+     10.93,
+     10.242,
+     9.951,
+     9.89
+    ]
+   },
+   "ms_process_mean_range": {
+    "min": 61.022,
+    "mean": 72.474,
+    "max": 85.872,
+    "spread": 24.85,
+    "values": [
+     79.964,
+     61.022,
+     68.774,
+     72.097,
+     85.872,
+     72.413,
+     76.24,
+     63.408
+    ]
+   },
+   "ms_physics_mean_range": {
+    "min": 16.982,
+    "mean": 19.228,
+    "max": 21.245,
+    "spread": 4.263,
+    "values": [
+     21.245,
+     18.731,
+     19.778,
+     19.08,
+     16.982,
+     19.929,
+     19.198,
+     18.88
+    ]
+   },
+   "pooled": {
+    "fps": {
+     "mean": 9.944,
+     "p50": 10.0,
+     "p95": 13.0,
+     "min": 2,
+     "max": 14,
+     "n": 10024
+    },
+    "ms_process": {
+     "mean": 72.474,
+     "p50": 37.248,
+     "p95": 284.918,
+     "min": 29.699,
+     "max": 772.721,
+     "n": 10024
+    },
+    "ms_physics": {
+     "mean": 19.228,
+     "p50": 18.306,
+     "p95": 23.053,
+     "min": 14.421,
+     "max": 103.234,
+     "n": 10024
+    },
+    "draw_calls": {
+     "mean": 51.319,
+     "p50": 51.0,
+     "p95": 91.0,
+     "min": 21,
+     "max": 109,
+     "n": 10024
+    },
+    "nodos": {
+     "mean": 714.66,
+     "p50": 728.0,
+     "p95": 728.0,
+     "min": 401,
+     "max": 732,
+     "n": 10024
+    },
+    "objetos": {
+     "mean": 2779.346,
+     "p50": 2790.0,
+     "p95": 2790.0,
+     "min": 2533,
+     "max": 2794,
+     "n": 10024
+    }
+   },
+   "top_systems": [
+    {
+     "sistema": "\u00b7 scripts del tick",
+     "ms_por_llamada_median": 9.638
+    },
+    {
+     "sistema": "SessionManager",
+     "ms_por_llamada_median": 6.228
+    },
+    {
+     "sistema": "\u00b7 scripts del frame",
+     "ms_por_llamada_median": 5.033
+    },
+    {
+     "sistema": "SM.player_step",
+     "ms_por_llamada_median": 4.143
+    },
+    {
+     "sistema": "PC.move",
+     "ms_por_llamada_median": 2.268
+    },
+    {
+     "sistema": "PC.move.pre",
+     "ms_por_llamada_median": 1.055
+    },
+    {
+     "sistema": "SM.sync_nodes",
+     "ms_por_llamada_median": 0.945
+    },
+    {
+     "sistema": "PC.control",
+     "ms_por_llamada_median": 0.79
+    },
+    {
+     "sistema": "PC.post",
+     "ms_por_llamada_median": 0.786
+    },
+    {
+     "sistema": "PC.move.slide",
+     "ms_por_llamada_median": 0.775
+    },
+    {
+     "sistema": "KinematicArm3D",
+     "ms_por_llamada_median": 0.667
+    },
+    {
+     "sistema": "SM.bookkeeping",
+     "ms_por_llamada_median": 0.538
+    }
+   ],
+   "verdict_vs_baseline": {
+    "fps": "~noise",
+    "ms_process": "~noise",
+    "ms_process_p95": "~noise",
+    "ms_physics": "~noise",
+    "ms_physics_p95": "~noise"
+   },
+   "invalid": [],
+   "temp_soc_range_c": [
+    55,
+    64
+   ],
+   "f100_median": {
+    "x": 10.7901,
+    "y": 5.8571,
+    "z": -5.6824
+   },
+   "f100_dist_to_baseline": 0.0,
+   "end_dist_median": 18.075,
+   "frames": [
+    1352,
+    1352,
+    1352,
+    1352,
+    1352,
+    1352,
+    1352,
+    1352
+   ]
+  },
+  {
+   "label": "base",
+   "md5": "52df97fd0f96d7863ed60ec5ce1c07db",
+   "runs_valid": 7,
+   "runs_total": 8,
+   "fps_mean_range": {
+    "min": 7.165,
+    "mean": 9.207,
+    "max": 11.202,
+    "spread": 4.037,
+    "values": [
+     7.734,
+     11.202,
+     9.75,
+     7.165,
+     8.379,
+     10.234,
+     9.982
+    ]
+   },
+   "ms_process_mean_range": {
+    "min": 57.91,
+    "mean": 71.177,
+    "max": 77.206,
+    "spread": 19.296,
+    "values": [
+     66.599,
+     73.971,
+     57.91,
+     73.609,
+     74.018,
+     77.206,
+     74.928
+    ]
+   },
+   "ms_physics_mean_range": {
+    "min": 17.697,
+    "mean": 19.517,
+    "max": 20.858,
+    "spread": 3.161,
+    "values": [
+     20.736,
+     17.697,
+     19.257,
+     20.858,
+     20.45,
+     18.232,
+     19.386
+    ]
+   },
+   "pooled": {
+    "fps": {
+     "mean": 9.207,
+     "p50": 9.0,
+     "p95": 13.0,
+     "min": 3,
+     "max": 15,
+     "n": 8771
+    },
+    "ms_process": {
+     "mean": 71.177,
+     "p50": 38.182,
+     "p95": 281.045,
+     "min": 30.63,
+     "max": 754.648,
+     "n": 8771
+    },
+    "ms_physics": {
+     "mean": 19.517,
+     "p50": 19.051,
+     "p95": 23.834,
+     "min": 14.048,
+     "max": 105.652,
+     "n": 8771
+    },
+    "draw_calls": {
+     "mean": 51.336,
+     "p50": 51.0,
+     "p95": 92.0,
+     "min": 22,
+     "max": 109,
+     "n": 8771
+    },
+    "nodos": {
+     "mean": 714.481,
+     "p50": 728.0,
+     "p95": 728.0,
+     "min": 401,
+     "max": 732,
+     "n": 8771
+    },
+    "objetos": {
+     "mean": 2778.598,
+     "p50": 2790.0,
+     "p95": 2790.0,
+     "min": 2533,
+     "max": 2793,
+     "n": 8771
+    }
+   },
+   "top_systems": [
+    {
+     "sistema": "\u00b7 scripts del tick",
+     "ms_por_llamada_median": 9.756
+    },
+    {
+     "sistema": "SessionManager",
+     "ms_por_llamada_median": 6.355
+    },
+    {
+     "sistema": "\u00b7 scripts del frame",
+     "ms_por_llamada_median": 5.092
+    },
+    {
+     "sistema": "SM.player_step",
+     "ms_por_llamada_median": 4.238
+    },
+    {
+     "sistema": "PC.move",
+     "ms_por_llamada_median": 2.32
+    },
+    {
+     "sistema": "PC.move.pre",
+     "ms_por_llamada_median": 1.092
+    },
+    {
+     "sistema": "SM.sync_nodes",
+     "ms_por_llamada_median": 0.97
+    },
+    {
+     "sistema": "PC.control",
+     "ms_por_llamada_median": 0.814
+    },
+    {
+     "sistema": "PC.post",
+     "ms_por_llamada_median": 0.801
+    },
+    {
+     "sistema": "PC.move.slide",
+     "ms_por_llamada_median": 0.793
+    },
+    {
+     "sistema": "KinematicArm3D",
+     "ms_por_llamada_median": 0.667
+    },
+    {
+     "sistema": "SM.bookkeeping",
+     "ms_por_llamada_median": 0.56
+    }
+   ],
+   "verdict_vs_baseline": {
+    "fps": "~noise",
+    "ms_process": "~noise",
+    "ms_process_p95": "~noise",
+    "ms_physics": "~noise",
+    "ms_physics_p95": "~noise"
+   },
+   "invalid": [
+    {
+     "run": 2,
+     "reason": "no_perf_file"
+    }
+   ],
+   "temp_soc_range_c": [
+    60,
+    66
+   ],
+   "f100_median": {
+    "x": 10.7901,
+    "y": 5.8571,
+    "z": -5.6824
+   },
+   "f100_dist_to_baseline": 0.0,
+   "end_dist_median": 18.075,
+   "frames": [
+    1352,
+    1352,
+    1352,
+    1352,
+    1352,
+    1352,
+    1352
+   ]
+  },
+  {
+   "label": "lto",
+   "md5": "84a1df051921b2df3dc1b06841054ece",
+   "runs_valid": 7,
+   "runs_total": 8,
+   "fps_mean_range": {
+    "min": 9.19,
+    "mean": 10.482,
+    "max": 11.61,
+    "spread": 2.42,
+    "values": [
+     9.19,
+     9.936,
+     11.306,
+     10.51,
+     11.61,
+     10.656,
+     10.169
+    ]
+   },
+   "ms_process_mean_range": {
+    "min": 58.721,
+    "mean": 67.581,
+    "max": 78.448,
+    "spread": 19.727,
+    "values": [
+     78.448,
+     68.56,
+     58.721,
+     71.893,
+     66.898,
+     68.28,
+     60.27
+    ]
+   },
+   "ms_physics_mean_range": {
+    "min": 17.249,
+    "mean": 18.633,
+    "max": 19.798,
+    "spread": 2.549,
+    "values": [
+     19.798,
+     18.939,
+     17.858,
+     17.249,
+     17.821,
+     19.251,
+     19.515
+    ]
+   },
+   "pooled": {
+    "fps": {
+     "mean": 10.482,
+     "p50": 11.0,
+     "p95": 14.0,
+     "min": 3,
+     "max": 15,
+     "n": 8771
+    },
+    "ms_process": {
+     "mean": 67.581,
+     "p50": 36.851,
+     "p95": 186.664,
+     "min": 29.585,
+     "max": 683.836,
+     "n": 8771
+    },
+    "ms_physics": {
+     "mean": 18.633,
+     "p50": 17.897,
+     "p95": 22.207,
+     "min": 13.903,
+     "max": 93.485,
+     "n": 8771
+    },
+    "draw_calls": {
+     "mean": 51.38,
+     "p50": 51.0,
+     "p95": 92.0,
+     "min": 21,
+     "max": 109,
+     "n": 8771
+    },
+    "nodos": {
+     "mean": 714.976,
+     "p50": 728.0,
+     "p95": 728.0,
+     "min": 401,
+     "max": 732,
+     "n": 8771
+    },
+    "objetos": {
+     "mean": 2779.272,
+     "p50": 2790.0,
+     "p95": 2790.0,
+     "min": 2533,
+     "max": 2793,
+     "n": 8771
+    }
+   },
+   "top_systems": [
+    {
+     "sistema": "\u00b7 scripts del tick",
+     "ms_por_llamada_median": 9.444
+    },
+    {
+     "sistema": "SessionManager",
+     "ms_por_llamada_median": 6.154
+    },
+    {
+     "sistema": "\u00b7 scripts del frame",
+     "ms_por_llamada_median": 4.975
+    },
+    {
+     "sistema": "SM.player_step",
+     "ms_por_llamada_median": 4.091
+    },
+    {
+     "sistema": "PC.move",
+     "ms_por_llamada_median": 2.197
+    },
+    {
+     "sistema": "PC.move.pre",
+     "ms_por_llamada_median": 1.057
+    },
+    {
+     "sistema": "SM.sync_nodes",
+     "ms_por_llamada_median": 0.919
+    },
+    {
+     "sistema": "PC.control",
+     "ms_por_llamada_median": 0.782
+    },
+    {
+     "sistema": "PC.post",
+     "ms_por_llamada_median": 0.772
+    },
+    {
+     "sistema": "PC.move.slide",
+     "ms_por_llamada_median": 0.737
+    },
+    {
+     "sistema": "KinematicArm3D",
+     "ms_por_llamada_median": 0.638
+    },
+    {
+     "sistema": "SM.bookkeeping",
+     "ms_por_llamada_median": 0.544
+    }
+   ],
+   "verdict_vs_baseline": {
+    "fps": "~noise",
+    "ms_process": "~noise",
+    "ms_process_p95": "~noise",
+    "ms_physics": "~noise",
+    "ms_physics_p95": "~noise"
+   },
+   "invalid": [
+    {
+     "run": 1,
+     "reason": "no_perf_file"
+    }
+   ],
+   "temp_soc_range_c": [
+    57,
+    66
+   ],
+   "f100_median": {
+    "x": 10.7901,
+    "y": 5.8571,
+    "z": -5.6824
+   },
+   "f100_dist_to_baseline": 0.0,
+   "end_dist_median": 18.075,
+   "frames": [
+    1352,
+    1352,
+    1352,
+    1352,
+    1352,
+    1352,
+    1352
+   ]
+  }
+ ]
+}

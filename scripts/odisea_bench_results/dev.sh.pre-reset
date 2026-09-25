@@ -1,0 +1,4 @@
+# Hook de desarrollo (no viaja en el paquete): bridge al peer de escritorio.
+export ANNA_V2_BRIDGE=192.168.18.6:4999
+export ODISEA_ALLOW_ANNA_REMOTE_DEBUG=1
+#export ODISEA_AUTOSTART_GAME=1
