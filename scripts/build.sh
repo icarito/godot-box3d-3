@@ -142,15 +142,24 @@ pack_ios() {
 # production=yes is what makes a binary publishable: no debug symbols (they are
 # 90% of the file -- 520 MB against 42 MB for a Linux template) and a statically
 # linked libstdc++, so the binary does not depend on the runner's toolchain
-# version. LTO is off because it roughly doubles build time for a preliminary
-# release. Set PRODUCTION=no when building to debug the module itself.
+# version. LTO is off by default because it roughly doubles build time; the
+# arm64 templates opt in via LTO=full (build() reads LTO). Set PRODUCTION=no
+# when building to debug the module itself.
+#
+# LTO en los templates arm64: medido en un RK3326 (4x Cortex-A35 in-order,
+# ROCKNIX) con el replay de RingHub, en A/B intercalado y pareado (n=16,
+# 15/16 positivo, p<0.001): +5% fps y binario -13% (35.4 -> 30.9 MB), sin
+# regresion medida. El costo es de build (link ~36 min en GCC), cacheable en CI.
+# No se activa en los targets de escritorio para no duplicar su tiempo de build
+# sin una medicion equivalente.
 PRODUCTION="${PRODUCTION:-yes}"
+LTO="${LTO:-none}"
 
 build() { # build <scons args...>
 	echo "==> scons $*"
 	(cd "$GODOT_DIR" && scons -j"$JOBS" \
 		custom_modules="${CUSTOM_MODULES:-$here}" progress=no \
-		production="$PRODUCTION" lto=none "$@")
+		production="$PRODUCTION" lto="$LTO" "$@")
 }
 
 frte_prep() { # prepara platform/frt: clone pineado + patches/frt/*.patch
@@ -192,8 +201,11 @@ for target in "$@"; do
 		linux-arm64-templates)
 			# Built natively on an ARM64 runner; scons names the output by bit
 			# width, so the artifact step is what tells the arm64 slot apart.
+			# LTO=full: ver la nota de arriba (medido en Cortex-A35).
+			LTO=full
 			build platform=x11 target=release tools=no
 			build platform=x11 target=release_debug tools=no
+			LTO=none
 			;;
 		frt-editor)
 			# Editor FRT/SDL2 x86_64: el mismo engine y modulo, con video SDL2.
@@ -218,6 +230,8 @@ for target in "$@"; do
 				export PATH="$GODOT_SDK_LINUX_ARM64/bin:$SDL2_ARM64/bin:$PATH"
 				# LINKFLAGS=-s es lo que usa el release de upstream FRT: production=yes
 				# no strippea, y los simbolos son 7 MB de los 42 en una tarjeta SD.
+				# LTO=full: ver la nota de arriba (medido en Cortex-A35).
+				LTO=full
 				build platform=frt arch=arm64 target=release tools=no LINKFLAGS=-s
 				build platform=frt arch=arm64 target=release_debug tools=no LINKFLAGS=-s
 			)
