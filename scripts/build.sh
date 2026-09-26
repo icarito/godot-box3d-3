@@ -234,6 +234,17 @@ for target in "$@"; do
 				LTO=full
 				build platform=frt arch=arm64 target=release tools=no LINKFLAGS=-s
 				build platform=frt arch=arm64 target=release_debug tools=no LINKFLAGS=-s
+				# FRT agrega '.lto' a env.extra_suffix cuando LTO esta on
+				# (platform/frt/detect.py), asi que el binario sale como
+				# godot.frt.opt.arm64.lto. Normalizamos al nombre canonico para que
+				# CI y los consumidores (PortMaster, godot_bin.sh) sigan encontrando
+				# godot.frt.opt.arm64 / godot.frt.opt.debug.arm64, que es el slot
+				# que el release publica.
+				for base in godot.frt.opt.arm64 godot.frt.opt.debug.arm64; do
+					if [ -f "$GODOT_DIR/bin/$base.lto" ]; then
+						mv -f "$GODOT_DIR/bin/$base.lto" "$GODOT_DIR/bin/$base"
+					fi
+				done
 			)
 			;;
 		frt-x86_64-templates)
