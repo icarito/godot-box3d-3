@@ -1,0 +1,97 @@
+--- a/servers/visual/visual_server_scene.cpp
++++ b/servers/visual/visual_server_scene.cpp
+@@ -4703,8 +4703,10 @@
+ 	if (camera_owner.owns(p_rid)) {
+ 		Camera *camera = camera_owner.get(p_rid);
+ 
+-		_blob_shadows.delete_focus(camera->blob_focus_handle);
+-		camera->blob_focus_handle = 0;
++		if (camera->blob_focus_handle) {
++			_blob_shadows.delete_focus(camera->blob_focus_handle);
++			camera->blob_focus_handle = 0;
++		}
+ 
+ 		camera_owner.free(p_rid);
+ 		memdelete(camera);
+--- a/servers/visual/visual_server_blob_shadows.cpp
++++ b/servers/visual/visual_server_blob_shadows.cpp
+@@ -256,6 +256,9 @@
+ }
+ 
+ void VisualServerBlobShadows::delete_focus(uint32_t p_handle) {
++	if (!p_handle) {
++		return;
++	}
+ 	data.foci.free(--p_handle);
+ }
+ 
+@@ -693,7 +696,9 @@
+ }
+ 
+ uint32_t VisualServerBlobShadows::fill_background_uniforms_blobs(const AABB &p_aabb, float *r_casters, float *r_lights, uint32_t p_max_casters) {
+-	DEV_ASSERT(data.render_focus_handle);
++	if (!data.render_focus_handle) {
++		return 0;
++	}
+ 
+ 	uint32_t count = 0;
+ 
+@@ -761,7 +766,9 @@
+ }
+ 
+ uint32_t VisualServerBlobShadows::fill_background_uniforms_capsules(const AABB &p_aabb, float *r_casters, float *r_lights, uint32_t p_max_casters) {
+-	DEV_ASSERT(data.render_focus_handle);
++	if (!data.render_focus_handle) {
++		return 0;
++	}
+ 
+ 	uint32_t count = 0;
+ 
+--- a/servers/visual/visual_server_blob_shadows.h
++++ b/servers/visual/visual_server_blob_shadows.h
+@@ -305,11 +305,17 @@
+ 	static int qsort_cmp_func(const void *a, const void *b);
+ 
+ 	void ref_blob(uint32_t p_handle) {
++		if (!p_handle) {
++			return;
++		}
+ 		Blob &caster = get_blob(p_handle);
+ 		caster.ref_count++;
+ 	}
+ 
+ 	void unref_blob(uint32_t p_handle) {
++		if (!p_handle) {
++			return;
++		}
+ 		Blob &caster = get_blob(p_handle);
+ 		DEV_ASSERT(caster.ref_count);
+ 		caster.ref_count--;
+@@ -321,11 +327,17 @@
+ 	}
+ 
+ 	void ref_capsule(uint32_t p_handle) {
++		if (!p_handle) {
++			return;
++		}
+ 		Capsule &caster = get_capsule(p_handle);
+ 		caster.ref_count++;
+ 	}
+ 
+ 	void unref_capsule(uint32_t p_handle) {
++		if (!p_handle) {
++			return;
++		}
+ 		Capsule &caster = get_capsule(p_handle);
+ 		DEV_ASSERT(caster.ref_count);
+ 		caster.ref_count--;
+--- a/core/pooled_list.h
++++ b/core/pooled_list.h
+@@ -179,6 +179,7 @@
+ 	}
+ 
+ 	void free(const U &p_id) {
++		ERR_FAIL_UNSIGNED_INDEX(p_id, _active_map.size());
+ 		_pool.free(p_id);
+ 
+ 		// remove from the active list.
