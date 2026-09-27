@@ -54,6 +54,11 @@ godot-box3d-3/
 │   ├── decal.cpp                # the node and its VisualServer wiring
 │   ├── decal_editor_plugin.cpp  # editor gizmo/dock
 │   └── demo_advanced/           # decal + blob-shadow demo scenes
+├── imgui/                       # Dear ImGui immediate-mode UI (ImGuiCanvas)
+│   ├── imgui_canvas.*           # the Node2D, input, render via VisualServer
+│   ├── debug_log.*              # DebugLog singleton, an OS::Logger sink
+│   ├── pie_menu.*               # radial (pie) menu widget
+│   └── thirdparty/              # imgui, implot, implot3d (vendored)
 ├── demos/glow_map/              # glow map demo project (GLES3, lens dirt)
 ├── patches/                     # engine + FRT patches over the pinned Godot
 │   └── README.md                # what each patch does and why
@@ -347,6 +352,39 @@ nightly editor, `godot.box3d.linux.x86_64.editor --path demos/glow_map`; the
 nightly release also carries `glow_map_preview.gif` and `glow_map_compare.png`
 so it can be seen without running anything.
 
+## ImGui module
+
+`imgui/` is a custom module wrapping [Dear ImGui](https://github.com/ocornut/imgui)
+1.91.9 (plus [ImPlot](https://github.com/epezent/implot) v0.17 and
+[ImPlot3D](https://github.com/brenocq/implot3d) v0.4) for immediate-mode UI inside
+Godot 3: HUDs, debug/tool panels, editor-less overlays. Moved here from
+[gdtk](https://github.com/icarito/gdtk), which now consumes it through this fork's
+`custom_modules` instead of shipping its own copy.
+
+- **`ImGuiCanvas`** (`Node2D`): owns the ImGui context, forwards input, renders
+  via `VisualServer.canvas_item_add_triangle_array` — one child canvas item per
+  `ImDrawCmd` for the scissor rect. Works the same on GLES2/GLES3/FRT and on
+  `platform=server` (headless; `Node2D`/`VisualServer` exist there too, so the
+  module builds on every release platform).
+- **`DebugLog`**: an `Engine` singleton plus an `OS::Logger` sink, so
+  `push_error`/`print` land in an ImGui-drawable log buffer.
+- **pie menu**: a radial menu widget (`pie_menu.*`).
+- Build options (`configure`/`SCsub` read them from `ARGUMENTS`, gdtk-style):
+  `imgui_implot=yes|no` (default **yes**), `imgui_implot3d=yes|no` (default
+  **no**), `imgui_demos=yes|no|auto` (default **auto**: on when `tools=yes`,
+  off in export templates). Each capability is its own `CPPDEFINES` on the
+  module's env only, so flipping one does not recompile the rest of the engine.
+- **Default profile is deliberately light**: ImPlot ships (small, commonly
+  useful for HUD graphs), ImPlot3D does not (thirdparty + demo code most
+  projects never touch). A project that needs ImPlot3D passes
+  `imgui_implot3d=yes` — gdtk does, for its ImPlot3D panel/demos.
+- Measured cost of the light profile (`imgui_implot=yes imgui_implot3d=no`,
+  `tools=no`, `platform=frt arch=x86_64 target=release`): the module's own
+  object code (`size -t` over `imgui/**/*.o`, ImPlot3D absent as expected)
+  sums to **≈1.82 MB** of `.text` (no `imgui_implot3d.o`s built at all); the
+  resulting binary is 51,282,480 bytes (44.1 MB text, extra_suffix=imgui_lite).
+  No pre-module baseline binary was on hand for a direct diff.
+
 ## Tests
 
 Headless acceptance scenes run against a built engine binary:
@@ -411,6 +449,9 @@ It captures a glowing emitter with a black glow map and without it, and prints
 
 - **This module**: this README is the setup and status reference; the module
   code comments (search for `ponytail:`) track known limitations.
+- **ImGui module**: see [`## ImGui module`](#imgui-module) above for
+  `ImGuiCanvas`, build options and the light-profile default; the code came
+  from [gdtk](https://github.com/icarito/gdtk)'s `SPEC-imgui-api.md`.
 - **Odisea notes**: `docs/odisea-box3d.md` — what Odisea already gains from
   the migration, the low-hanging fruit on its side (fake shadows, bakes,
   culling, queries), and the module roadmap items that matter to it.
