@@ -1,28 +1,38 @@
 diff --git a/drivers/gles3/rasterizer_storage_gles3.cpp b/drivers/gles3/rasterizer_storage_gles3.cpp
+index dffd531456..be3379dc97 100644
 --- a/drivers/gles3/rasterizer_storage_gles3.cpp
 +++ b/drivers/gles3/rasterizer_storage_gles3.cpp
-@@ -8241,4 +8241,5 @@ void RasterizerStorageGLES3::initialize() {
+@@ -8250,6 +8250,7 @@ void RasterizerStorageGLES3::initialize() {
+ 	}
  	config.async_compilation_enabled = compilation_mode >= 1;
  	config.shader_cache_enabled = compilation_mode == 2;
 +	ShaderGLES3::ubershaders_enabled = GLOBAL_GET("rendering/gles3/shaders/ubershaders_enabled");
  
  	if (config.async_compilation_enabled) {
+ 		config.async_compilation_max_simultaneous = MAX(1, (int)ProjectSettings::get_singleton()->get("rendering/gles3/shaders/max_simultaneous_compiles"));
 diff --git a/drivers/gles3/shader_gles3.cpp b/drivers/gles3/shader_gles3.cpp
+index c7fcecf244..be4cf8e214 100644
 --- a/drivers/gles3/shader_gles3.cpp
 +++ b/drivers/gles3/shader_gles3.cpp
-@@ -63,4 +63,5 @@ ThreadedCallableQueue<GLuint> *ShaderGLES3::compile_queue;
+@@ -65,6 +65,7 @@ ThreadedCallableQueue<GLuint> *ShaderGLES3::compile_queue;
  bool ShaderGLES3::parallel_compile_supported;
  
  bool ShaderGLES3::async_hidden_forbidden;
 +bool ShaderGLES3::ubershaders_enabled;
  uint32_t *ShaderGLES3::compiles_started_this_frame;
-@@ -137,4 +138,4 @@ bool ShaderGLES3::_bind(bool p_binding_fallback) {
+ uint32_t *ShaderGLES3::max_frame_compiles_in_progress;
+ uint32_t ShaderGLES3::max_simultaneous_compiles;
+@@ -140,7 +141,7 @@ bool ShaderGLES3::_bind(bool p_binding_fallback) {
+ 		DEBUG_TEST_ERROR("Use Program");
  		active = this;
  		return true;
 -	} else if (!must_be_ready_now && version->async_mode == ASYNC_MODE_VISIBLE && !p_binding_fallback && get_ubershader_flags_uniform() != -1) {
 +	} else if (ubershaders_enabled && !must_be_ready_now && version->async_mode == ASYNC_MODE_VISIBLE && !p_binding_fallback && get_ubershader_flags_uniform() != -1) {
  		// We can and have to fall back to the ubershader
-@@ -365,5 +366,12 @@ bool ShaderGLES3::_process_program_state(Version *p_version, bool p_async_forbid
+ 		return _bind_ubershader();
+ 	} else {
+@@ -373,8 +374,15 @@ bool ShaderGLES3::_process_program_state(Version *p_version, bool p_async_forbid
+ 						}
  					} break;
  					case 1: { // Complete
 -						p_version->compile_status = Version::COMPILE_STATUS_BINARY_READY;
@@ -37,33 +47,56 @@ diff --git a/drivers/gles3/shader_gles3.cpp b/drivers/gles3/shader_gles3.cpp
 +							}
 +						}
  					} break;
-@@ -580,2 +588,2 @@ ShaderGLES3::Version *ShaderGLES3::get_current_version(bool &r_async_forbidden) {
+ 				}
+ 			} break;
+@@ -595,7 +603,7 @@ ShaderGLES3::Version *ShaderGLES3::get_current_version(bool &r_async_forbidden)
+ 		strings_common.push_back("\n");
+ 	}
+ 
 -	if (is_async_compilation_supported() && get_ubershader_flags_uniform() != -1) {
 +	if (ubershaders_enabled && is_async_compilation_supported() && get_ubershader_flags_uniform() != -1) {
  		// Indicate that this shader may be used both as ubershader and conditioned during the session
-@@ -1238,2 +1246,2 @@ void ShaderGLES3::init_async_compilation() {
+ 		strings_common.push_back("#define UBERSHADER_COMPAT\n");
+ 	}
+@@ -1236,7 +1244,7 @@ void ShaderGLES3::setup(const char **p_conditional_defines, int p_conditional_co
+ }
+ 
+ void ShaderGLES3::init_async_compilation() {
 -	if (is_async_compilation_supported() && get_ubershader_flags_uniform() != -1) {
 +	if (ubershaders_enabled && is_async_compilation_supported() && get_ubershader_flags_uniform() != -1) {
  		// Warm up the ubershader for the case of no custom code
-@@ -1299,2 +1307,2 @@ void ShaderGLES3::set_custom_shader_code(uint32_t p_code_id, const String &p_ver
+ 		new_conditional_version.code_version = 0;
+ 		_bind_ubershader(true);
+@@ -1296,7 +1304,7 @@ void ShaderGLES3::set_custom_shader_code(uint32_t p_code_id, const String &p_ver
+ 	cc->async_mode = p_async_mode;
+ 	cc->version++;
+ 
 -	if (p_async_mode == ASYNC_MODE_VISIBLE && is_async_compilation_supported() && get_ubershader_flags_uniform() != -1) {
 +	if (ubershaders_enabled && p_async_mode == ASYNC_MODE_VISIBLE && is_async_compilation_supported() && get_ubershader_flags_uniform() != -1) {
  		// Warm up the ubershader for this custom code
+ 		new_conditional_version.code_version = p_code_id;
+ 		_bind_ubershader(true);
 diff --git a/drivers/gles3/shader_gles3.h b/drivers/gles3/shader_gles3.h
+index 6858647807..4d71d1d808 100644
 --- a/drivers/gles3/shader_gles3.h
 +++ b/drivers/gles3/shader_gles3.h
-@@ -129,4 +129,5 @@ public:
+@@ -132,6 +132,7 @@ public:
  	static bool parallel_compile_supported; // True if using natively supported asyncrhonous compilation
  
  	static bool async_hidden_forbidden;
 +	static bool ubershaders_enabled;
  	static uint32_t *compiles_started_this_frame;
+ 	static uint32_t *max_frame_compiles_in_progress;
+ 	static uint32_t max_simultaneous_compiles;
 diff --git a/servers/visual_server.cpp b/servers/visual_server.cpp
+index 30e324a61a..f07db8d31c 100644
 --- a/servers/visual_server.cpp
 +++ b/servers/visual_server.cpp
-@@ -2791,4 +2791,5 @@ VisualServer::VisualServer() {
+@@ -2793,6 +2793,7 @@ VisualServer::VisualServer() {
  	// VisualServer.set_shader_async_compilation_enabled(true) cuando ya tiene una
  	// pantalla que cubra el trabajo.
  	GLOBAL_DEF("rendering/gles3/shaders/async_compilation_starts_enabled", true);
 +	GLOBAL_DEF("rendering/gles3/shaders/ubershaders_enabled", true);
  	GLOBAL_DEF("rendering/gles3/shaders/shader_compilation_mode", 0);
+ 	ProjectSettings::get_singleton()->set_custom_property_info("rendering/gles3/shaders/shader_compilation_mode", PropertyInfo(Variant::INT, "rendering/gles3/shaders/shader_compilation_mode", PROPERTY_HINT_ENUM, "Synchronous,Asynchronous,Asynchronous + Cache"));
+ 	GLOBAL_DEF("rendering/gles3/shaders/shader_compilation_mode.mobile", 0);

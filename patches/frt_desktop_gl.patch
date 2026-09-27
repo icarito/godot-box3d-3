@@ -1,5 +1,5 @@
 diff --git a/drivers/gl_context/SCsub b/drivers/gl_context/SCsub
-index 3084ddd..8788270 100644
+index 3084ddd959..8788270c03 100644
 --- a/drivers/gl_context/SCsub
 +++ b/drivers/gl_context/SCsub
 @@ -4,7 +4,7 @@ Import("env")
@@ -11,8 +11,30 @@ index 3084ddd..8788270 100644
      # Thirdparty source files
      thirdparty_dir = "#thirdparty/glad/"
      thirdparty_sources = [
+diff --git a/drivers/gles2/rasterizer_gles2.cpp b/drivers/gles2/rasterizer_gles2.cpp
+index 5d83c521f2..938c59bbe6 100644
+--- a/drivers/gles2/rasterizer_gles2.cpp
++++ b/drivers/gles2/rasterizer_gles2.cpp
+@@ -160,9 +160,16 @@ RasterizerScene *RasterizerGLES2::get_scene() {
+ 	return scene;
+ }
+ 
++#if defined(FRT_ENABLED) && defined(GLAD_ENABLED)
++extern "C" void *SDL_GL_GetProcAddress(const char *);
++#define frt_glad_load() gladLoadGLLoader((GLADloadproc)SDL_GL_GetProcAddress)
++#else
++#define frt_glad_load() gladLoadGL()
++#endif
++
+ Error RasterizerGLES2::is_viable() {
+ #ifdef GLAD_ENABLED
+-	if (!gladLoadGL()) {
++	if (!frt_glad_load()) {
+ 		ERR_PRINT("Error initializing GLAD");
+ 		return ERR_UNAVAILABLE;
+ 	}
 diff --git a/drivers/gles3/rasterizer_gles3.cpp b/drivers/gles3/rasterizer_gles3.cpp
-index 4ecd179..e1b4ba7 100644
+index 4ecd179858..e1b4ba7ff5 100644
 --- a/drivers/gles3/rasterizer_gles3.cpp
 +++ b/drivers/gles3/rasterizer_gles3.cpp
 @@ -135,9 +135,16 @@ typedef void (*DEBUGPROCARB)(GLenum source,
@@ -27,28 +49,6 @@ index 4ecd179..e1b4ba7 100644
 +#endif
 +
  Error RasterizerGLES3::is_viable() {
- #ifdef GLAD_ENABLED
--	if (!gladLoadGL()) {
-+	if (!frt_glad_load()) {
- 		ERR_PRINT("Error initializing GLAD");
- 		return ERR_UNAVAILABLE;
- 	}
-diff --git a/drivers/gles2/rasterizer_gles2.cpp b/drivers/gles2/rasterizer_gles2.cpp
-index 4ceab48..753a006 100644
---- a/drivers/gles2/rasterizer_gles2.cpp
-+++ b/drivers/gles2/rasterizer_gles2.cpp
-@@ -165,9 +165,16 @@ RasterizerScene *RasterizerGLES2::get_scene() {
- 	return scene;
- }
- 
-+#if defined(FRT_ENABLED) && defined(GLAD_ENABLED)
-+extern "C" void *SDL_GL_GetProcAddress(const char *);
-+#define frt_glad_load() gladLoadGLLoader((GLADloadproc)SDL_GL_GetProcAddress)
-+#else
-+#define frt_glad_load() gladLoadGL()
-+#endif
-+
- Error RasterizerGLES2::is_viable() {
  #ifdef GLAD_ENABLED
 -	if (!gladLoadGL()) {
 +	if (!frt_glad_load()) {

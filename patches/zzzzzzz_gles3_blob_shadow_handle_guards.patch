@@ -1,21 +1,20 @@
---- a/servers/visual/visual_server_scene.cpp
-+++ b/servers/visual/visual_server_scene.cpp
-@@ -4703,8 +4703,10 @@
- 	if (camera_owner.owns(p_rid)) {
- 		Camera *camera = camera_owner.get(p_rid);
+diff --git a/core/pooled_list.h b/core/pooled_list.h
+index ecc925c881..668166fe28 100644
+--- a/core/pooled_list.h
++++ b/core/pooled_list.h
+@@ -179,6 +179,7 @@ public:
+ 	}
  
--		_blob_shadows.delete_focus(camera->blob_focus_handle);
--		camera->blob_focus_handle = 0;
-+		if (camera->blob_focus_handle) {
-+			_blob_shadows.delete_focus(camera->blob_focus_handle);
-+			camera->blob_focus_handle = 0;
-+		}
+ 	void free(const U &p_id) {
++		ERR_FAIL_UNSIGNED_INDEX(p_id, _active_map.size());
+ 		_pool.free(p_id);
  
- 		camera_owner.free(p_rid);
- 		memdelete(camera);
+ 		// remove from the active list.
+diff --git a/servers/visual/visual_server_blob_shadows.cpp b/servers/visual/visual_server_blob_shadows.cpp
+index fe3493c2c7..5006279c88 100644
 --- a/servers/visual/visual_server_blob_shadows.cpp
 +++ b/servers/visual/visual_server_blob_shadows.cpp
-@@ -256,6 +256,9 @@
+@@ -256,6 +256,9 @@ VisualServerBlobShadows::Focus *VisualServerBlobShadows::request_focus(uint32_t
  }
  
  void VisualServerBlobShadows::delete_focus(uint32_t p_handle) {
@@ -25,7 +24,7 @@
  	data.foci.free(--p_handle);
  }
  
-@@ -693,7 +696,9 @@
+@@ -693,7 +696,9 @@ void VisualServerBlobShadows::render_set_focus_handle(uint32_t p_focus_handle, c
  }
  
  uint32_t VisualServerBlobShadows::fill_background_uniforms_blobs(const AABB &p_aabb, float *r_casters, float *r_lights, uint32_t p_max_casters) {
@@ -36,7 +35,7 @@
  
  	uint32_t count = 0;
  
-@@ -761,7 +766,9 @@
+@@ -761,7 +766,9 @@ uint32_t VisualServerBlobShadows::fill_background_uniforms_blobs(const AABB &p_a
  }
  
  uint32_t VisualServerBlobShadows::fill_background_uniforms_capsules(const AABB &p_aabb, float *r_casters, float *r_lights, uint32_t p_max_casters) {
@@ -47,9 +46,11 @@
  
  	uint32_t count = 0;
  
+diff --git a/servers/visual/visual_server_blob_shadows.h b/servers/visual/visual_server_blob_shadows.h
+index de6d2b2aec..f40ec93038 100644
 --- a/servers/visual/visual_server_blob_shadows.h
 +++ b/servers/visual/visual_server_blob_shadows.h
-@@ -305,11 +305,17 @@
+@@ -305,11 +305,17 @@ private:
  	static int qsort_cmp_func(const void *a, const void *b);
  
  	void ref_blob(uint32_t p_handle) {
@@ -67,7 +68,7 @@
  		Blob &caster = get_blob(p_handle);
  		DEV_ASSERT(caster.ref_count);
  		caster.ref_count--;
-@@ -321,11 +327,17 @@
+@@ -321,11 +327,17 @@ private:
  	}
  
  	void ref_capsule(uint32_t p_handle) {
@@ -85,13 +86,20 @@
  		Capsule &caster = get_capsule(p_handle);
  		DEV_ASSERT(caster.ref_count);
  		caster.ref_count--;
---- a/core/pooled_list.h
-+++ b/core/pooled_list.h
-@@ -179,6 +179,7 @@
- 	}
+diff --git a/servers/visual/visual_server_scene.cpp b/servers/visual/visual_server_scene.cpp
+index 72e4064ef0..c218f61b83 100644
+--- a/servers/visual/visual_server_scene.cpp
++++ b/servers/visual/visual_server_scene.cpp
+@@ -4703,8 +4703,10 @@ bool VisualServerScene::free(RID p_rid) {
+ 	if (camera_owner.owns(p_rid)) {
+ 		Camera *camera = camera_owner.get(p_rid);
  
- 	void free(const U &p_id) {
-+		ERR_FAIL_UNSIGNED_INDEX(p_id, _active_map.size());
- 		_pool.free(p_id);
+-		_blob_shadows.delete_focus(camera->blob_focus_handle);
+-		camera->blob_focus_handle = 0;
++		if (camera->blob_focus_handle) {
++			_blob_shadows.delete_focus(camera->blob_focus_handle);
++			camera->blob_focus_handle = 0;
++		}
  
- 		// remove from the active list.
+ 		camera_owner.free(p_rid);
+ 		memdelete(camera);

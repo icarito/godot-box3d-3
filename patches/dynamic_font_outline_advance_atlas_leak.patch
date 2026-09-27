@@ -1,6 +1,8 @@
+diff --git a/scene/resources/dynamic_font.cpp b/scene/resources/dynamic_font.cpp
+index 15518c5244..4fea46ecc1 100644
 --- a/scene/resources/dynamic_font.cpp
 +++ b/scene/resources/dynamic_font.cpp
-@@ -525,16 +525,11 @@
+@@ -525,16 +525,11 @@ float DynamicFontAtSize::draw_char(RID p_canvas_item, const Point2 &p_pos, CharT
  	float advance = 0.0;
  
  	// use normal character size if there's no outline character

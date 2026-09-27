@@ -1,17 +1,8 @@
---- a/drivers/gles3/shader_gles3.h
-+++ b/drivers/gles3/shader_gles3.h
-@@ -385,7 +385,7 @@
- 		}
- 	}
- 
--	bool _bind(bool p_binding_fallback);
-+	bool _bind(bool p_binding_fallback, bool p_is_ubershader = false);
- 	bool _bind_ubershader(bool p_for_warmrup = false);
- 
- protected:
+diff --git a/drivers/gles3/shader_gles3.cpp b/drivers/gles3/shader_gles3.cpp
+index 896d7778eb..1ee4c6cffb 100644
 --- a/drivers/gles3/shader_gles3.cpp
 +++ b/drivers/gles3/shader_gles3.cpp
-@@ -97,7 +97,7 @@
+@@ -97,7 +97,7 @@ bool ShaderGLES3::bind() {
  	return _bind(false);
  }
  
@@ -20,7 +11,7 @@
  	// Same base shader and version valid version?
  	if (active == this && version) {
  		if (new_conditional_version.code_version == conditional_version.code_version) {
-@@ -142,7 +142,7 @@
+@@ -142,7 +142,7 @@ bool ShaderGLES3::_bind(bool p_binding_fallback) {
  		DEBUG_TEST_ERROR("Use Program");
  		active = this;
  		return true;
@@ -29,7 +20,7 @@
  		// We can and have to fall back to the ubershader
  		return _bind_ubershader();
  	} else {
-@@ -186,12 +186,30 @@
+@@ -186,13 +186,31 @@ bool ShaderGLES3::_bind_ubershader(bool p_for_warmup) {
  	ERR_FAIL_COND_V(get_ubershader_flags_uniform() == -1, false);
  #endif
  	new_conditional_version.version |= VersionKey::UBERSHADER_FLAG;
@@ -52,12 +43,26 @@
  		// Avoid GL UB message id 131222 caused by shadow samplers not properly set up yet
  		unbind();
  		return bound;
-+	}
+ 	}
 +	if (!bound) {
 +		// Not ready yet: the ubershader was just enqueued. Skipping the draw is
 +		// the point (see above); without a bound program the flags uniform below
 +		// cannot be set, and unbind() has already run.
 +		return false;
- 	}
++	}
  	int conditionals_uniform = _get_uniform(get_ubershader_flags_uniform());
  #ifdef DEBUG_ENABLED
+ 	ERR_FAIL_COND_V(conditionals_uniform == -1, false);
+diff --git a/drivers/gles3/shader_gles3.h b/drivers/gles3/shader_gles3.h
+index 6f7cf1f663..45ad46e92f 100644
+--- a/drivers/gles3/shader_gles3.h
++++ b/drivers/gles3/shader_gles3.h
+@@ -385,7 +385,7 @@ private:
+ 		}
+ 	}
+ 
+-	bool _bind(bool p_binding_fallback);
++	bool _bind(bool p_binding_fallback, bool p_is_ubershader = false);
+ 	bool _bind_ubershader(bool p_for_warmrup = false);
+ 
+ protected:

@@ -121,7 +121,12 @@ necessarily replay bit-for-bit on the other.
 
 Everything the fork changes in Godot lives in `patches/`, applied by
 `scripts/build.sh` over a pinned commit before compiling (and `patches/frt/`
-over the pinned FRT checkout). It is a mix of:
+over the pinned FRT checkout). The engine patches are **generated**: their source
+of truth is the branch [`box3d-3.6` of icarito/godot](https://github.com/icarito/godot/tree/box3d-3.6),
+one commit per patch over the pinned commit, and `scripts/engine_branch.sh export`
+writes `patches/*.patch` from it (`check` verifies both match). Work on the branch
+with git (commit, `rebase -i`, fixups), not on the `.patch` files; see
+`docs/local-build-workflow.md`. It is a mix of:
 
 - **Upstreamable fixes** that upstream did not take: the std140 GLES3
   directional-light UBO layout, the idempotent `make_dir_recursive()` on

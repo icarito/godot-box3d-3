@@ -1,6 +1,8 @@
+diff --git a/platform/javascript/http_client_javascript.cpp b/platform/javascript/http_client_javascript.cpp
+index 0e9ec75d9a..ae1b67d006 100644
 --- a/platform/javascript/http_client_javascript.cpp
 +++ b/platform/javascript/http_client_javascript.cpp
-@@ -216,7 +216,14 @@
+@@ -216,7 +216,14 @@ PoolByteArray HTTPClient::read_response_body_chunk() {
  }
  
  void HTTPClient::set_blocking_mode(bool p_enable) {

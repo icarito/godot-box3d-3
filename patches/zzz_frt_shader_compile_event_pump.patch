@@ -1,7 +1,8 @@
 diff --git a/core/os/os.h b/core/os/os.h
+index 65b1c71ba5..3172dbb0f4 100644
 --- a/core/os/os.h
 +++ b/core/os/os.h
-@@ -681,6 +681,14 @@
+@@ -681,6 +681,14 @@ public:
  	virtual void benchmark_dump();
  
  	virtual void process_and_drop_events() {}
@@ -16,25 +17,25 @@ diff --git a/core/os/os.h b/core/os/os.h
  	OS();
  	virtual ~OS();
  };
-diff --git a/drivers/gles3/shader_gles3.h b/drivers/gles3/shader_gles3.h
---- a/drivers/gles3/shader_gles3.h
-+++ b/drivers/gles3/shader_gles3.h
-@@ -145,6 +145,11 @@
+diff --git a/drivers/gles3/rasterizer_storage_gles3.cpp b/drivers/gles3/rasterizer_storage_gles3.cpp
+index f65a1d1310..d0bf9f1a27 100644
+--- a/drivers/gles3/rasterizer_storage_gles3.cpp
++++ b/drivers/gles3/rasterizer_storage_gles3.cpp
+@@ -2368,6 +2368,9 @@ void RasterizerStorageGLES3::update_dirty_shaders() {
+ 	MutexLock lock(shader_dirty_mutex);
  
- 	static void advance_async_shaders_compilation();
- 
-+	// Keeps the windowing system served while the compile state machine does
-+	// blocking work (compile, link, queue wait, binary apply). See
-+	// OS::pump_events_keepalive. Throttled internally; main thread only.
-+	static void pump_events_during_compilation();
-+
- private:
- 	union VersionKey {
- 		static const uint32_t UBERSHADER_FLAG = ((uint32_t)1) << 31;
+ 	while (_shader_dirty_list.first()) {
++		// Compiling a whole scene's worth of shaders can run for a while; keep the
++		// windowing system served between them.
++		ShaderGLES3::pump_events_during_compilation();
+ 		_update_shader(_shader_dirty_list.first()->self());
+ 	}
+ }
 diff --git a/drivers/gles3/shader_gles3.cpp b/drivers/gles3/shader_gles3.cpp
+index c157c562ae..896d7778eb 100644
 --- a/drivers/gles3/shader_gles3.cpp
 +++ b/drivers/gles3/shader_gles3.cpp
-@@ -221,6 +221,23 @@
+@@ -221,6 +221,23 @@ void ShaderGLES3::advance_async_shaders_compilation() {
  	}
  }
  
@@ -58,7 +59,7 @@ diff --git a/drivers/gles3/shader_gles3.cpp b/drivers/gles3/shader_gles3.cpp
  void ShaderGLES3::_log_active_compiles() {
  #ifdef DEBUG_ENABLED
  	if (log_active_async_compiles_count) {
-@@ -240,6 +257,14 @@
+@@ -240,6 +257,14 @@ bool ShaderGLES3::_process_program_state(Version *p_version, bool p_async_forbid
  	bool run_next_step = true;
  	while (run_next_step) {
  		run_next_step = false;
@@ -73,16 +74,19 @@ diff --git a/drivers/gles3/shader_gles3.cpp b/drivers/gles3/shader_gles3.cpp
  		switch (p_version->compile_status) {
  			case Version::COMPILE_STATUS_OK: {
  				// Yeaaah!
-diff --git a/drivers/gles3/rasterizer_storage_gles3.cpp b/drivers/gles3/rasterizer_storage_gles3.cpp
---- a/drivers/gles3/rasterizer_storage_gles3.cpp
-+++ b/drivers/gles3/rasterizer_storage_gles3.cpp
-@@ -2368,6 +2368,9 @@
- 	MutexLock lock(shader_dirty_mutex);
+diff --git a/drivers/gles3/shader_gles3.h b/drivers/gles3/shader_gles3.h
+index 99753cac97..b9cf6983e5 100644
+--- a/drivers/gles3/shader_gles3.h
++++ b/drivers/gles3/shader_gles3.h
+@@ -145,6 +145,11 @@ public:
  
- 	while (_shader_dirty_list.first()) {
-+		// Compiling a whole scene's worth of shaders can run for a while; keep the
-+		// windowing system served between them.
-+		ShaderGLES3::pump_events_during_compilation();
- 		_update_shader(_shader_dirty_list.first()->self());
- 	}
- }
+ 	static void advance_async_shaders_compilation();
+ 
++	// Keeps the windowing system served while the compile state machine does
++	// blocking work (compile, link, queue wait, binary apply). See
++	// OS::pump_events_keepalive. Throttled internally; main thread only.
++	static void pump_events_during_compilation();
++
+ private:
+ 	union VersionKey {
+ 		static const uint32_t UBERSHADER_FLAG = ((uint32_t)1) << 31;

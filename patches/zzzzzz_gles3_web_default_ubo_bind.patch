@@ -1,6 +1,8 @@
+diff --git a/drivers/gles3/rasterizer_scene_gles3.cpp b/drivers/gles3/rasterizer_scene_gles3.cpp
+index 04b7ee54a3..13429fb737 100644
 --- a/drivers/gles3/rasterizer_scene_gles3.cpp
 +++ b/drivers/gles3/rasterizer_scene_gles3.cpp
-@@ -5678,6 +5678,24 @@
+@@ -5678,6 +5678,24 @@ void RasterizerSceneGLES3::initialize() {
  
  		state.scene_shader.add_custom_define("#define MAX_DECALS " + itos(state.max_decals) + "\n");
  

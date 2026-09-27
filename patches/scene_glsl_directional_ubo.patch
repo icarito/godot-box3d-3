@@ -1,5 +1,5 @@
 diff --git a/drivers/gles3/shaders/scene.glsl b/drivers/gles3/shaders/scene.glsl
-index 03515c7..5759d55 100644
+index b30d860d5f..604fdf1e2a 100644
 --- a/drivers/gles3/shaders/scene.glsl
 +++ b/drivers/gles3/shaders/scene.glsl
 @@ -148,7 +148,9 @@ layout(std140) uniform DirectionalLightData { //ubo:3
@@ -13,7 +13,7 @@ index 03515c7..5759d55 100644
  };
  
  #endif //ubershader-skip
-@@ -847,7 +849,9 @@ layout(std140) uniform DirectionalLightData {
+@@ -853,7 +855,9 @@ layout(std140) uniform DirectionalLightData {
  	mediump vec4 shadow_split_offsets;
  
  	mediump float fade_from;

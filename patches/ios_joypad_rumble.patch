@@ -1,5 +1,5 @@
 diff --git a/platform/iphone/joypad_iphone.h b/platform/iphone/joypad_iphone.h
-index c5d0219..9776887 100644
+index c5d021940b..97768877fb 100644
 --- a/platform/iphone/joypad_iphone.h
 +++ b/platform/iphone/joypad_iphone.h
 @@ -35,6 +35,7 @@
@@ -18,7 +18,7 @@ index c5d0219..9776887 100644
 +	void process_vibration();
  };
 diff --git a/platform/iphone/joypad_iphone.mm b/platform/iphone/joypad_iphone.mm
-index 87d3749..c8e0344 100644
+index 87d374906e..c8e034478a 100644
 --- a/platform/iphone/joypad_iphone.mm
 +++ b/platform/iphone/joypad_iphone.mm
 @@ -30,7 +30,10 @@
@@ -199,7 +199,7 @@ index 87d3749..c8e0344 100644
  	bool have_player_1 = false;
  	bool have_player_2 = false;
 diff --git a/platform/iphone/os_iphone.mm b/platform/iphone/os_iphone.mm
-index f2242a5..5792e7c 100644
+index f2242a5ec3..5792e7cca8 100644
 --- a/platform/iphone/os_iphone.mm
 +++ b/platform/iphone/os_iphone.mm
 @@ -260,6 +260,10 @@ bool OSIPhone::iterate() {

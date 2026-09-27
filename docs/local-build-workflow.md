@@ -59,6 +59,37 @@ nothing. But:
    it (to `~/.cache/odisea-godot/<tag>/`). Building the editor from the local fork is
    opt-in (`ODISEA_ENGINE=fork`), for engine work that is not released yet.
 
+## Engine branch: patches are generated
+
+The 37 engine patches used to be the source of truth: `.patch` files ordered by name
+(`zzz…_`), edited and rebased by hand. Now the source of truth is the branch
+**`box3d-3.6` of `icarito/godot`**: one commit per patch over `GODOT_REF`, each with a
+`Patch-File: <name>.patch` trailer. `patches/*.patch` is generated from it, so
+`scripts/build.sh` and CI did not change.
+
+```sh
+scripts/engine_branch.sh import   # (re)build the branch from patches/ — bootstrap only
+scripts/engine_branch.sh export   # branch -> patches/*.patch
+scripts/engine_branch.sh check    # patches/ applied over GODOT_REF == branch tree?
+scripts/engine_branch.sh push     # publish the branch (remote `box3d` in ../godot)
+```
+
+The branch is checked out in its own worktree, `../godot-engine` (`ENGINE_DIR`). Day to day:
+
+1. Edit there. A new patch = a new commit (give it the `Patch-File:` trailer, or `export`
+   derives a name with one more leading `z` than the last so alphabetical order = branch
+   order, which is how `build.sh` applies them). Changing an existing patch = `git commit
+   --fixup <its commit>` + `git rebase -i --autosquash`.
+2. `export`, `check`, commit `patches/` in this repo together with the change that needs it.
+3. `push` the branch. Moving to a newer Godot 3.6.x = `git rebase --onto <new ref>
+   <old ref> box3d-3.6` (three-way merges instead of re-applying patches), bump
+   `GODOT_REF` in `build.sh`, `export`, `check`.
+
+`check` compares trees, not text: exported patches carry `diff --git` headers and git's
+context, so the first export rewrote 30 patch files while the applied result stayed
+byte-identical. `patches/frt/` (over efornara/frt) and `patches/box3d/` are still
+hand-maintained; the same scheme would need a fork of FRT.
+
 ## FRT keyboard: physical scancodes
 
 `patches/frt/zzzzz_sdl_physical_scancode.patch`: FRT built `InputEventKey` only from the SDL

@@ -1,5 +1,5 @@
 diff --git a/drivers/gles3/shader_cache_gles3.cpp b/drivers/gles3/shader_cache_gles3.cpp
-index 32ab2b2..a73f575 100644
+index 32ab2b2ad5..a73f5752ba 100644
 --- a/drivers/gles3/shader_cache_gles3.cpp
 +++ b/drivers/gles3/shader_cache_gles3.cpp
 @@ -68,20 +68,34 @@ bool ShaderCacheGLES3::retrieve(const String &p_program_hash, uint32_t *r_format
@@ -83,7 +83,7 @@ index 32ab2b2..a73f575 100644
  
  void ShaderCacheGLES3::remove(const String &p_program_hash) {
 diff --git a/drivers/gles3/shader_gles3.cpp b/drivers/gles3/shader_gles3.cpp
-index 6fe2a20..c7fcecf 100644
+index 6fe2a203cb..c7fcecf244 100644
 --- a/drivers/gles3/shader_gles3.cpp
 +++ b/drivers/gles3/shader_gles3.cpp
 @@ -352,7 +352,13 @@ bool ShaderGLES3::_process_program_state(Version *p_version, bool p_async_forbid
@@ -145,7 +145,7 @@ index 6fe2a20..c7fcecf 100644
  			});
  		} else {
 diff --git a/drivers/gles3/shader_gles3.h b/drivers/gles3/shader_gles3.h
-index c30e354..6858647 100644
+index c30e354343..6858647807 100644
 --- a/drivers/gles3/shader_gles3.h
 +++ b/drivers/gles3/shader_gles3.h
 @@ -193,6 +193,7 @@ private:

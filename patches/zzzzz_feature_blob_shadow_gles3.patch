@@ -1,7 +1,8 @@
 diff --git a/COPYRIGHT.txt b/COPYRIGHT.txt
+index 34e66d88aa..0fac79e05b 100644
 --- a/COPYRIGHT.txt
 +++ b/COPYRIGHT.txt
-@@ -139,6 +139,18 @@
+@@ -139,6 +139,18 @@ Copyright: 2007, Starbreeze Studios
   2007-2014, Juan Linietsky, Ariel Manzur.
  License: Expat and Zlib
  
@@ -21,6 +22,7 @@ diff --git a/COPYRIGHT.txt b/COPYRIGHT.txt
  Comment: Brotli
  Copyright: 2009, 2010, 2013-2016 by the Brotli Authors.
 diff --git a/core/fixed_array.h b/core/fixed_array.h
+index 3e7f50f150..8de38f1111 100644
 --- a/core/fixed_array.h
 +++ b/core/fixed_array.h
 @@ -40,6 +40,7 @@
@@ -31,7 +33,7 @@ diff --git a/core/fixed_array.h b/core/fixed_array.h
  	const static uint32_t UNIT_SIZE = ((sizeof(T) + ALIGN - 1) / ALIGN * ALIGN);
  	const static bool CONSTRUCT = !std::is_trivially_constructible<T>::value && !force_trivial;
  	const static bool DESTRUCT = !std::is_trivially_destructible<T>::value && !force_trivial;
-@@ -107,6 +108,39 @@
+@@ -107,6 +108,39 @@ public:
  
  		_size = p_size;
  	}
@@ -71,7 +73,7 @@ diff --git a/core/fixed_array.h b/core/fixed_array.h
  	const T &operator[](uint32_t p_index) const {
  		DEV_ASSERT(p_index < size());
  		return get(p_index);
-@@ -116,6 +150,23 @@
+@@ -116,6 +150,23 @@ public:
  		return get(p_index);
  	}
  
@@ -96,9 +98,10 @@ diff --git a/core/fixed_array.h b/core/fixed_array.h
  		Vector<T> ret;
  		if (size()) {
 diff --git a/core/math/bvh_tree.h b/core/math/bvh_tree.h
+index 48ade2e760..23f52b0035 100644
 --- a/core/math/bvh_tree.h
 +++ b/core/math/bvh_tree.h
-@@ -156,7 +156,7 @@
+@@ -156,7 +156,7 @@ public:
  template <class T>
  class BVH_DummyPairTestFunction {
  public:
@@ -107,7 +110,7 @@ diff --git a/core/math/bvh_tree.h b/core/math/bvh_tree.h
  		// return false if no collision, decided by masks etc
  		return true;
  	}
-@@ -165,7 +165,7 @@
+@@ -165,7 +165,7 @@ public:
  template <class T>
  class BVH_DummyCullTestFunction {
  public:
@@ -117,9 +120,10 @@ diff --git a/core/math/bvh_tree.h b/core/math/bvh_tree.h
  		return true;
  	}
 diff --git a/core/math/camera_matrix.cpp b/core/math/camera_matrix.cpp
+index f9da2d92be..183d930869 100644
 --- a/core/math/camera_matrix.cpp
 +++ b/core/math/camera_matrix.cpp
-@@ -262,6 +262,33 @@
+@@ -262,6 +262,33 @@ Vector2 CameraMatrix::get_viewport_half_extents() const {
  	return Vector2(res.x, res.y);
  }
  
@@ -153,7 +157,7 @@ diff --git a/core/math/camera_matrix.cpp b/core/math/camera_matrix.cpp
  bool CameraMatrix::get_endpoints(const Transform &p_transform, Vector3 *p_8points) const {
  	Vector<Plane> planes = get_projection_planes(Transform());
  	const Planes intersections[8][3] = {
-@@ -285,85 +312,91 @@
+@@ -285,85 +312,91 @@ bool CameraMatrix::get_endpoints(const Transform &p_transform, Vector3 *p_8point
  	return true;
  }
  
@@ -281,9 +285,10 @@ diff --git a/core/math/camera_matrix.cpp b/core/math/camera_matrix.cpp
  }
  
 diff --git a/core/math/camera_matrix.h b/core/math/camera_matrix.h
+index 2e1e30fc0c..d20f1d6fa7 100644
 --- a/core/math/camera_matrix.h
 +++ b/core/math/camera_matrix.h
-@@ -46,6 +46,11 @@
+@@ -46,6 +46,11 @@ struct CameraMatrix {
  
  	real_t matrix[4][4];
  
@@ -295,7 +300,7 @@ diff --git a/core/math/camera_matrix.h b/core/math/camera_matrix.h
  	void set_identity();
  	void set_zero();
  	void set_light_bias();
-@@ -69,8 +74,11 @@
+@@ -69,8 +74,11 @@ struct CameraMatrix {
  	bool is_orthogonal() const;
  
  	Vector<Plane> get_projection_planes(const Transform &p_transform) const;
@@ -310,6 +315,7 @@ diff --git a/core/math/camera_matrix.h b/core/math/camera_matrix.h
  	void invert();
 diff --git a/doc/classes/BlobFocus.xml b/doc/classes/BlobFocus.xml
 new file mode 100644
+index 0000000000..e8056d0ebc
 --- /dev/null
 +++ b/doc/classes/BlobFocus.xml
 @@ -0,0 +1,18 @@
@@ -333,6 +339,7 @@ new file mode 100644
 +</class>
 diff --git a/doc/classes/BlobShadow.xml b/doc/classes/BlobShadow.xml
 new file mode 100644
+index 0000000000..26ac3e7f00
 --- /dev/null
 +++ b/doc/classes/BlobShadow.xml
 @@ -0,0 +1,52 @@
@@ -389,6 +396,7 @@ new file mode 100644
 +	</constants>
 +</class>
 diff --git a/doc/classes/Light.xml b/doc/classes/Light.xml
+index 6051311fa2..e46164761e 100644
 --- a/doc/classes/Light.xml
 +++ b/doc/classes/Light.xml
 @@ -11,6 +11,13 @@
@@ -461,6 +469,7 @@ diff --git a/doc/classes/Light.xml b/doc/classes/Light.xml
  			Light is ignored when baking.
  			[b]Note:[/b] Hiding a light does [i]not[/i] affect baking.
 diff --git a/doc/classes/Material3D.xml b/doc/classes/Material3D.xml
+index 12fe4d9885..428c40af62 100644
 --- a/doc/classes/Material3D.xml
 +++ b/doc/classes/Material3D.xml
 @@ -186,6 +186,9 @@
@@ -493,9 +502,10 @@ diff --git a/doc/classes/Material3D.xml b/doc/classes/Material3D.xml
  		</constant>
  		<constant name="DIFFUSE_BURLEY" value="0" enum="DiffuseMode">
 diff --git a/doc/classes/ProjectSettings.xml b/doc/classes/ProjectSettings.xml
+index 5572c301e4..58fb0e1335 100644
 --- a/doc/classes/ProjectSettings.xml
 +++ b/doc/classes/ProjectSettings.xml
-@@ -1683,6 +1683,32 @@
+@@ -1697,6 +1697,32 @@
  			Uses a simplified method of generating PVS (potentially visible set) data. The results may not be accurate where more than one portal join adjacent rooms.
  			[b]Note:[/b] Generally you should only use this option if you encounter bugs when it is set to [code]false[/code], i.e. there are problems with the default method.
  		</member>
@@ -529,6 +539,7 @@ diff --git a/doc/classes/ProjectSettings.xml b/doc/classes/ProjectSettings.xml
  			If [code]true[/code], allocates the root [Viewport]'s framebuffer with high dynamic range. High dynamic range allows the use of [Color] values greater than 1. This must be set to [code]true[/code] for glow rendering to work if [member Environment.glow_hdr_threshold] is greater than or equal to [code]1.0[/code].
  			[b]Note:[/b] Only available on the GLES3 backend.
 diff --git a/doc/classes/VisualServer.xml b/doc/classes/VisualServer.xml
+index a1cd082560..c3f9de9152 100644
 --- a/doc/classes/VisualServer.xml
 +++ b/doc/classes/VisualServer.xml
 @@ -38,6 +38,27 @@
@@ -575,9 +586,10 @@ diff --git a/doc/classes/VisualServer.xml b/doc/classes/VisualServer.xml
  			<return type="void" />
  			<argument index="0" name="camera" type="RID" />
 diff --git a/drivers/gles2/rasterizer_scene_gles2.cpp b/drivers/gles2/rasterizer_scene_gles2.cpp
+index 9917aa39e2..e5314d0d1d 100644
 --- a/drivers/gles2/rasterizer_scene_gles2.cpp
 +++ b/drivers/gles2/rasterizer_scene_gles2.cpp
-@@ -2268,6 +2268,10 @@
+@@ -2268,6 +2268,10 @@ void RasterizerSceneGLES2::_setup_refprobes(ReflectionProbeInstance *p_refprobe1
  }
  
  void RasterizerSceneGLES2::_render_render_list(RenderList::Element **p_elements, int p_element_count, const Transform &p_view_transform, const CameraMatrix &p_projection, const int p_eye, RID p_shadow_atlas, Environment *p_env, GLuint p_base_env, float p_shadow_bias, float p_shadow_normal_bias, bool p_reverse_cull, bool p_alpha_pass, bool p_shadow) {
@@ -588,7 +600,7 @@ diff --git a/drivers/gles2/rasterizer_scene_gles2.cpp b/drivers/gles2/rasterizer
  	ShadowAtlas *shadow_atlas = shadow_atlas_owner.getornull(p_shadow_atlas);
  
  	Vector2 viewport_size = state.viewport_size;
-@@ -2334,6 +2338,8 @@
+@@ -2334,6 +2338,8 @@ void RasterizerSceneGLES2::_render_render_list(RenderList::Element **p_elements,
  
  	storage->info.render.draw_call_count += p_element_count;
  
@@ -597,7 +609,7 @@ diff --git a/drivers/gles2/rasterizer_scene_gles2.cpp b/drivers/gles2/rasterizer
  	for (int i = 0; i < p_element_count; i++) {
  		RenderList::Element *e = p_elements[i];
  
-@@ -2522,6 +2528,15 @@
+@@ -2522,6 +2528,15 @@ void RasterizerSceneGLES2::_render_render_list(RenderList::Element **p_elements,
  			rebind = true;
  		}
  
@@ -613,7 +625,7 @@ diff --git a/drivers/gles2/rasterizer_scene_gles2.cpp b/drivers/gles2/rasterizer
  		RasterizerStorageGLES2::Skeleton *skeleton = storage->skeleton_owner.getornull(e->instance->skeleton);
  
  		if (skeleton != prev_skeleton) {
-@@ -2662,6 +2677,37 @@
+@@ -2662,6 +2677,37 @@ void RasterizerSceneGLES2::_render_render_list(RenderList::Element **p_elements,
  			glUniform4fv(state.scene_shader.get_uniform_location(SceneShaderGLES2::LIGHTMAP_CAPTURES), 12, (const GLfloat *)e->instance->lightmap_capture_data.ptr());
  		}
  
@@ -651,7 +663,7 @@ diff --git a/drivers/gles2/rasterizer_scene_gles2.cpp b/drivers/gles2/rasterizer
  		_render_geometry(e);
  
  		prev_geometry = e->geometry;
-@@ -2696,6 +2742,7 @@
+@@ -2696,6 +2742,7 @@ void RasterizerSceneGLES2::_render_render_list(RenderList::Element **p_elements,
  	state.scene_shader.set_conditional(SceneShaderGLES2::FOG_DEPTH_ENABLED, false);
  	state.scene_shader.set_conditional(SceneShaderGLES2::FOG_HEIGHT_ENABLED, false);
  	state.scene_shader.set_conditional(SceneShaderGLES2::USE_DEPTH_PREPASS, false);
@@ -660,9 +672,10 @@ diff --git a/drivers/gles2/rasterizer_scene_gles2.cpp b/drivers/gles2/rasterizer
  
  void RasterizerSceneGLES2::_draw_sky(RasterizerStorageGLES2::Sky *p_sky, const CameraMatrix &p_projection, const Transform &p_transform, bool p_vflip, float p_custom_fov, float p_energy, const Basis &p_sky_orientation) {
 diff --git a/drivers/gles2/rasterizer_storage_gles2.cpp b/drivers/gles2/rasterizer_storage_gles2.cpp
+index b6e003a495..044d64d3a4 100644
 --- a/drivers/gles2/rasterizer_storage_gles2.cpp
 +++ b/drivers/gles2/rasterizer_storage_gles2.cpp
-@@ -1466,6 +1466,7 @@
+@@ -1466,6 +1466,7 @@ void RasterizerStorageGLES2::_update_shader(Shader *p_shader) const {
  			p_shader->spatial.uses_screen_texture = false;
  			p_shader->spatial.uses_depth_texture = false;
  			p_shader->spatial.uses_vertex = false;
@@ -670,7 +683,7 @@ diff --git a/drivers/gles2/rasterizer_storage_gles2.cpp b/drivers/gles2/rasteriz
  			p_shader->spatial.uses_tangent = false;
  			p_shader->spatial.uses_ensure_correct_normals = false;
  			p_shader->spatial.writes_modelview_or_projection = false;
-@@ -1487,6 +1488,7 @@
+@@ -1487,6 +1488,7 @@ void RasterizerStorageGLES2::_update_shader(Shader *p_shader) const {
  
  			shaders.actions_scene.render_mode_flags["unshaded"] = &p_shader->spatial.unshaded;
  			shaders.actions_scene.render_mode_flags["depth_test_disable"] = &p_shader->spatial.no_depth_test;
@@ -678,7 +691,7 @@ diff --git a/drivers/gles2/rasterizer_storage_gles2.cpp b/drivers/gles2/rasteriz
  
  			shaders.actions_scene.render_mode_flags["vertex_lighting"] = &p_shader->spatial.uses_vertex_lighting;
  
-@@ -6600,6 +6602,13 @@
+@@ -6600,6 +6602,13 @@ void RasterizerStorageGLES2::initialize() {
  	glGetIntegerv(GL_MAX_TEXTURE_SIZE, &config.max_texture_size);
  	glGetIntegerv(GL_MAX_CUBE_MAP_TEXTURE_SIZE, &config.max_cubemap_texture_size);
  	glGetIntegerv(GL_MAX_VIEWPORT_DIMS, config.max_viewport_dimensions);
@@ -693,9 +706,10 @@ diff --git a/drivers/gles2/rasterizer_storage_gles2.cpp b/drivers/gles2/rasteriz
  	// the use skeleton software path should be used if either float texture is not supported,
  	// OR max_vertex_texture_image_units is zero
 diff --git a/drivers/gles2/rasterizer_storage_gles2.h b/drivers/gles2/rasterizer_storage_gles2.h
+index 1b6eeafaa2..1691f51c79 100644
 --- a/drivers/gles2/rasterizer_storage_gles2.h
 +++ b/drivers/gles2/rasterizer_storage_gles2.h
-@@ -501,6 +501,7 @@
+@@ -501,6 +501,7 @@ public:
  			bool uses_alpha_scissor;
  			bool unshaded;
  			bool no_depth_test;
@@ -704,9 +718,10 @@ diff --git a/drivers/gles2/rasterizer_storage_gles2.h b/drivers/gles2/rasterizer
  			bool uses_discard;
  			bool uses_sss;
 diff --git a/drivers/gles2/shader_compiler_gles2.cpp b/drivers/gles2/shader_compiler_gles2.cpp
+index 9948a35765..d86ecd87f6 100644
 --- a/drivers/gles2/shader_compiler_gles2.cpp
 +++ b/drivers/gles2/shader_compiler_gles2.cpp
-@@ -302,6 +302,14 @@
+@@ -302,6 +302,14 @@ String ShaderCompilerGLES2::_dump_node_code(const SL::Node *p_node, int p_level,
  				}
  			}
  
@@ -721,7 +736,7 @@ diff --git a/drivers/gles2/shader_compiler_gles2.cpp b/drivers/gles2/shader_comp
  			int max_texture_uniforms = 0;
  			int max_uniforms = 0;
  
-@@ -1121,6 +1129,7 @@
+@@ -1121,6 +1129,7 @@ ShaderCompilerGLES2::ShaderCompilerGLES2() {
  	actions[VS::SHADER_SPATIAL].renames["UV2"] = "uv2_interp";
  	actions[VS::SHADER_SPATIAL].renames["COLOR"] = "color_interp";
  	actions[VS::SHADER_SPATIAL].renames["POINT_SIZE"] = "point_size";
@@ -729,7 +744,7 @@ diff --git a/drivers/gles2/shader_compiler_gles2.cpp b/drivers/gles2/shader_comp
  	// gl_InstanceID and VERTEX_ID is not available in OpenGL ES 2.0
  	actions[VS::SHADER_SPATIAL].renames["INSTANCE_ID"] = "0";
  	actions[VS::SHADER_SPATIAL].renames["VERTEX_ID"] = "0";
-@@ -1190,6 +1199,7 @@
+@@ -1190,6 +1199,7 @@ ShaderCompilerGLES2::ShaderCompilerGLES2() {
  	actions[VS::SHADER_SPATIAL].usage_defines["INSTANCE_CUSTOM"] = "#define ENABLE_INSTANCE_CUSTOM\n";
  	actions[VS::SHADER_SPATIAL].usage_defines["ALPHA_SCISSOR"] = "#define ALPHA_SCISSOR_USED\n";
  	actions[VS::SHADER_SPATIAL].usage_defines["POSITION"] = "#define OVERRIDE_POSITION\n";
@@ -737,7 +752,7 @@ diff --git a/drivers/gles2/shader_compiler_gles2.cpp b/drivers/gles2/shader_comp
  
  	actions[VS::SHADER_SPATIAL].usage_defines["SSS_STRENGTH"] = "#define ENABLE_SSS\n";
  	actions[VS::SHADER_SPATIAL].usage_defines["TRANSMISSION"] = "#define TRANSMISSION_USED\n";
-@@ -1248,6 +1258,7 @@
+@@ -1248,6 +1258,7 @@ ShaderCompilerGLES2::ShaderCompilerGLES2() {
  	actions[VS::SHADER_SPATIAL].render_mode_defines["specular_toon"] = "#define SPECULAR_TOON\n";
  	actions[VS::SHADER_SPATIAL].render_mode_defines["specular_disabled"] = "#define SPECULAR_DISABLED\n";
  	actions[VS::SHADER_SPATIAL].render_mode_defines["shadows_disabled"] = "#define SHADOWS_DISABLED\n";
@@ -746,9 +761,10 @@ diff --git a/drivers/gles2/shader_compiler_gles2.cpp b/drivers/gles2/shader_comp
  	actions[VS::SHADER_SPATIAL].render_mode_defines["shadow_to_opacity"] = "#define USE_SHADOW_TO_OPACITY\n";
  
 diff --git a/drivers/gles2/shaders/scene.glsl b/drivers/gles2/shaders/scene.glsl
+index 5fe2bbb3f9..49933edf16 100644
 --- a/drivers/gles2/shaders/scene.glsl
 +++ b/drivers/gles2/shaders/scene.glsl
-@@ -325,6 +325,10 @@
+@@ -325,6 +325,10 @@ varying mediump vec3 refprobe2_ambient_normal;
  
  #endif //vertex lighting for refprobes
  
@@ -759,7 +775,7 @@ diff --git a/drivers/gles2/shaders/scene.glsl b/drivers/gles2/shaders/scene.glsl
  #if defined(FOG_DEPTH_ENABLED) || defined(FOG_HEIGHT_ENABLED)
  
  varying vec4 fog_interp;
-@@ -505,6 +509,10 @@
+@@ -505,6 +509,10 @@ VERTEX_SHADER_CODE
  		/* clang-format on */
  	}
  
@@ -770,7 +786,7 @@ diff --git a/drivers/gles2/shaders/scene.glsl b/drivers/gles2/shaders/scene.glsl
  	gl_PointSize = point_size;
  	vec4 outvec = vertex;
  
-@@ -876,6 +884,225 @@
+@@ -876,6 +884,225 @@ uniform vec4 refprobe2_ambient;
  
  #endif //USE_REFLECTION_PROBE2
  
@@ -996,7 +1012,7 @@ diff --git a/drivers/gles2/shaders/scene.glsl b/drivers/gles2/shaders/scene.glsl
  #define RADIANCE_MAX_LOD 6.0
  
  #if defined(USE_REFLECTION_PROBE1) || defined(USE_REFLECTION_PROBE2)
-@@ -1692,6 +1919,13 @@
+@@ -1692,6 +1919,13 @@ void main() {
  	vec2 screen_uv = gl_FragCoord.xy * screen_pixel_size;
  #endif
  
@@ -1010,7 +1026,7 @@ diff --git a/drivers/gles2/shaders/scene.glsl b/drivers/gles2/shaders/scene.glsl
  	{
  		/* clang-format off */
  
-@@ -2401,6 +2635,10 @@
+@@ -2401,6 +2635,10 @@ FRAGMENT_SHADER_CODE
  
  	frag_color = vec4(ambient_light + diffuse_light + specular_light, alpha);
  
@@ -1021,7 +1037,7 @@ diff --git a/drivers/gles2/shaders/scene.glsl b/drivers/gles2/shaders/scene.glsl
  	//add emission if in base pass
  #ifdef BASE_PASS
  	frag_color.rgb += emission;
-@@ -2480,8 +2718,10 @@
+@@ -2480,8 +2718,10 @@ FRAGMENT_SHADER_CODE
  	highp float depth = ((position_interp.z / position_interp.w) + 1.0) * 0.5 + 0.0; // bias
  	highp vec4 comp = fract(depth * vec4(255.0 * 255.0 * 255.0, 255.0 * 255.0, 255.0, 1.0));
  	comp -= comp.xxyz * vec4(0.0, 1.0 / 255.0, 1.0 / 255.0, 1.0 / 255.0);
@@ -1034,9 +1050,10 @@ diff --git a/drivers/gles2/shaders/scene.glsl b/drivers/gles2/shaders/scene.glsl
 +	gl_FragColor = frag_color;
  }
 diff --git a/drivers/gles3/rasterizer_scene_gles3.cpp b/drivers/gles3/rasterizer_scene_gles3.cpp
+index 83a4aa0a31..396bfe2d1c 100644
 --- a/drivers/gles3/rasterizer_scene_gles3.cpp
 +++ b/drivers/gles3/rasterizer_scene_gles3.cpp
-@@ -2038,6 +2038,10 @@
+@@ -2038,6 +2038,10 @@ void RasterizerSceneGLES3::_render_list(RenderList::Element **p_elements, int p_
  	bool prev_opaque_prepass = false;
  	state.scene_shader.set_conditional(SceneShaderGLES3::USE_OPAQUE_PREPASS, false);
  
@@ -1047,7 +1064,7 @@ diff --git a/drivers/gles3/rasterizer_scene_gles3.cpp b/drivers/gles3/rasterizer
  	for (int i = 0; i < p_element_count; i++) {
  		RenderList::Element *e = p_elements[i];
  		RasterizerStorageGLES3::Material *material = e->material;
-@@ -2050,6 +2054,15 @@
+@@ -2050,6 +2054,15 @@ void RasterizerSceneGLES3::_render_list(RenderList::Element **p_elements, int p_
  
  		uint32_t shading = (e->sort_key >> RenderList::SORT_KEY_SHADING_SHIFT) & RenderList::SORT_KEY_SHADING_MASK;
  
@@ -1063,7 +1080,7 @@ diff --git a/drivers/gles3/rasterizer_scene_gles3.cpp b/drivers/gles3/rasterizer
  		if (!p_shadow) {
  			bool use_directional = directional_light != nullptr;
  			if (p_directional_add) {
-@@ -2285,6 +2298,39 @@
+@@ -2288,6 +2301,39 @@ void RasterizerSceneGLES3::_render_list(RenderList::Element **p_elements, int p_
  
  		state.scene_shader.set_uniform(SceneShaderGLES3::WORLD_TRANSFORM, e->instance->transform);
  
@@ -1103,7 +1120,7 @@ diff --git a/drivers/gles3/rasterizer_scene_gles3.cpp b/drivers/gles3/rasterizer
  		const bool force_skin_no_depth = skeleton && !p_shadow && OS::get_singleton()->has_environment("FRT_SKIN_NO_DEPTH");
  		if (force_skin_no_depth) {
  			glDisable(GL_DEPTH_TEST);
-@@ -2356,6 +2402,7 @@
+@@ -2359,6 +2405,7 @@ void RasterizerSceneGLES3::_render_list(RenderList::Element **p_elements, int p_
  	state.scene_shader.set_conditional(SceneShaderGLES3::USE_CONTACT_SHADOWS, false);
  	state.scene_shader.set_conditional(SceneShaderGLES3::USE_VERTEX_LIGHTING, false);
  	state.scene_shader.set_conditional(SceneShaderGLES3::USE_OPAQUE_PREPASS, false);
@@ -1112,9 +1129,10 @@ diff --git a/drivers/gles3/rasterizer_scene_gles3.cpp b/drivers/gles3/rasterizer
  
  void RasterizerSceneGLES3::_add_geometry(RasterizerStorageGLES3::Geometry *p_geometry, InstanceBase *p_instance, RasterizerStorageGLES3::GeometryOwner *p_owner, int p_material, bool p_depth_pass, bool p_shadow_pass) {
 diff --git a/drivers/gles3/rasterizer_storage_gles3.cpp b/drivers/gles3/rasterizer_storage_gles3.cpp
+index d0bf9f1a27..71cac9f0dc 100644
 --- a/drivers/gles3/rasterizer_storage_gles3.cpp
 +++ b/drivers/gles3/rasterizer_storage_gles3.cpp
-@@ -2255,6 +2255,7 @@
+@@ -2255,6 +2255,7 @@ void RasterizerStorageGLES3::_update_shader(Shader *p_shader) const {
  			p_shader->spatial.uses_discard = false;
  			p_shader->spatial.unshaded = false;
  			p_shader->spatial.no_depth_test = false;
@@ -1122,7 +1140,7 @@ diff --git a/drivers/gles3/rasterizer_storage_gles3.cpp b/drivers/gles3/rasteriz
  			p_shader->spatial.uses_sss = false;
  			p_shader->spatial.uses_time = false;
  			p_shader->spatial.uses_vertex_lighting = false;
-@@ -2285,6 +2286,7 @@
+@@ -2285,6 +2286,7 @@ void RasterizerStorageGLES3::_update_shader(Shader *p_shader) const {
  
  			shaders.actions_scene.render_mode_flags["unshaded"] = &p_shader->spatial.unshaded;
  			shaders.actions_scene.render_mode_flags["depth_test_disable"] = &p_shader->spatial.no_depth_test;
@@ -1131,9 +1149,10 @@ diff --git a/drivers/gles3/rasterizer_storage_gles3.cpp b/drivers/gles3/rasteriz
  			shaders.actions_scene.render_mode_flags["vertex_lighting"] = &p_shader->spatial.uses_vertex_lighting;
  
 diff --git a/drivers/gles3/rasterizer_storage_gles3.h b/drivers/gles3/rasterizer_storage_gles3.h
+index 170f86134d..2b8223bdd6 100644
 --- a/drivers/gles3/rasterizer_storage_gles3.h
 +++ b/drivers/gles3/rasterizer_storage_gles3.h
-@@ -517,6 +517,7 @@
+@@ -517,6 +517,7 @@ public:
  			bool uses_alpha_scissor;
  			bool unshaded;
  			bool no_depth_test;
@@ -1142,9 +1161,10 @@ diff --git a/drivers/gles3/rasterizer_storage_gles3.h b/drivers/gles3/rasterizer
  			bool uses_discard;
  			bool uses_sss;
 diff --git a/drivers/gles3/shader_compiler_gles3.cpp b/drivers/gles3/shader_compiler_gles3.cpp
+index 746c2e9140..209787412d 100644
 --- a/drivers/gles3/shader_compiler_gles3.cpp
 +++ b/drivers/gles3/shader_compiler_gles3.cpp
-@@ -426,6 +426,14 @@
+@@ -426,6 +426,14 @@ String ShaderCompilerGLES3::_dump_node_code(const SL::Node *p_node, int p_level,
  				}
  			}
  
@@ -1159,7 +1179,7 @@ diff --git a/drivers/gles3/shader_compiler_gles3.cpp b/drivers/gles3/shader_comp
  			// structs
  
  			for (int i = 0; i < pnode->vstructs.size(); i++) {
-@@ -1290,6 +1298,7 @@
+@@ -1290,6 +1298,7 @@ ShaderCompilerGLES3::ShaderCompilerGLES3() {
  	actions[VS::SHADER_SPATIAL].render_mode_defines["specular_toon"] = "#define SPECULAR_TOON\n";
  	actions[VS::SHADER_SPATIAL].render_mode_defines["specular_disabled"] = "#define SPECULAR_DISABLED\n";
  	actions[VS::SHADER_SPATIAL].render_mode_defines["shadows_disabled"] = "#define SHADOWS_DISABLED\n";
@@ -1168,9 +1188,10 @@ diff --git a/drivers/gles3/shader_compiler_gles3.cpp b/drivers/gles3/shader_comp
  	actions[VS::SHADER_SPATIAL].render_mode_defines["shadow_to_opacity"] = "#define USE_SHADOW_TO_OPACITY\n";
  
 diff --git a/drivers/gles3/shader_gles3.h b/drivers/gles3/shader_gles3.h
+index b9cf6983e5..6f7cf1f663 100644
 --- a/drivers/gles3/shader_gles3.h
 +++ b/drivers/gles3/shader_gles3.h
-@@ -452,6 +452,12 @@
+@@ -452,6 +452,12 @@ int ShaderGLES3::_get_uniform(int p_which) const {
  }
  
  void ShaderGLES3::_set_conditional(int p_which, bool p_value) {
@@ -1184,9 +1205,10 @@ diff --git a/drivers/gles3/shader_gles3.h b/drivers/gles3/shader_gles3.h
  	if (p_value) {
  		new_conditional_version.version |= (1 << p_which);
 diff --git a/drivers/gles3/shaders/scene.glsl b/drivers/gles3/shaders/scene.glsl
+index 2a296b32a0..742a2f7931 100644
 --- a/drivers/gles3/shaders/scene.glsl
 +++ b/drivers/gles3/shaders/scene.glsl
-@@ -329,6 +329,10 @@
+@@ -329,6 +329,10 @@ out vec3 tangent_interp;
  out vec3 binormal_interp;
  #endif
  
@@ -1197,7 +1219,7 @@ diff --git a/drivers/gles3/shaders/scene.glsl b/drivers/gles3/shaders/scene.glsl
  #if defined(USE_MATERIAL)
  
  /* clang-format off */
-@@ -438,6 +442,10 @@
+@@ -438,6 +442,10 @@ void main() {
  
  	highp mat4 local_projection = projection_matrix;
  
@@ -1208,7 +1230,7 @@ diff --git a/drivers/gles3/shaders/scene.glsl b/drivers/gles3/shaders/scene.glsl
  //using world coordinates
  #if !defined(SKIP_TRANSFORM_USED) && defined(VERTEX_WORLD_COORDS_USED)
  
-@@ -701,6 +709,10 @@
+@@ -701,6 +709,10 @@ in vec3 tangent_interp;
  in vec3 binormal_interp;
  #endif
  
@@ -1219,7 +1241,7 @@ diff --git a/drivers/gles3/shaders/scene.glsl b/drivers/gles3/shaders/scene.glsl
  in highp vec3 vertex_interp;
  in vec3 normal_interp;
  
-@@ -724,7 +736,7 @@
+@@ -724,7 +736,7 @@ uniform sampler2D irradiance_map; // texunit:-7
  // made the ubershader declare BOTH, burning a texture image unit that no draw can
  // ever use. Units are scarce: the engine takes them from the top (texunit:-N maps
  // to max_image_units - N), so every one it holds is one the material cannot have.
@@ -1228,7 +1250,7 @@ diff --git a/drivers/gles3/shaders/scene.glsl b/drivers/gles3/shaders/scene.glsl
  
  uniform sampler2DArray radiance_map_array; // texunit:-3
  
-@@ -892,6 +904,24 @@
+@@ -892,6 +904,24 @@ layout(std140) uniform SpotLightData { // ubo:5
  
  uniform highp sampler2DShadow shadow_atlas; // texunit:-6
  
@@ -1253,7 +1275,7 @@ diff --git a/drivers/gles3/shaders/scene.glsl b/drivers/gles3/shaders/scene.glsl
  struct ReflectionData {
  	mediump vec4 box_extents;
  	mediump vec4 box_offset;
-@@ -944,6 +974,205 @@
+@@ -944,6 +974,205 @@ layout(location = 3) out float sss_buffer;
  in highp vec4 position_interp;
  uniform highp sampler2D depth_buffer; // texunit:-9
  
@@ -1459,7 +1481,7 @@ diff --git a/drivers/gles3/shaders/scene.glsl b/drivers/gles3/shaders/scene.glsl
  #ifdef USE_CONTACT_SHADOWS //ubershader-skip
  
  float contact_shadow_compute(vec3 pos, vec3 dir, float max_distance) {
-@@ -1703,7 +1932,7 @@
+@@ -1703,7 +1932,7 @@ uniform vec4 decal_slots1;
  // ubershader, because //ubershader-skip drops the guard and leaves the declarations
  // unconditional. rendering/quality/gi_probes/enabled lets such a project hand the
  // units back to its materials.
@@ -1468,7 +1490,7 @@ diff --git a/drivers/gles3/shaders/scene.glsl b/drivers/gles3/shaders/scene.glsl
  
  #ifdef USE_GI_PROBES //ubershader-skip
  
-@@ -1955,6 +2184,13 @@
+@@ -1955,6 +2184,13 @@ void main() {
  	float sss_strength = 0.0;
  #endif
  
@@ -1482,7 +1504,7 @@ diff --git a/drivers/gles3/shaders/scene.glsl b/drivers/gles3/shaders/scene.glsl
  	{
  		/* clang-format off */
  
-@@ -2095,7 +2331,7 @@
+@@ -2095,7 +2331,7 @@ FRAGMENT_SHADER_CODE
  		float horizon = min(1.0 + dot(ref_vec, normal), 1.0);
  		ref_vec = normalize((radiance_inverse_xform * vec4(ref_vec, 0.0)).xyz);
  		vec3 radiance;
@@ -1491,7 +1513,7 @@ diff --git a/drivers/gles3/shaders/scene.glsl b/drivers/gles3/shaders/scene.glsl
  		radiance = textureDualParaboloidArray(radiance_map_array, ref_vec, roughness) * bg_energy;
  #else
  		radiance = textureDualParaboloid(radiance_map, ref_vec, roughness) * bg_energy;
-@@ -2140,7 +2376,7 @@
+@@ -2140,7 +2376,7 @@ FRAGMENT_SHADER_CODE
  	specular_blob_intensity *= specular * 2.0;
  #endif
  
@@ -1500,7 +1522,7 @@ diff --git a/drivers/gles3/shaders/scene.glsl b/drivers/gles3/shaders/scene.glsl
  #ifdef USE_GI_PROBES //ubershader-runtime
  	gi_probes_compute(vertex, normal, roughness, env_reflection_light, ambient_light);
  
-@@ -2543,6 +2779,14 @@
+@@ -2543,6 +2779,14 @@ FRAGMENT_SHADER_CODE
  #endif //ubershader-runtime
  #endif //SHADELESS //ubershader-runtime
  
@@ -1515,7 +1537,7 @@ diff --git a/drivers/gles3/shaders/scene.glsl b/drivers/gles3/shaders/scene.glsl
  	normal_mr_buffer = vec4(normalize(normal) * 0.5 + 0.5, roughness);
  
  #if defined(ENABLE_SSS)
-@@ -2560,6 +2804,10 @@
+@@ -2560,6 +2804,10 @@ FRAGMENT_SHADER_CODE
  #endif //ubershader-runtime
  #endif //SHADELESS //ubershader-runtime
  
@@ -1528,20 +1550,23 @@ diff --git a/drivers/gles3/shaders/scene.glsl b/drivers/gles3/shaders/scene.glsl
  	// Write to the final output once and only once.
 diff --git a/editor/icons/icon_blob_focus.svg b/editor/icons/icon_blob_focus.svg
 new file mode 100644
+index 0000000000..c48074122a
 --- /dev/null
 +++ b/editor/icons/icon_blob_focus.svg
 @@ -0,0 +1 @@
 +<svg height="16" viewBox="0 0 16 16" width="16" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"><radialGradient id="a" cx="8" cy="8" gradientUnits="userSpaceOnUse" r="7"><stop offset=".27669173" stop-color="#fc9c9c" stop-opacity="0"/><stop offset=".28" stop-color="#fc9c9c"/><stop offset="1" stop-color="#fc9c9c" stop-opacity="0"/></radialGradient><circle cx="8" cy="8" fill="url(#a)" r="7"/></svg>
 diff --git a/editor/icons/icon_blob_shadow.svg b/editor/icons/icon_blob_shadow.svg
 new file mode 100644
+index 0000000000..b274bb7079
 --- /dev/null
 +++ b/editor/icons/icon_blob_shadow.svg
 @@ -0,0 +1 @@
 +<svg height="16" viewBox="0 0 16 16" width="16" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"><radialGradient id="a" cx="8" cy="8" gradientUnits="userSpaceOnUse" r="7"><stop offset=".28" stop-color="#fc9c9c"/><stop offset="1" stop-color="#fc9c9c" stop-opacity="0"/></radialGradient><circle cx="8" cy="8" fill="url(#a)" r="7"/></svg>
 diff --git a/editor/plugins/spatial_editor_plugin.cpp b/editor/plugins/spatial_editor_plugin.cpp
+index 1046e68d36..b5109fa7da 100644
 --- a/editor/plugins/spatial_editor_plugin.cpp
 +++ b/editor/plugins/spatial_editor_plugin.cpp
-@@ -6933,6 +6933,7 @@
+@@ -6933,6 +6933,7 @@ void SpatialEditor::_register_all_gizmos() {
  	add_gizmo_plugin(Ref<NavigationMeshSpatialGizmoPlugin>(memnew(NavigationMeshSpatialGizmoPlugin)));
  	add_gizmo_plugin(Ref<JointSpatialGizmoPlugin>(memnew(JointSpatialGizmoPlugin)));
  	add_gizmo_plugin(Ref<PhysicalBoneSpatialGizmoPlugin>(memnew(PhysicalBoneSpatialGizmoPlugin)));
@@ -1550,6 +1575,7 @@ diff --git a/editor/plugins/spatial_editor_plugin.cpp b/editor/plugins/spatial_e
  
  void SpatialEditor::_bind_methods() {
 diff --git a/editor/spatial_editor_gizmos.cpp b/editor/spatial_editor_gizmos.cpp
+index a4b7f25d43..708c4cd36f 100644
 --- a/editor/spatial_editor_gizmos.cpp
 +++ b/editor/spatial_editor_gizmos.cpp
 @@ -34,6 +34,7 @@
@@ -1560,7 +1586,7 @@ diff --git a/editor/spatial_editor_gizmos.cpp b/editor/spatial_editor_gizmos.cpp
  #include "scene/3d/collision_polygon.h"
  #include "scene/3d/collision_shape.h"
  #include "scene/3d/cpu_particles.h"
-@@ -5532,3 +5533,124 @@
+@@ -5532,3 +5533,124 @@ OccluderSpatialGizmo::OccluderSpatialGizmo(Occluder *p_occluder) {
  	_color_poly_back = EDITOR_DEF("editors/3d_gizmos/gizmo_colors/occluder_polygon_back", Color(0.85, 0.1, 1.0, 0.3));
  	_color_hole = EDITOR_DEF("editors/3d_gizmos/gizmo_colors/occluder_hole", Color(0.0, 1.0, 1.0, 0.3));
  }
@@ -1686,9 +1712,10 @@ diff --git a/editor/spatial_editor_gizmos.cpp b/editor/spatial_editor_gizmos.cpp
 +	}
 +}
 diff --git a/editor/spatial_editor_gizmos.h b/editor/spatial_editor_gizmos.h
+index de3b9c8cf2..406d00093b 100644
 --- a/editor/spatial_editor_gizmos.h
 +++ b/editor/spatial_editor_gizmos.h
-@@ -575,4 +575,22 @@
+@@ -575,4 +575,22 @@ public:
  	OccluderGizmoPlugin();
  };
  
@@ -1712,9 +1739,10 @@ diff --git a/editor/spatial_editor_gizmos.h b/editor/spatial_editor_gizmos.h
 +
  #endif // SPATIAL_EDITOR_GIZMOS_H
 diff --git a/gles_builders.py b/gles_builders.py
+index a8effa75fd..4d1a6232b7 100644
 --- a/gles_builders.py
 +++ b/gles_builders.py
-@@ -221,7 +221,8 @@
+@@ -221,7 +221,8 @@ def build_legacygl_header(filename, include, class_suffix, output_attribs, gles2
          fd.write("\tenum Conditionals {\n")
          for x in header_data.conditionals:
              fd.write("\t\t" + x.upper() + ",\n")
@@ -1726,6 +1754,7 @@ diff --git a/gles_builders.py b/gles_builders.py
          fd.write("\tenum Uniforms {\n")
 diff --git a/scene/3d/blob_focus.cpp b/scene/3d/blob_focus.cpp
 new file mode 100644
+index 0000000000..672bde7c7d
 --- /dev/null
 +++ b/scene/3d/blob_focus.cpp
 @@ -0,0 +1,77 @@
@@ -1808,6 +1837,7 @@ new file mode 100644
 +}
 diff --git a/scene/3d/blob_focus.h b/scene/3d/blob_focus.h
 new file mode 100644
+index 0000000000..0278fd85b1
 --- /dev/null
 +++ b/scene/3d/blob_focus.h
 @@ -0,0 +1,48 @@
@@ -1861,6 +1891,7 @@ new file mode 100644
 +#endif // BLOB_FOCUS_H
 diff --git a/scene/3d/blob_shadow.cpp b/scene/3d/blob_shadow.cpp
 new file mode 100644
+index 0000000000..8c16bb1e8e
 --- /dev/null
 +++ b/scene/3d/blob_shadow.cpp
 @@ -0,0 +1,191 @@
@@ -2057,6 +2088,7 @@ new file mode 100644
 +}
 diff --git a/scene/3d/blob_shadow.h b/scene/3d/blob_shadow.h
 new file mode 100644
+index 0000000000..81d894ff0e
 --- /dev/null
 +++ b/scene/3d/blob_shadow.h
 @@ -0,0 +1,93 @@
@@ -2154,6 +2186,7 @@ new file mode 100644
 +
 +#endif // BLOB_SHADOW_H
 diff --git a/scene/3d/light.cpp b/scene/3d/light.cpp
+index 495555e92b..f7ecfae48e 100644
 --- a/scene/3d/light.cpp
 +++ b/scene/3d/light.cpp
 @@ -33,6 +33,7 @@
@@ -2164,7 +2197,7 @@ diff --git a/scene/3d/light.cpp b/scene/3d/light.cpp
  
  void Light::set_param(Param p_param, float p_value) {
  	ERR_FAIL_INDEX(p_param, PARAM_MAX);
-@@ -51,6 +52,25 @@
+@@ -51,6 +52,25 @@ void Light::set_param(Param p_param, float p_value) {
  			_change_notify("spot_range");
  		}
  	}
@@ -2190,7 +2223,7 @@ diff --git a/scene/3d/light.cpp b/scene/3d/light.cpp
  }
  
  float Light::get_param(Param p_param) const {
-@@ -144,6 +164,82 @@
+@@ -144,6 +164,82 @@ Light::BakeMode Light::get_bake_mode() const {
  	return bake_mode;
  }
  
@@ -2273,7 +2306,7 @@ diff --git a/scene/3d/light.cpp b/scene/3d/light.cpp
  void Light::owner_changed_notify() {
  	// For cases where owner changes _after_ entering tree (as example, editor editing).
  	_update_visibility();
-@@ -170,18 +266,33 @@
+@@ -170,18 +266,33 @@ void Light::_update_visibility() {
  	}
  #endif
  
@@ -2314,7 +2347,7 @@ diff --git a/scene/3d/light.cpp b/scene/3d/light.cpp
  	}
  }
  
-@@ -232,6 +343,15 @@
+@@ -232,6 +343,15 @@ void Light::_bind_methods() {
  	ClassDB::bind_method(D_METHOD("set_bake_mode", "bake_mode"), &Light::set_bake_mode);
  	ClassDB::bind_method(D_METHOD("get_bake_mode"), &Light::get_bake_mode);
  
@@ -2330,7 +2363,7 @@ diff --git a/scene/3d/light.cpp b/scene/3d/light.cpp
  	ADD_GROUP("Light", "light_");
  	ADD_PROPERTY(PropertyInfo(Variant::COLOR, "light_color", PROPERTY_HINT_COLOR_NO_ALPHA), "set_color", "get_color");
  	ADD_PROPERTYI(PropertyInfo(Variant::REAL, "light_energy", PROPERTY_HINT_RANGE, "0,16,0.001,or_greater"), "set_param", "get_param", PARAM_ENERGY);
-@@ -247,6 +367,12 @@
+@@ -247,6 +367,12 @@ void Light::_bind_methods() {
  	ADD_PROPERTYI(PropertyInfo(Variant::REAL, "shadow_bias", PROPERTY_HINT_RANGE, "-10,10,0.001"), "set_param", "get_param", PARAM_SHADOW_BIAS);
  	ADD_PROPERTYI(PropertyInfo(Variant::REAL, "shadow_contact", PROPERTY_HINT_RANGE, "0,10,0.001"), "set_param", "get_param", PARAM_CONTACT_SHADOW_SIZE);
  	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "shadow_reverse_cull_face"), "set_shadow_reverse_cull_face", "get_shadow_reverse_cull_face");
@@ -2343,7 +2376,7 @@ diff --git a/scene/3d/light.cpp b/scene/3d/light.cpp
  	ADD_GROUP("Editor", "");
  	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "editor_only"), "set_editor_only", "is_editor_only");
  	ADD_GROUP("", "");
-@@ -270,6 +396,11 @@
+@@ -270,6 +396,11 @@ void Light::_bind_methods() {
  	BIND_ENUM_CONSTANT(PARAM_SHADOW_FADE_START);
  	BIND_ENUM_CONSTANT(PARAM_MAX);
  
@@ -2355,7 +2388,7 @@ diff --git a/scene/3d/light.cpp b/scene/3d/light.cpp
  	BIND_ENUM_CONSTANT(BAKE_DISABLED);
  	BIND_ENUM_CONSTANT(BAKE_INDIRECT);
  	BIND_ENUM_CONSTANT(BAKE_ALL);
-@@ -293,10 +424,6 @@
+@@ -293,10 +424,6 @@ Light::Light(VisualServer::LightType p_type) {
  
  	VS::get_singleton()->instance_set_base(get_instance(), light);
  
@@ -2366,7 +2399,7 @@ diff --git a/scene/3d/light.cpp b/scene/3d/light.cpp
  	set_color(Color(1, 1, 1, 1));
  	set_shadow(false);
  	set_negative(false);
-@@ -319,10 +446,16 @@
+@@ -319,10 +446,16 @@ Light::Light(VisualServer::LightType p_type) {
  	set_param(PARAM_SHADOW_NORMAL_BIAS, 0.0);
  	set_param(PARAM_SHADOW_BIAS, 0.15);
  	set_disable_scale(true);
@@ -2384,7 +2417,7 @@ diff --git a/scene/3d/light.cpp b/scene/3d/light.cpp
  	ERR_PRINT("Light should not be instanced directly; use the DirectionalLight, OmniLight or SpotLight subtypes instead.");
  }
  
-@@ -332,6 +465,10 @@
+@@ -332,6 +465,10 @@ Light::~Light() {
  	if (light.is_valid()) {
  		VisualServer::get_singleton()->free(light);
  	}
@@ -2396,9 +2429,10 @@ diff --git a/scene/3d/light.cpp b/scene/3d/light.cpp
  /////////////////////////////////////////
  
 diff --git a/scene/3d/light.h b/scene/3d/light.h
+index 9ad3f37b4a..4b14fe25ca 100644
 --- a/scene/3d/light.h
 +++ b/scene/3d/light.h
-@@ -61,6 +61,13 @@
+@@ -61,6 +61,13 @@ public:
  		PARAM_MAX = VS::LIGHT_PARAM_MAX
  	};
  
@@ -2412,7 +2446,7 @@ diff --git a/scene/3d/light.h b/scene/3d/light.h
  	enum BakeMode {
  		BAKE_DISABLED,
  		BAKE_INDIRECT,
-@@ -71,14 +78,23 @@
+@@ -71,14 +78,23 @@ private:
  	Color color;
  	float param[PARAM_MAX];
  	Color shadow_color;
@@ -2443,7 +2477,7 @@ diff --git a/scene/3d/light.h b/scene/3d/light.h
  
  	// bind helpers
  
-@@ -86,6 +102,7 @@
+@@ -86,6 +102,7 @@ private:
  
  protected:
  	RID light;
@@ -2451,7 +2485,7 @@ diff --git a/scene/3d/light.h b/scene/3d/light.h
  
  	static void _bind_methods();
  	void _notification(int p_what);
-@@ -123,6 +140,15 @@
+@@ -123,6 +140,15 @@ public:
  	void set_bake_mode(BakeMode p_mode);
  	BakeMode get_bake_mode() const;
  
@@ -2467,7 +2501,7 @@ diff --git a/scene/3d/light.h b/scene/3d/light.h
  	virtual AABB get_aabb() const;
  	virtual PoolVector<Face3> get_faces(uint32_t p_usage_flags) const;
  
-@@ -131,6 +157,7 @@
+@@ -131,6 +157,7 @@ public:
  };
  
  VARIANT_ENUM_CAST(Light::Param);
@@ -2476,6 +2510,7 @@ diff --git a/scene/3d/light.h b/scene/3d/light.h
  
  class DirectionalLight : public Light {
 diff --git a/scene/register_scene_types.cpp b/scene/register_scene_types.cpp
+index 3d2f67a6c2..00546410ef 100644
 --- a/scene/register_scene_types.cpp
 +++ b/scene/register_scene_types.cpp
 @@ -183,6 +183,8 @@
@@ -2487,7 +2522,7 @@ diff --git a/scene/register_scene_types.cpp b/scene/register_scene_types.cpp
  #include "scene/3d/bone_attachment.h"
  #include "scene/3d/camera.h"
  #include "scene/3d/collision_polygon.h"
-@@ -469,6 +471,8 @@
+@@ -469,6 +471,8 @@ void register_scene_types() {
  	ClassDB::register_class<Occluder>();
  	ClassDB::register_class<Portal>();
  	ClassDB::register_class<MergeGroup>();
@@ -2497,9 +2532,10 @@ diff --git a/scene/register_scene_types.cpp b/scene/register_scene_types.cpp
  	ClassDB::register_class<RootMotionView>();
  	ClassDB::set_class_enabled("RootMotionView", false); //disabled by default, enabled by editor
 diff --git a/scene/resources/material.cpp b/scene/resources/material.cpp
+index 1c9b4319ac..ee3014da48 100644
 --- a/scene/resources/material.cpp
 +++ b/scene/resources/material.cpp
-@@ -488,6 +488,9 @@
+@@ -488,6 +488,9 @@ void Material3D::_update_shader() {
  	if (flags[FLAG_DONT_RECEIVE_SHADOWS]) {
  		code += ",shadows_disabled";
  	}
@@ -2509,7 +2545,7 @@ diff --git a/scene/resources/material.cpp b/scene/resources/material.cpp
  	if (flags[FLAG_DISABLE_AMBIENT_LIGHT]) {
  		code += ",ambient_light_disabled";
  	}
-@@ -2118,6 +2121,7 @@
+@@ -2118,6 +2121,7 @@ void Material3D::_bind_methods() {
  	ADD_PROPERTYI(PropertyInfo(Variant::BOOL, "flags_fixed_size"), "set_flag", "get_flag", FLAG_FIXED_SIZE);
  	ADD_PROPERTYI(PropertyInfo(Variant::BOOL, "flags_albedo_tex_force_srgb"), "set_flag", "get_flag", FLAG_ALBEDO_TEXTURE_FORCE_SRGB);
  	ADD_PROPERTYI(PropertyInfo(Variant::BOOL, "flags_do_not_receive_shadows"), "set_flag", "get_flag", FLAG_DONT_RECEIVE_SHADOWS);
@@ -2517,7 +2553,7 @@ diff --git a/scene/resources/material.cpp b/scene/resources/material.cpp
  	ADD_PROPERTYI(PropertyInfo(Variant::BOOL, "flags_disable_ambient_light"), "set_flag", "get_flag", FLAG_DISABLE_AMBIENT_LIGHT);
  	ADD_PROPERTYI(PropertyInfo(Variant::BOOL, "flags_ensure_correct_normals"), "set_flag", "get_flag", FLAG_ENSURE_CORRECT_NORMALS);
  	ADD_PROPERTYI(PropertyInfo(Variant::BOOL, "flags_albedo_tex_msdf"), "set_flag", "get_flag", FLAG_ALBEDO_TEXTURE_SDF);
-@@ -2320,6 +2324,7 @@
+@@ -2320,6 +2324,7 @@ void Material3D::_bind_methods() {
  	BIND_ENUM_CONSTANT(FLAG_TRIPLANAR_USE_WORLD);
  	BIND_ENUM_CONSTANT(FLAG_ALBEDO_TEXTURE_FORCE_SRGB);
  	BIND_ENUM_CONSTANT(FLAG_DONT_RECEIVE_SHADOWS);
@@ -2525,7 +2561,7 @@ diff --git a/scene/resources/material.cpp b/scene/resources/material.cpp
  	BIND_ENUM_CONSTANT(FLAG_DISABLE_AMBIENT_LIGHT);
  	BIND_ENUM_CONSTANT(FLAG_ENSURE_CORRECT_NORMALS);
  	BIND_ENUM_CONSTANT(FLAG_USE_SHADOW_TO_OPACITY);
-@@ -2425,7 +2430,7 @@
+@@ -2425,7 +2430,7 @@ Material3D::Material3D(bool p_orm) :
  	detail_blend_mode = BLEND_MODE_MIX;
  	depth_draw_mode = DEPTH_DRAW_OPAQUE_ONLY;
  	cull_mode = CULL_BACK;
@@ -2535,9 +2571,10 @@ diff --git a/scene/resources/material.cpp b/scene/resources/material.cpp
  	}
  
 diff --git a/scene/resources/material.h b/scene/resources/material.h
+index 2e0b2e25b9..6dc4332962 100644
 --- a/scene/resources/material.h
 +++ b/scene/resources/material.h
-@@ -172,7 +172,7 @@
+@@ -172,7 +172,7 @@ public:
  		CULL_DISABLED
  	};
  
@@ -2546,7 +2583,7 @@ diff --git a/scene/resources/material.h b/scene/resources/material.h
  		FLAG_UNSHADED,
  		FLAG_USE_VERTEX_LIGHTING,
  		FLAG_DISABLE_DEPTH_TEST,
-@@ -193,6 +193,7 @@
+@@ -193,6 +193,7 @@ public:
  		FLAG_DISABLE_AMBIENT_LIGHT,
  		FLAG_USE_SHADOW_TO_OPACITY,
  		FLAG_ALBEDO_TEXTURE_SDF,
@@ -2554,7 +2591,7 @@ diff --git a/scene/resources/material.h b/scene/resources/material.h
  		FLAG_MAX
  	};
  
-@@ -246,13 +247,14 @@
+@@ -246,13 +247,14 @@ public:
  
  private:
  	union MaterialKey {
@@ -2570,7 +2607,7 @@ diff --git a/scene/resources/material.h b/scene/resources/material.h
  			uint64_t detail_blend_mode : 2;
  			uint64_t diffuse_mode : 3;
  			uint64_t specular_mode : 3;
-@@ -265,7 +267,7 @@
+@@ -265,7 +267,7 @@ private:
  			uint64_t emission_op : 1;
  			uint64_t texture_metallic : 1;
  			uint64_t texture_roughness : 1;
@@ -2579,7 +2616,7 @@ diff --git a/scene/resources/material.h b/scene/resources/material.h
  		};
  
  		uint64_t key;
-@@ -296,7 +298,7 @@
+@@ -296,7 +298,7 @@ private:
  		mk.blend_mode = blend_mode;
  		mk.depth_draw_mode = depth_draw_mode;
  		mk.cull_mode = cull_mode;
@@ -2589,9 +2626,10 @@ diff --git a/scene/resources/material.h b/scene/resources/material.h
  				mk.flags |= ((uint64_t)1 << i);
  			}
 diff --git a/servers/visual/shader_types.cpp b/servers/visual/shader_types.cpp
+index 0aace25a4e..3a5dca5a96 100644
 --- a/servers/visual/shader_types.cpp
 +++ b/servers/visual/shader_types.cpp
-@@ -108,6 +108,7 @@
+@@ -108,6 +108,7 @@ ShaderTypes::ShaderTypes() {
  	shader_modes[VS::SHADER_SPATIAL].functions["fragment"].built_ins["RIM_TINT"] = ShaderLanguage::TYPE_FLOAT;
  	shader_modes[VS::SHADER_SPATIAL].functions["fragment"].built_ins["CLEARCOAT"] = ShaderLanguage::TYPE_FLOAT;
  	shader_modes[VS::SHADER_SPATIAL].functions["fragment"].built_ins["CLEARCOAT_GLOSS"] = ShaderLanguage::TYPE_FLOAT;
@@ -2599,7 +2637,7 @@ diff --git a/servers/visual/shader_types.cpp b/servers/visual/shader_types.cpp
  	shader_modes[VS::SHADER_SPATIAL].functions["fragment"].built_ins["ANISOTROPY"] = ShaderLanguage::TYPE_FLOAT;
  	shader_modes[VS::SHADER_SPATIAL].functions["fragment"].built_ins["ANISOTROPY_FLOW"] = ShaderLanguage::TYPE_VEC2;
  	shader_modes[VS::SHADER_SPATIAL].functions["fragment"].built_ins["SSS_STRENGTH"] = ShaderLanguage::TYPE_FLOAT;
-@@ -202,6 +203,7 @@
+@@ -202,6 +203,7 @@ ShaderTypes::ShaderTypes() {
  	shader_modes[VS::SHADER_SPATIAL].modes.push_back("ensure_correct_normals");
  
  	shader_modes[VS::SHADER_SPATIAL].modes.push_back("shadows_disabled");
@@ -2609,6 +2647,7 @@ diff --git a/servers/visual/shader_types.cpp b/servers/visual/shader_types.cpp
  
 diff --git a/servers/visual/visual_server_blob_shadows.cpp b/servers/visual/visual_server_blob_shadows.cpp
 new file mode 100644
+index 0000000000..fe3493c2c7
 --- /dev/null
 +++ b/servers/visual/visual_server_blob_shadows.cpp
 @@ -0,0 +1,927 @@
@@ -3541,6 +3580,7 @@ new file mode 100644
 +}
 diff --git a/servers/visual/visual_server_blob_shadows.h b/servers/visual/visual_server_blob_shadows.h
 new file mode 100644
+index 0000000000..de6d2b2aec
 --- /dev/null
 +++ b/servers/visual/visual_server_blob_shadows.h
 @@ -0,0 +1,381 @@
@@ -3926,9 +3966,10 @@ new file mode 100644
 +
 +#endif // VISUAL_SERVER_BLOB_SHADOWS_H
 diff --git a/servers/visual/visual_server_raster.h b/servers/visual/visual_server_raster.h
+index f6115cde4a..7ebe8467d3 100644
 --- a/servers/visual/visual_server_raster.h
 +++ b/servers/visual/visual_server_raster.h
-@@ -478,6 +478,7 @@
+@@ -478,6 +478,7 @@ public:
  	BIND4(camera_set_orthogonal, RID, float, float, float)
  	BIND5(camera_set_frustum, RID, float, Vector2, float, float)
  	BIND2(camera_set_transform, RID, const Transform &)
@@ -3936,7 +3977,7 @@ diff --git a/servers/visual/visual_server_raster.h b/servers/visual/visual_serve
  	BIND2(camera_set_cull_mask, RID, uint32_t)
  	BIND2(camera_set_environment, RID, RID)
  	BIND2(camera_set_use_vertical_aspect, RID, bool)
-@@ -604,6 +605,24 @@
+@@ -604,6 +605,24 @@ public:
  
  	BIND2(instance_set_extra_visibility_margin, RID, real_t)
  
@@ -3962,6 +4003,7 @@ diff --git a/servers/visual/visual_server_raster.h b/servers/visual/visual_serve
  
  	BIND2(instance_set_portal_mode, RID, InstancePortalMode)
 diff --git a/servers/visual/visual_server_scene.cpp b/servers/visual/visual_server_scene.cpp
+index 9b562335d6..72e4064ef0 100644
 --- a/servers/visual/visual_server_scene.cpp
 +++ b/servers/visual/visual_server_scene.cpp
 @@ -42,6 +42,7 @@
@@ -3972,7 +4014,7 @@ diff --git a/servers/visual/visual_server_scene.cpp b/servers/visual/visual_serv
  	return camera_owner.make_rid(camera);
  }
  
-@@ -73,6 +74,13 @@
+@@ -73,6 +74,13 @@ void VisualServerScene::camera_set_frustum(RID p_camera, float p_size, Vector2 p
  	camera->zfar = p_z_far;
  }
  
@@ -3986,7 +4028,7 @@ diff --git a/servers/visual/visual_server_scene.cpp b/servers/visual/visual_serv
  void VisualServerScene::camera_set_transform(RID p_camera, const Transform &p_transform) {
  	Camera *camera = camera_owner.get(p_camera);
  	ERR_FAIL_COND(!camera);
-@@ -618,6 +626,7 @@
+@@ -618,6 +626,7 @@ void VisualServerScene::instance_set_base(RID p_instance, RID p_base) {
  				if (instance->base_type == VS::INSTANCE_MESH) {
  					instance->blend_values.resize(VSG::storage->mesh_get_blend_shape_count(p_base));
  				}
@@ -3994,7 +4036,7 @@ diff --git a/servers/visual/visual_server_scene.cpp b/servers/visual/visual_serv
  			} break;
  			case VS::INSTANCE_REFLECTION_PROBE: {
  				InstanceReflectionProbeData *reflection_probe = memnew(InstanceReflectionProbeData);
-@@ -1286,6 +1295,158 @@
+@@ -1286,6 +1295,158 @@ bool VisualServerScene::_instance_get_transformed_aabb(RID p_instance, AABB &r_a
  	return true;
  }
  
@@ -4153,7 +4195,7 @@ diff --git a/servers/visual/visual_server_scene.cpp b/servers/visual/visual_serv
  // the portal has to be associated with a scenario, this is assumed to be
  // the same scenario as the portal node
  RID VisualServerScene::portal_create() {
-@@ -2798,6 +2959,8 @@
+@@ -2798,6 +2959,8 @@ void VisualServerScene::render_camera(RID p_camera, RID p_scenario, Size2 p_view
  		} break;
  	}
  
@@ -4162,7 +4204,7 @@ diff --git a/servers/visual/visual_server_scene.cpp b/servers/visual/visual_serv
  	_prepare_scene(camera->transform, camera_matrix, ortho, camera->env, camera->visible_layers, p_scenario, p_shadow_atlas, RID(), camera->previous_room_id_hint);
  	_render_scene(camera->transform, camera_matrix, 0, ortho, camera->env, p_scenario, p_shadow_atlas, RID(), -1);
  #endif
-@@ -2818,6 +2981,8 @@
+@@ -2818,6 +2981,8 @@ void VisualServerScene::render_camera(Ref<ARVRInterface> &p_interface, ARVRInter
  	Transform world_origin = ARVRServer::get_singleton()->get_world_origin();
  	Transform cam_transform = p_interface->get_transform_for_eye(p_eye, world_origin);
  
@@ -4171,7 +4213,7 @@ diff --git a/servers/visual/visual_server_scene.cpp b/servers/visual/visual_serv
  	// For stereo render we only prepare for our left eye and then reuse the outcome for our right eye
  	if (p_eye == ARVRInterface::EYE_LEFT) {
  		///@TODO possibly move responsibility for this into our ARVRServer or ARVRInterface?
-@@ -4345,6 +4510,14 @@
+@@ -4345,6 +4510,14 @@ void VisualServerScene::render_probes() {
  	}
  }
  
@@ -4186,7 +4228,7 @@ diff --git a/servers/visual/visual_server_scene.cpp b/servers/visual/visual_serv
  void VisualServerScene::_update_dirty_instance(Instance *p_instance) {
  	if (p_instance->update_aabb) {
  		_update_instance_aabb(p_instance);
-@@ -4522,11 +4695,17 @@
+@@ -4522,11 +4695,17 @@ void VisualServerScene::update_dirty_instances() {
  	if (scenario) {
  		scenario->sps->update();
  	}
@@ -4204,7 +4246,7 @@ diff --git a/servers/visual/visual_server_scene.cpp b/servers/visual/visual_serv
  		camera_owner.free(p_rid);
  		memdelete(camera);
  	} else if (scenario_owner.owns(p_rid)) {
-@@ -4585,6 +4764,27 @@
+@@ -4585,6 +4764,27 @@ bool VisualServerScene::free(RID p_rid) {
  		occ_res->destroy(_portal_resources);
  		occluder_resource_owner.free(p_rid);
  		memdelete(occ_res);
@@ -4233,6 +4275,7 @@ diff --git a/servers/visual/visual_server_scene.cpp b/servers/visual/visual_serv
  		return false;
  	}
 diff --git a/servers/visual/visual_server_scene.h b/servers/visual/visual_server_scene.h
+index 24906a014c..bc17c4940d 100644
 --- a/servers/visual/visual_server_scene.h
 +++ b/servers/visual/visual_server_scene.h
 @@ -42,6 +42,7 @@
@@ -4243,7 +4286,7 @@ diff --git a/servers/visual/visual_server_scene.h b/servers/visual/visual_server
  
  class VisualServerLightCuller;
  
-@@ -88,6 +89,9 @@
+@@ -88,6 +89,9 @@ public:
  
  		int32_t previous_room_id_hint;
  
@@ -4253,7 +4296,7 @@ diff --git a/servers/visual/visual_server_scene.h b/servers/visual/visual_server
  		Camera() {
  			visible_layers = 0xFFFFFFFF;
  			fov = 70;
-@@ -108,6 +112,7 @@
+@@ -108,6 +112,7 @@ public:
  	virtual void camera_set_orthogonal(RID p_camera, float p_size, float p_z_near, float p_z_far);
  	virtual void camera_set_frustum(RID p_camera, float p_size, Vector2 p_offset, float p_z_near, float p_z_far);
  	virtual void camera_set_transform(RID p_camera, const Transform &p_transform);
@@ -4261,7 +4304,7 @@ diff --git a/servers/visual/visual_server_scene.h b/servers/visual/visual_server
  	virtual void camera_set_cull_mask(RID p_camera, uint32_t p_layers);
  	virtual void camera_set_environment(RID p_camera, RID p_env);
  	virtual void camera_set_use_vertical_aspect(RID p_camera, bool p_enable);
-@@ -467,6 +472,8 @@
+@@ -467,6 +472,8 @@ public:
  		RID instance;
  		uint64_t last_version;
  		List<Instance *>::Element *D; // directional light in scenario
@@ -4270,7 +4313,7 @@ diff --git a/servers/visual/visual_server_scene.h b/servers/visual/visual_server
  		List<PairInfo> geometries;
  
  		Instance *baked_light;
-@@ -731,6 +738,50 @@
+@@ -731,6 +738,50 @@ private:
  	void _ghost_destroy_occlusion_rep(Ghost *p_ghost);
  
  public:
@@ -4321,7 +4364,7 @@ diff --git a/servers/visual/visual_server_scene.h b/servers/visual/visual_server
  	/* PORTALS API */
  
  	struct Portal : RID_Data {
-@@ -946,6 +997,7 @@
+@@ -946,6 +997,7 @@ private:
  	bool _use_bvh;
  	VisualServerCallbacks *_visual_server_callbacks;
  	PortalResources _portal_resources;
@@ -4330,9 +4373,10 @@ diff --git a/servers/visual/visual_server_scene.h b/servers/visual/visual_server
  public:
  	VisualServerScene();
 diff --git a/servers/visual/visual_server_wrap_mt.h b/servers/visual/visual_server_wrap_mt.h
+index 12fffd3ef0..10a31b4e90 100644
 --- a/servers/visual/visual_server_wrap_mt.h
 +++ b/servers/visual/visual_server_wrap_mt.h
-@@ -395,6 +395,7 @@
+@@ -395,6 +395,7 @@ public:
  	FUNC4(camera_set_orthogonal, RID, float, float, float)
  	FUNC5(camera_set_frustum, RID, float, Vector2, float, float)
  	FUNC2(camera_set_transform, RID, const Transform &)
@@ -4340,7 +4384,7 @@ diff --git a/servers/visual/visual_server_wrap_mt.h b/servers/visual/visual_serv
  	FUNC2(camera_set_cull_mask, RID, uint32_t)
  	FUNC2(camera_set_environment, RID, RID)
  	FUNC2(camera_set_use_vertical_aspect, RID, bool)
-@@ -515,6 +516,24 @@
+@@ -515,6 +516,24 @@ public:
  
  	FUNC2(instance_set_extra_visibility_margin, RID, real_t)
  
@@ -4366,9 +4410,10 @@ diff --git a/servers/visual/visual_server_wrap_mt.h b/servers/visual/visual_serv
  
  	FUNC2(instance_set_portal_mode, RID, InstancePortalMode)
 diff --git a/servers/visual_server.cpp b/servers/visual_server.cpp
+index 094b03ee30..3fea545cbe 100644
 --- a/servers/visual_server.cpp
 +++ b/servers/visual_server.cpp
-@@ -2096,6 +2096,7 @@
+@@ -2096,6 +2096,7 @@ void VisualServer::_bind_methods() {
  	ClassDB::bind_method(D_METHOD("camera_set_orthogonal", "camera", "size", "z_near", "z_far"), &VisualServer::camera_set_orthogonal);
  	ClassDB::bind_method(D_METHOD("camera_set_frustum", "camera", "size", "offset", "z_near", "z_far"), &VisualServer::camera_set_frustum);
  	ClassDB::bind_method(D_METHOD("camera_set_transform", "camera", "transform"), &VisualServer::camera_set_transform);
@@ -4376,7 +4421,7 @@ diff --git a/servers/visual_server.cpp b/servers/visual_server.cpp
  	ClassDB::bind_method(D_METHOD("camera_set_cull_mask", "camera", "layers"), &VisualServer::camera_set_cull_mask);
  	ClassDB::bind_method(D_METHOD("camera_set_environment", "camera", "env"), &VisualServer::camera_set_environment);
  	ClassDB::bind_method(D_METHOD("camera_set_use_vertical_aspect", "camera", "enable"), &VisualServer::camera_set_use_vertical_aspect);
-@@ -2191,6 +2192,11 @@
+@@ -2191,6 +2192,11 @@ void VisualServer::_bind_methods() {
  	ClassDB::bind_method(D_METHOD("instances_cull_aabb", "aabb", "scenario"), &VisualServer::_instances_cull_aabb_bind, DEFVAL(RID()));
  	ClassDB::bind_method(D_METHOD("instances_cull_ray", "from", "to", "scenario"), &VisualServer::_instances_cull_ray_bind, DEFVAL(RID()));
  	ClassDB::bind_method(D_METHOD("instances_cull_convex", "convex", "scenario"), &VisualServer::_instances_cull_convex_bind, DEFVAL(RID()));
@@ -4389,9 +4434,10 @@ diff --git a/servers/visual_server.cpp b/servers/visual_server.cpp
  	ClassDB::bind_method(D_METHOD("canvas_create"), &VisualServer::canvas_create);
  	ClassDB::bind_method(D_METHOD("canvas_set_item_mirroring", "canvas", "item", "mirroring"), &VisualServer::canvas_set_item_mirroring);
 diff --git a/servers/visual_server.h b/servers/visual_server.h
+index c89da9c8bf..19855fe09a 100644
 --- a/servers/visual_server.h
 +++ b/servers/visual_server.h
-@@ -460,6 +460,13 @@
+@@ -460,6 +460,13 @@ public:
  		LIGHT_PARAM_MAX
  	};
  
@@ -4405,7 +4451,7 @@ diff --git a/servers/visual_server.h b/servers/visual_server.h
  	virtual RID directional_light_create() = 0;
  	virtual RID omni_light_create() = 0;
  	virtual RID spot_light_create() = 0;
-@@ -638,6 +645,7 @@
+@@ -638,6 +645,7 @@ public:
  	virtual void camera_set_orthogonal(RID p_camera, float p_size, float p_z_near, float p_z_far) = 0;
  	virtual void camera_set_frustum(RID p_camera, float p_size, Vector2 p_offset, float p_z_near, float p_z_far) = 0;
  	virtual void camera_set_transform(RID p_camera, const Transform &p_transform) = 0;
@@ -4413,7 +4459,7 @@ diff --git a/servers/visual_server.h b/servers/visual_server.h
  	virtual void camera_set_cull_mask(RID p_camera, uint32_t p_layers) = 0;
  	virtual void camera_set_environment(RID p_camera, RID p_env) = 0;
  	virtual void camera_set_use_vertical_aspect(RID p_camera, bool p_enable) = 0;
-@@ -920,6 +928,24 @@
+@@ -920,6 +928,24 @@ public:
  
  	virtual void instance_set_extra_visibility_margin(RID p_instance, real_t p_margin) = 0;
  
@@ -4438,7 +4484,7 @@ diff --git a/servers/visual_server.h b/servers/visual_server.h
  	/* PORTALS API */
  
  	enum InstancePortalMode {
-@@ -1276,6 +1302,7 @@
+@@ -1276,6 +1302,7 @@ VARIANT_ENUM_CAST(VisualServer::PrimitiveType);
  VARIANT_ENUM_CAST(VisualServer::BlendShapeMode);
  VARIANT_ENUM_CAST(VisualServer::LightType);
  VARIANT_ENUM_CAST(VisualServer::LightParam);

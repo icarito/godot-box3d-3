@@ -1,5 +1,5 @@
 diff --git a/platform/android/java/lib/src/org/godotengine/godot/Godot.java b/platform/android/java/lib/src/org/godotengine/godot/Godot.java
-index ea1e994..8fcf64d 100644
+index ea1e994273..8fcf64d6f2 100644
 --- a/platform/android/java/lib/src/org/godotengine/godot/Godot.java
 +++ b/platform/android/java/lib/src/org/godotengine/godot/Godot.java
 @@ -544,6 +544,18 @@ public class Godot extends Fragment implements SensorEventListener, IDownloaderC
@@ -22,7 +22,7 @@ index ea1e994..8fcf64d 100644
  		if (godotHost != null) {
  			godotHost.onGodotRestartRequested(this);
 diff --git a/platform/android/java/lib/src/org/godotengine/godot/input/GodotInputHandler.java b/platform/android/java/lib/src/org/godotengine/godot/input/GodotInputHandler.java
-index 8f29e1c..93a9031 100644
+index 8f29e1ccbf..93a9031748 100644
 --- a/platform/android/java/lib/src/org/godotengine/godot/input/GodotInputHandler.java
 +++ b/platform/android/java/lib/src/org/godotengine/godot/input/GodotInputHandler.java
 @@ -360,6 +360,19 @@ public class GodotInputHandler implements InputManager.InputDeviceListener {
@@ -47,7 +47,7 @@ index 8f29e1c..93a9031 100644
  		// Check if the device has not been already removed
 diff --git a/platform/android/java/lib/src/org/godotengine/godot/input/JoypadVibrator.java b/platform/android/java/lib/src/org/godotengine/godot/input/JoypadVibrator.java
 new file mode 100644
-index 0000000..ce5f5b2
+index 0000000000..ce5f5b270b
 --- /dev/null
 +++ b/platform/android/java/lib/src/org/godotengine/godot/input/JoypadVibrator.java
 @@ -0,0 +1,117 @@
@@ -169,7 +169,7 @@ index 0000000..ce5f5b2
 +	}
 +}
 diff --git a/platform/android/java_godot_lib_jni.cpp b/platform/android/java_godot_lib_jni.cpp
-index 9ca1238..e0bb79f 100644
+index 9ca1238cc0..e0bb79f5a5 100644
 --- a/platform/android/java_godot_lib_jni.cpp
 +++ b/platform/android/java_godot_lib_jni.cpp
 @@ -37,6 +37,7 @@
@@ -221,7 +221,7 @@ index 9ca1238..e0bb79f 100644
  	bool should_swap_buffers = false;
  	if (os_android->main_loop_iterate(&should_swap_buffers)) {
 diff --git a/platform/android/java_godot_wrapper.cpp b/platform/android/java_godot_wrapper.cpp
-index c04dc67..a4eda68 100644
+index c04dc6785a..a4eda68d06 100644
 --- a/platform/android/java_godot_wrapper.cpp
 +++ b/platform/android/java_godot_wrapper.cpp
 @@ -77,6 +77,7 @@ GodotJavaWrapper::GodotJavaWrapper(JNIEnv *p_env, jobject p_activity, jobject p_
@@ -248,7 +248,7 @@ index c04dc67..a4eda68 100644
  	if (_create_new_godot_instance) {
  		JNIEnv *env = get_jni_env();
 diff --git a/platform/android/java_godot_wrapper.h b/platform/android/java_godot_wrapper.h
-index 5e49074..4c1afbe 100644
+index 5e49074f76..4c1afbef8f 100644
 --- a/platform/android/java_godot_wrapper.h
 +++ b/platform/android/java_godot_wrapper.h
 @@ -70,6 +70,7 @@ private:

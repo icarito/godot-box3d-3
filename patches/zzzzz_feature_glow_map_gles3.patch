@@ -1,5 +1,5 @@
 diff --git a/doc/classes/Environment.xml b/doc/classes/Environment.xml
-index a82f1a7..9ec7d03 100644
+index a82f1a796c..9ec7d03e99 100644
 --- a/doc/classes/Environment.xml
 +++ b/doc/classes/Environment.xml
 @@ -233,6 +233,15 @@
@@ -19,7 +19,7 @@ index a82f1a7..9ec7d03 100644
  			The glow strength. When using the GLES2 renderer, this should be increased to 1.3 to compensate for the lack of HDR rendering.
  		</member>
 diff --git a/doc/classes/VisualServer.xml b/doc/classes/VisualServer.xml
-index c3f9de9..9682eda 100644
+index c3f9de9152..9682eda4b1 100644
 --- a/doc/classes/VisualServer.xml
 +++ b/doc/classes/VisualServer.xml
 @@ -989,6 +989,15 @@
@@ -39,7 +39,7 @@ index c3f9de9..9682eda 100644
  			<return type="void" />
  			<argument index="0" name="env" type="RID" />
 diff --git a/drivers/dummy/rasterizer_dummy.h b/drivers/dummy/rasterizer_dummy.h
-index 64e4f0b..f22fb94 100644
+index 64e4f0b278..f22fb94f93 100644
 --- a/drivers/dummy/rasterizer_dummy.h
 +++ b/drivers/dummy/rasterizer_dummy.h
 @@ -66,6 +66,7 @@ public:
@@ -51,7 +51,7 @@ index 64e4f0b..f22fb94 100644
  	void environment_set_fog(RID p_env, bool p_enable, float p_begin, float p_end, RID p_gradient_texture) {}
  
 diff --git a/drivers/gles2/rasterizer_scene_gles2.cpp b/drivers/gles2/rasterizer_scene_gles2.cpp
-index e5314d0..71e5cbc 100644
+index e5314d0d1d..71e5cbc43b 100644
 --- a/drivers/gles2/rasterizer_scene_gles2.cpp
 +++ b/drivers/gles2/rasterizer_scene_gles2.cpp
 @@ -848,6 +848,11 @@ void RasterizerSceneGLES2::environment_set_glow(RID p_env, bool p_enable, int p_
@@ -67,7 +67,7 @@ index e5314d0..71e5cbc 100644
  	Environment *env = environment_owner.getornull(p_env);
  	ERR_FAIL_COND(!env);
 diff --git a/drivers/gles2/rasterizer_scene_gles2.h b/drivers/gles2/rasterizer_scene_gles2.h
-index d027c4c..e3fe40b 100644
+index d027c4c30d..e3fe40b49a 100644
 --- a/drivers/gles2/rasterizer_scene_gles2.h
 +++ b/drivers/gles2/rasterizer_scene_gles2.h
 @@ -486,6 +486,7 @@ public:
@@ -79,7 +79,7 @@ index d027c4c..e3fe40b 100644
  
  	virtual void environment_set_ssr(RID p_env, bool p_enable, int p_max_steps, float p_fade_in, float p_fade_out, float p_depth_tolerance, bool p_roughness);
 diff --git a/drivers/gles3/rasterizer_scene_gles3.cpp b/drivers/gles3/rasterizer_scene_gles3.cpp
-index 396bfe2..04b7ee5 100644
+index 396bfe2d1c..04b7ee54a3 100644
 --- a/drivers/gles3/rasterizer_scene_gles3.cpp
 +++ b/drivers/gles3/rasterizer_scene_gles3.cpp
 @@ -884,6 +884,15 @@ void RasterizerSceneGLES3::environment_set_glow(RID p_env, bool p_enable, int p_
@@ -123,7 +123,7 @@ index 396bfe2..04b7ee5 100644
  				storage->frame.current_rt->width,
  				storage->frame.current_rt->height,
 diff --git a/drivers/gles3/rasterizer_scene_gles3.h b/drivers/gles3/rasterizer_scene_gles3.h
-index 01250bf..2c54de2 100644
+index 01250bf4be..2c54de2ec9 100644
 --- a/drivers/gles3/rasterizer_scene_gles3.h
 +++ b/drivers/gles3/rasterizer_scene_gles3.h
 @@ -460,6 +460,8 @@ public:
@@ -152,7 +152,7 @@ index 01250bf..2c54de2 100644
  
  	virtual void environment_set_ssr(RID p_env, bool p_enable, int p_max_steps, float p_fade_in, float p_fade_out, float p_depth_tolerance, bool p_roughness);
 diff --git a/drivers/gles3/shaders/tonemap.glsl b/drivers/gles3/shaders/tonemap.glsl
-index bdf0bd8..da9f335 100644
+index bdf0bd8d21..da9f33516c 100644
 --- a/drivers/gles3/shaders/tonemap.glsl
 +++ b/drivers/gles3/shaders/tonemap.glsl
 @@ -42,6 +42,8 @@ uniform highp float auto_exposure_grey;
@@ -184,7 +184,7 @@ index bdf0bd8..da9f335 100644
  	// high dynamic range -> SRGB
  	glow = apply_tonemapping(glow, white);
 diff --git a/scene/resources/environment.cpp b/scene/resources/environment.cpp
-index 069364e..f528be3 100644
+index 069364e7a3..f528be3a1c 100644
 --- a/scene/resources/environment.cpp
 +++ b/scene/resources/environment.cpp
 @@ -498,7 +498,7 @@ float Environment::get_ssao_edge_sharpness() const {
@@ -374,7 +374,7 @@ index 069364e..f528be3 100644
  	dof_blur_far_enabled = false;
  	dof_blur_far_distance = 10;
 diff --git a/scene/resources/environment.h b/scene/resources/environment.h
-index 9fbf703..2aa1f62 100644
+index 9fbf703e1b..2aa1f62a54 100644
 --- a/scene/resources/environment.h
 +++ b/scene/resources/environment.h
 @@ -147,6 +147,11 @@ private:
@@ -403,7 +403,7 @@ index 9fbf703..2aa1f62 100644
  	bool is_dof_blur_far_enabled() const;
  
 diff --git a/servers/visual/rasterizer.h b/servers/visual/rasterizer.h
-index a716fe9..07989e2 100644
+index a716fe90af..07989e2127 100644
 --- a/servers/visual/rasterizer.h
 +++ b/servers/visual/rasterizer.h
 @@ -66,6 +66,7 @@ public:
@@ -415,7 +415,7 @@ index a716fe9..07989e2 100644
  
  	virtual void environment_set_ssr(RID p_env, bool p_enable, int p_max_steps, float p_fade_int, float p_fade_out, float p_depth_tolerance, bool p_roughness) = 0;
 diff --git a/servers/visual/visual_server_raster.h b/servers/visual/visual_server_raster.h
-index 7ebe846..5bd8ef0 100644
+index 7ebe8467d3..5bd8ef0a0d 100644
 --- a/servers/visual/visual_server_raster.h
 +++ b/servers/visual/visual_server_raster.h
 @@ -560,6 +560,7 @@ public:
@@ -427,7 +427,7 @@ index 7ebe846..5bd8ef0 100644
  	BIND9(environment_set_tonemap, RID, EnvironmentToneMapper, float, float, bool, float, float, float, float)
  
 diff --git a/servers/visual/visual_server_wrap_mt.h b/servers/visual/visual_server_wrap_mt.h
-index 10a31b4..89cc7a0 100644
+index 10a31b4e90..89cc7a0da1 100644
 --- a/servers/visual/visual_server_wrap_mt.h
 +++ b/servers/visual/visual_server_wrap_mt.h
 @@ -474,6 +474,7 @@ public:
@@ -439,7 +439,7 @@ index 10a31b4..89cc7a0 100644
  	FUNC9(environment_set_tonemap, RID, EnvironmentToneMapper, float, float, bool, float, float, float, float)
  
 diff --git a/servers/visual_server.cpp b/servers/visual_server.cpp
-index 3fea545..5c185b8 100644
+index 3fea545cbe..5c185b8af2 100644
 --- a/servers/visual_server.cpp
 +++ b/servers/visual_server.cpp
 @@ -2149,6 +2149,7 @@ void VisualServer::_bind_methods() {
@@ -451,7 +451,7 @@ index 3fea545..5c185b8 100644
  	ClassDB::bind_method(D_METHOD("environment_set_adjustment", "env", "enable", "brightness", "contrast", "saturation", "ramp"), &VisualServer::environment_set_adjustment);
  	ClassDB::bind_method(D_METHOD("environment_set_ssr", "env", "enable", "max_steps", "fade_in", "fade_out", "depth_tolerance", "roughness"), &VisualServer::environment_set_ssr);
 diff --git a/servers/visual_server.h b/servers/visual_server.h
-index 19855fe..d698620 100644
+index 19855fe09a..d69862045e 100644
 --- a/servers/visual_server.h
 +++ b/servers/visual_server.h
 @@ -808,6 +808,7 @@ public:

@@ -1,5 +1,5 @@
 diff --git a/drivers/gles3/rasterizer_scene_gles3.cpp b/drivers/gles3/rasterizer_scene_gles3.cpp
-index 3849476..fd0be25 100644
+index 3849476d1c..83a4aa0a31 100644
 --- a/drivers/gles3/rasterizer_scene_gles3.cpp
 +++ b/drivers/gles3/rasterizer_scene_gles3.cpp
 @@ -2239,11 +2239,90 @@ void RasterizerSceneGLES3::_render_list(RenderList::Element **p_elements, int p_
@@ -93,7 +93,7 @@ index 3849476..fd0be25 100644
  
  		prev_material = material;
  		prev_base_type = e->instance->base_type;
-@@ -4512,6 +4588,9 @@ void RasterizerSceneGLES3::render_scene(const Transform &p_cam_transform, const
+@@ -4512,6 +4591,9 @@ void RasterizerSceneGLES3::render_scene(const Transform &p_cam_transform, const
  	// Never do depth prepass if effects are disabled or if we render overdraws
  	use_depth_prepass = use_depth_prepass && storage->frame.current_rt && !storage->frame.current_rt->flags[RasterizerStorage::RENDER_TARGET_NO_3D_EFFECTS];
  	use_depth_prepass = use_depth_prepass && state.debug_draw != VS::VIEWPORT_DEBUG_DRAW_OVERDRAW;

@@ -1,6 +1,8 @@
+diff --git a/drivers/gles3/rasterizer_storage_gles3.cpp b/drivers/gles3/rasterizer_storage_gles3.cpp
+index 71cac9f0dc..fb23aca9a6 100644
 --- a/drivers/gles3/rasterizer_storage_gles3.cpp
 +++ b/drivers/gles3/rasterizer_storage_gles3.cpp
-@@ -3753,6 +3753,23 @@
+@@ -3753,6 +3753,23 @@ void RasterizerStorageGLES3::mesh_add_surface(RID p_mesh, uint32_t p_format, VS:
  				glEnableVertexAttribArray(attribs[i].index);
  			}
  
@@ -24,11 +26,10 @@
  			if (surface->index_id) {
  				glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, surface->index_id);
  			}
-@@ -4522,6 +4539,16 @@
- 			glDisableVertexAttribArray(i);
+@@ -4523,6 +4540,16 @@ void RasterizerStorageGLES3::mesh_render_blend_shapes(Surface *s, const float *p
  		}
  	}
-+
+ 
 +#ifdef JAVASCRIPT_ENABLED
 +	if (!(s->format & (1 << VS::ARRAY_BONES))) {
 +		// Same as the surface VAO above: the scene ubershader uses uvec4
@@ -38,6 +39,7 @@
 +		glEnableVertexAttribArray(VS::ARRAY_BONES);
 +	}
 +#endif
- 
++
  	if (s->index_array_len) {
  		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, s->index_id);
+ 	}

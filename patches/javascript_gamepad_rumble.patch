@@ -1,5 +1,5 @@
 diff --git a/platform/javascript/godot_js.h b/platform/javascript/godot_js.h
-index 3d6d324..3fc45bf 100644
+index 3d6d324274..3fc45bfb95 100644
 --- a/platform/javascript/godot_js.h
 +++ b/platform/javascript/godot_js.h
 @@ -72,6 +72,7 @@ extern void godot_js_input_gamepad_cb(void (*p_on_change)(int p_index, int p_con
@@ -11,7 +11,7 @@ index 3d6d324..3fc45bf 100644
  extern void godot_js_input_drop_files_cb(void (*p_callback)(char **p_filev, int p_filec));
  
 diff --git a/platform/javascript/js/libs/library_godot_input.js b/platform/javascript/js/libs/library_godot_input.js
-index cd46048..05fe9a2 100644
+index cd46048246..05fe9a2e9c 100644
 --- a/platform/javascript/js/libs/library_godot_input.js
 +++ b/platform/javascript/js/libs/library_godot_input.js
 @@ -618,6 +618,41 @@ const GodotInput = {
@@ -57,7 +57,7 @@ index cd46048..05fe9a2 100644
  	godot_js_input_gamepad_sample_get: function (p_index, r_btns, r_btns_num, r_axes, r_axes_num, r_standard) {
  		const sample = GodotInputGamepads.get_sample(p_index);
 diff --git a/platform/javascript/os_javascript.cpp b/platform/javascript/os_javascript.cpp
-index c0bf721..709fee1 100644
+index c0bf721f97..709fee103c 100644
 --- a/platform/javascript/os_javascript.cpp
 +++ b/platform/javascript/os_javascript.cpp
 @@ -827,6 +827,14 @@ void OS_JavaScript::process_joypads() {
@@ -76,7 +76,7 @@ index c0bf721..709fee1 100644
  }
  
 diff --git a/platform/javascript/os_javascript.h b/platform/javascript/os_javascript.h
-index b37f602..16f9b76 100644
+index b37f602b08..16f9b76d8b 100644
 --- a/platform/javascript/os_javascript.h
 +++ b/platform/javascript/os_javascript.h
 @@ -78,6 +78,9 @@ private:

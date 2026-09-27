@@ -1,6 +1,8 @@
+diff --git a/drivers/gles3/rasterizer_storage_gles3.cpp b/drivers/gles3/rasterizer_storage_gles3.cpp
+index 9bd8798add..3842fd5fdf 100644
 --- a/drivers/gles3/rasterizer_storage_gles3.cpp
 +++ b/drivers/gles3/rasterizer_storage_gles3.cpp
-@@ -8375,7 +8375,10 @@
+@@ -8234,7 +8234,10 @@ void RasterizerStorageGLES3::initialize() {
  	// If the desktop build is using S3TC, and you export / run from the IDE for android, if the device supports
  	// S3TC it will crash trying to load these textures, as they are not exported in the APK. This is a simple way
  	// to prevent Android devices trying to load S3TC, by faking lack of hardware support.

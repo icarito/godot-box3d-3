@@ -1,4 +1,5 @@
 diff --git a/drivers/gles3/rasterizer_gles3.cpp b/drivers/gles3/rasterizer_gles3.cpp
+index e1b4ba7ff5..f850adc490 100644
 --- a/drivers/gles3/rasterizer_gles3.cpp
 +++ b/drivers/gles3/rasterizer_gles3.cpp
 @@ -33,6 +33,131 @@
@@ -133,7 +134,7 @@ diff --git a/drivers/gles3/rasterizer_gles3.cpp b/drivers/gles3/rasterizer_gles3
  RasterizerStorage *RasterizerGLES3::get_storage() {
  	return storage;
  }
-@@ -199,6 +324,8 @@
+@@ -199,6 +324,8 @@ void RasterizerGLES3::initialize() {
  }
  
  void RasterizerGLES3::begin_frame(double frame_step) {
@@ -142,7 +143,7 @@ diff --git a/drivers/gles3/rasterizer_gles3.cpp b/drivers/gles3/rasterizer_gles3
  	time_total += frame_step * time_scale;
  
  	if (frame_step == 0) {
-@@ -425,6 +552,8 @@
+@@ -425,6 +552,8 @@ void RasterizerGLES3::end_frame(bool p_swap_buffers) {
  
  	ShaderGLES3::advance_async_shaders_compilation();
  

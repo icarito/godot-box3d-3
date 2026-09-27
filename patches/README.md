@@ -5,6 +5,11 @@ binaries carry. They are applied by `scripts/build.sh` before compiling, so
 every binary this repo publishes has them. Most are upstreamable fixes; some
 are platform support, diagnostics or features, marked as such in the table.
 
+**`patches/*.patch` is generated — do not edit it by hand.** Its source of truth is the
+branch `box3d-3.6` of `icarito/godot` (one commit per patch, trailer `Patch-File:` with the
+file name, over `GODOT_REF` of `scripts/build.sh`): change the branch and run
+`scripts/engine_branch.sh export` + `check`. `frt/` and `box3d/` are still hand-maintained.
+
 `patches/*.patch` goes to the Godot checkout. `patches/frt/*.patch` goes to the
 out-of-tree FRT platform. `patches/box3d/*.patch` goes to the pinned upstream
 Box3D submodule (`box3d/thirdparty/box3d`), the only case that touches the

@@ -1,7 +1,8 @@
 diff --git a/editor/editor_node.cpp b/editor/editor_node.cpp
+index faa16b5673..1492b65fc3 100644
 --- a/editor/editor_node.cpp
 +++ b/editor/editor_node.cpp
-@@ -917,7 +917,11 @@
+@@ -917,7 +917,11 @@ void EditorNode::_scan_external_changes() {
  }
  
  void EditorNode::_resave_scenes(String p_str) {
@@ -13,7 +14,7 @@ diff --git a/editor/editor_node.cpp b/editor/editor_node.cpp
  	ProjectSettings::get_singleton()->save();
  	disk_changed->hide();
  }
-@@ -1024,6 +1028,29 @@
+@@ -1024,6 +1028,29 @@ void EditorNode::edit_node(Node *p_node) {
  	push_item(p_node);
  }
  
@@ -43,7 +44,7 @@ diff --git a/editor/editor_node.cpp b/editor/editor_node.cpp
  void EditorNode::save_resource_in_path(const Ref<Resource> &p_resource, const String &p_path) {
  	editor_data.apply_changes_in_editors();
  	int flg = 0;
-@@ -1032,6 +1059,13 @@
+@@ -1032,6 +1059,13 @@ void EditorNode::save_resource_in_path(const Ref<Resource> &p_resource, const St
  	}
  
  	String path = ProjectSettings::get_singleton()->localize_path(p_path);
@@ -57,7 +58,7 @@ diff --git a/editor/editor_node.cpp b/editor/editor_node.cpp
  	Error err = ResourceSaver::save(path, p_resource, flg | ResourceSaver::FLAG_REPLACE_SUBRESOURCE_PATHS);
  
  	if (err != OK) {
-@@ -1537,6 +1571,16 @@
+@@ -1537,6 +1571,16 @@ void EditorNode::_save_scene(String p_file, int idx) {
  		return;
  	}
  
@@ -74,7 +75,7 @@ diff --git a/editor/editor_node.cpp b/editor/editor_node.cpp
  	editor_data.apply_changes_in_editors();
  	List<Ref<AnimatedValuesBackup>> anim_backups;
  	_reset_animation_players(scene, &anim_backups);
-@@ -5984,6 +6028,7 @@
+@@ -5984,6 +6028,7 @@ EditorNode::EditorNode() {
  	docks_visible = true;
  	restoring_scenes = false;
  	cmdline_export_mode = false;
@@ -83,9 +84,10 @@ diff --git a/editor/editor_node.cpp b/editor/editor_node.cpp
  	script_distraction = false;
  
 diff --git a/editor/editor_node.h b/editor/editor_node.h
+index dd4a090119..93d8c276f8 100644
 --- a/editor/editor_node.h
 +++ b/editor/editor_node.h
-@@ -584,6 +584,9 @@
+@@ -584,6 +584,9 @@ private:
  	} export_defer;
  
  	bool cmdline_export_mode;
@@ -95,7 +97,7 @@ diff --git a/editor/editor_node.h b/editor/editor_node.h
  
  	static EditorNode *singleton;
  
-@@ -661,6 +664,7 @@
+@@ -661,6 +664,7 @@ private:
  
  	void _resources_changed(const PoolVector<String> &p_resources);
  	void _scan_external_changes();
@@ -104,9 +106,10 @@ diff --git a/editor/editor_node.h b/editor/editor_node.h
  	void _reload_project_settings();
  	void _resave_scenes(String p_str);
 diff --git a/editor/editor_settings.cpp b/editor/editor_settings.cpp
+index 5603dba1f0..ebb018c7d9 100644
 --- a/editor/editor_settings.cpp
 +++ b/editor/editor_settings.cpp
-@@ -395,6 +395,9 @@
+@@ -395,6 +395,9 @@ void EditorSettings::_load_defaults(Ref<ConfigFile> p_extra_config) {
  	// On save
  	_initial_set("filesystem/on_save/compress_binary_resources", true);
  	_initial_set("filesystem/on_save/safe_save_on_backup_then_rename", true);

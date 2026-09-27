@@ -1,58 +1,8 @@
---- a/servers/visual_server.cpp
-+++ b/servers/visual_server.cpp
-@@ -2799,6 +2799,12 @@
- 	// pantalla que cubra el trabajo.
- 	GLOBAL_DEF("rendering/gles3/shaders/async_compilation_starts_enabled", true);
- 	GLOBAL_DEF("rendering/gles3/shaders/ubershaders_enabled", true);
-+	// Guardar tambien las variantes condicionadas, no solo los ubershaders. Cuesta
-+	// espacio en disco (lo acota shader_cache_size_mb) y ahorra recompilarlas en cada
-+	// arranque, que es donde se va el tiempo cuando el ubershader no se usa.
-+	GLOBAL_DEF("rendering/gles3/shaders/cache_conditioned_variants", false);
-+	// Mantener el cache de programas aunque la compilacion sea sincrona.
-+	GLOBAL_DEF("rendering/gles3/shaders/shader_cache_always", false);
- 	GLOBAL_DEF("rendering/gles3/shaders/shader_compilation_mode", 0);
- 	ProjectSettings::get_singleton()->set_custom_property_info("rendering/gles3/shaders/shader_compilation_mode", PropertyInfo(Variant::INT, "rendering/gles3/shaders/shader_compilation_mode", PROPERTY_HINT_ENUM, "Synchronous,Asynchronous,Asynchronous + Cache"));
- 	GLOBAL_DEF("rendering/gles3/shaders/shader_compilation_mode.mobile", 0);
---- a/drivers/gles3/shader_gles3.h
-+++ b/drivers/gles3/shader_gles3.h
-@@ -133,6 +133,7 @@
- 
- 	static bool async_hidden_forbidden;
- 	static bool ubershaders_enabled;
-+	static bool cache_conditioned_variants;
- 	static uint32_t *compiles_started_this_frame;
- 	static uint32_t *max_frame_compiles_in_progress;
- 	static uint32_t max_simultaneous_compiles;
-@@ -157,7 +158,15 @@
- 		VersionKey() {}
- 		VersionKey(uint64_t p_key) :
- 				key(p_key) {}
--		_FORCE_INLINE_ bool is_subject_to_caching() const { return (version & UBERSHADER_FLAG); }
-+		// Upstream solo cachea ubershaders. Eso deja fuera justo lo que se dibuja: las
-+		// variantes condicionadas se recompilan enteras en cada arranque, y en un aparato
-+		// que no puede enlazar el ubershader el cache termina guardando lo unico inservible.
-+		// El hash del programa ya sale del fuente completo, asi que sirve igual para
-+		// cualquier variante; lo que hay que vigilar es el tamaño, y de eso se ocupa
-+		// _purge_excess() con shader_cache_size_mb.
-+		_FORCE_INLINE_ bool is_subject_to_caching() const {
-+			return (version & UBERSHADER_FLAG) || cache_conditioned_variants;
-+		}
- 	};
- 
- 	struct Version {
---- a/drivers/gles3/shader_gles3.cpp
-+++ b/drivers/gles3/shader_gles3.cpp
-@@ -66,6 +66,7 @@
- 
- bool ShaderGLES3::async_hidden_forbidden;
- bool ShaderGLES3::ubershaders_enabled;
-+bool ShaderGLES3::cache_conditioned_variants;
- uint32_t *ShaderGLES3::compiles_started_this_frame;
- uint32_t *ShaderGLES3::max_frame_compiles_in_progress;
- uint32_t ShaderGLES3::max_simultaneous_compiles;
+diff --git a/drivers/gles3/rasterizer_storage_gles3.cpp b/drivers/gles3/rasterizer_storage_gles3.cpp
+index be3379dc97..c96d4ae3e2 100644
 --- a/drivers/gles3/rasterizer_storage_gles3.cpp
 +++ b/drivers/gles3/rasterizer_storage_gles3.cpp
-@@ -8242,8 +8242,13 @@
+@@ -8249,8 +8249,13 @@ void RasterizerStorageGLES3::initialize() {
  		compilation_mode = ProjectSettings::get_singleton()->get("rendering/gles3/shaders/shader_compilation_mode");
  	}
  	config.async_compilation_enabled = compilation_mode >= 1;
@@ -67,7 +17,7 @@
  
  	if (config.async_compilation_enabled) {
  		config.async_compilation_max_simultaneous = MAX(1, (int)ProjectSettings::get_singleton()->get("rendering/gles3/shaders/max_simultaneous_compiles"));
-@@ -8295,35 +8300,33 @@
+@@ -8302,35 +8307,33 @@ void RasterizerStorageGLES3::initialize() {
  	shaders.compile_queue = nullptr;
  	shaders.cache = nullptr;
  	shaders.cache_write_queue = nullptr;
@@ -117,3 +67,61 @@
  	ShaderGLES3::compile_queue = shaders.compile_queue;
  	ShaderGLES3::parallel_compile_supported = config.parallel_shader_compile_supported;
  	ShaderGLES3::shader_cache = shaders.cache;
+diff --git a/drivers/gles3/shader_gles3.cpp b/drivers/gles3/shader_gles3.cpp
+index be4cf8e214..c157c562ae 100644
+--- a/drivers/gles3/shader_gles3.cpp
++++ b/drivers/gles3/shader_gles3.cpp
+@@ -66,6 +66,7 @@ bool ShaderGLES3::parallel_compile_supported;
+ 
+ bool ShaderGLES3::async_hidden_forbidden;
+ bool ShaderGLES3::ubershaders_enabled;
++bool ShaderGLES3::cache_conditioned_variants;
+ uint32_t *ShaderGLES3::compiles_started_this_frame;
+ uint32_t *ShaderGLES3::max_frame_compiles_in_progress;
+ uint32_t ShaderGLES3::max_simultaneous_compiles;
+diff --git a/drivers/gles3/shader_gles3.h b/drivers/gles3/shader_gles3.h
+index 4d71d1d808..99753cac97 100644
+--- a/drivers/gles3/shader_gles3.h
++++ b/drivers/gles3/shader_gles3.h
+@@ -133,6 +133,7 @@ public:
+ 
+ 	static bool async_hidden_forbidden;
+ 	static bool ubershaders_enabled;
++	static bool cache_conditioned_variants;
+ 	static uint32_t *compiles_started_this_frame;
+ 	static uint32_t *max_frame_compiles_in_progress;
+ 	static uint32_t max_simultaneous_compiles;
+@@ -157,7 +158,15 @@ private:
+ 		VersionKey() {}
+ 		VersionKey(uint64_t p_key) :
+ 				key(p_key) {}
+-		_FORCE_INLINE_ bool is_subject_to_caching() const { return (version & UBERSHADER_FLAG); }
++		// Upstream solo cachea ubershaders. Eso deja fuera justo lo que se dibuja: las
++		// variantes condicionadas se recompilan enteras en cada arranque, y en un aparato
++		// que no puede enlazar el ubershader el cache termina guardando lo unico inservible.
++		// El hash del programa ya sale del fuente completo, asi que sirve igual para
++		// cualquier variante; lo que hay que vigilar es el tamaño, y de eso se ocupa
++		// _purge_excess() con shader_cache_size_mb.
++		_FORCE_INLINE_ bool is_subject_to_caching() const {
++			return (version & UBERSHADER_FLAG) || cache_conditioned_variants;
++		}
+ 	};
+ 
+ 	struct Version {
+diff --git a/servers/visual_server.cpp b/servers/visual_server.cpp
+index f07db8d31c..e7da52dc49 100644
+--- a/servers/visual_server.cpp
++++ b/servers/visual_server.cpp
+@@ -2794,6 +2794,12 @@ VisualServer::VisualServer() {
+ 	// pantalla que cubra el trabajo.
+ 	GLOBAL_DEF("rendering/gles3/shaders/async_compilation_starts_enabled", true);
+ 	GLOBAL_DEF("rendering/gles3/shaders/ubershaders_enabled", true);
++	// Guardar tambien las variantes condicionadas, no solo los ubershaders. Cuesta
++	// espacio en disco (lo acota shader_cache_size_mb) y ahorra recompilarlas en cada
++	// arranque, que es donde se va el tiempo cuando el ubershader no se usa.
++	GLOBAL_DEF("rendering/gles3/shaders/cache_conditioned_variants", false);
++	// Mantener el cache de programas aunque la compilacion sea sincrona.
++	GLOBAL_DEF("rendering/gles3/shaders/shader_cache_always", false);
+ 	GLOBAL_DEF("rendering/gles3/shaders/shader_compilation_mode", 0);
+ 	ProjectSettings::get_singleton()->set_custom_property_info("rendering/gles3/shaders/shader_compilation_mode", PropertyInfo(Variant::INT, "rendering/gles3/shaders/shader_compilation_mode", PROPERTY_HINT_ENUM, "Synchronous,Asynchronous,Asynchronous + Cache"));
+ 	GLOBAL_DEF("rendering/gles3/shaders/shader_compilation_mode.mobile", 0);

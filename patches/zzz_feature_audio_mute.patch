@@ -1,5 +1,5 @@
 diff --git a/doc/classes/AudioServer.xml b/doc/classes/AudioServer.xml
-index f6db05578f33..7e692a848049 100644
+index f95568ba5d..9a57c75aeb 100644
 --- a/doc/classes/AudioServer.xml
 +++ b/doc/classes/AudioServer.xml
 @@ -182,6 +182,12 @@
@@ -30,7 +30,7 @@ index f6db05578f33..7e692a848049 100644
  			<return type="void" />
  			<argument index="0" name="bus_idx" type="int" />
 diff --git a/doc/classes/ProjectSettings.xml b/doc/classes/ProjectSettings.xml
-index df9b1e081a7e..efb76f6f7261 100644
+index ec35a2740b..5572c301e4 100644
 --- a/doc/classes/ProjectSettings.xml
 +++ b/doc/classes/ProjectSettings.xml
 @@ -301,6 +301,20 @@
@@ -55,10 +55,10 @@ index df9b1e081a7e..efb76f6f7261 100644
  			Specifies the preferred output latency in milliseconds for audio. Lower values will result in lower audio latency at the cost of increased CPU usage. Low values may result in audible cracking on slower hardware.
  			Audio output latency may be constrained by the host operating system and audio hardware drivers. If the host can not provide the specified audio output latency then Godot will attempt to use the nearest latency allowed by the host. As such you should always use [method AudioServer.get_output_latency] to determine the actual audio output latency.
 diff --git a/editor/editor_node.cpp b/editor/editor_node.cpp
-index 1f80d1022dc0..56e2e00fbab7 100644
+index ec6e8c11df..e95c3f060c 100644
 --- a/editor/editor_node.cpp
 +++ b/editor/editor_node.cpp
-@@ -6123,6 +6123,12 @@ EditorNode::EditorNode() {
+@@ -6092,6 +6092,12 @@ EditorNode::EditorNode() {
  	EDITOR_DEF("interface/editor/update_vital_only", false);
  #endif
  	EDITOR_DEF("interface/editor/localize_settings", true);
@@ -72,7 +72,7 @@ index 1f80d1022dc0..56e2e00fbab7 100644
  	EDITOR_DEF_RST("interface/scene_tabs/show_thumbnail_on_hover", true);
  	EDITOR_DEF_RST("interface/inspector/default_property_name_style", EditorPropertyNameProcessor::STYLE_CAPITALIZED);
 diff --git a/scene/main/scene_tree.cpp b/scene/main/scene_tree.cpp
-index 346fa4e6aa03..1e475ab67425 100644
+index 99273ffa81..f7dfc417e0 100644
 --- a/scene/main/scene_tree.cpp
 +++ b/scene/main/scene_tree.cpp
 @@ -49,6 +49,7 @@
@@ -83,7 +83,7 @@ index 346fa4e6aa03..1e475ab67425 100644
  #include "servers/navigation_server.h"
  #include "servers/physics_2d_server.h"
  #include "servers/physics_server.h"
-@@ -850,6 +851,8 @@ void SceneTree::_notification(int p_notification) {
+@@ -826,6 +827,8 @@ void SceneTree::_notification(int p_notification) {
  		} break;
  
  		case NOTIFICATION_WM_FOCUS_IN: {
@@ -92,7 +92,7 @@ index 346fa4e6aa03..1e475ab67425 100644
  			InputDefault *id = Object::cast_to<InputDefault>(Input::get_singleton());
  			if (id) {
  				id->ensure_touch_mouse_raised();
-@@ -870,16 +873,25 @@ void SceneTree::_notification(int p_notification) {
+@@ -846,16 +849,25 @@ void SceneTree::_notification(int p_notification) {
  			get_root()->propagate_notification(p_notification);
  
  		} break;
@@ -123,7 +123,7 @@ index 346fa4e6aa03..1e475ab67425 100644
  		} break;
  
 diff --git a/servers/audio/audio_driver_dummy.cpp b/servers/audio/audio_driver_dummy.cpp
-index b1b464911115..b4cf796d6661 100644
+index b1b4649111..b4cf796d66 100644
 --- a/servers/audio/audio_driver_dummy.cpp
 +++ b/servers/audio/audio_driver_dummy.cpp
 @@ -98,6 +98,7 @@ void AudioDriverDummy::finish() {
@@ -135,7 +135,7 @@ index b1b464911115..b4cf796d6661 100644
  };
  
 diff --git a/servers/audio_server.cpp b/servers/audio_server.cpp
-index 39ca25dfe387..27d9a68aa312 100644
+index 39ca25dfe3..27d9a68aa3 100644
 --- a/servers/audio_server.cpp
 +++ b/servers/audio_server.cpp
 @@ -39,11 +39,17 @@
@@ -650,7 +650,7 @@ index 39ca25dfe387..27d9a68aa312 100644
 +
 +#undef GODOT_AUDIO_DRIVER_MANAGER_LOGGING_ENABLED
 diff --git a/servers/audio_server.h b/servers/audio_server.h
-index 4cbd949e2404..e09a522bfc14 100644
+index 4cbd949e24..e09a522bfc 100644
 --- a/servers/audio_server.h
 +++ b/servers/audio_server.h
 @@ -126,19 +126,58 @@ class AudioDriverManager {
@@ -712,7 +712,7 @@ index 4cbd949e2404..e09a522bfc14 100644
  };
  
  class AudioBusLayout;
-@@ -236,6 +275,10 @@ class AudioServer : public Object {
+@@ -236,6 +275,10 @@ private:
  
  	Mutex audio_data_lock;
  
@@ -723,7 +723,7 @@ index 4cbd949e2404..e09a522bfc14 100644
  	void init_channels_and_buffers();
  
  	void _mix_step();
-@@ -368,6 +411,9 @@ class AudioServer : public Object {
+@@ -368,6 +411,9 @@ public:
  	String get_device();
  	void set_device(String device);
  

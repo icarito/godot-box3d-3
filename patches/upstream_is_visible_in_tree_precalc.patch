@@ -1,45 +1,8 @@
-diff --git a/scene/3d/spatial.h b/scene/3d/spatial.h
---- a/scene/3d/spatial.h
-+++ b/scene/3d/spatial.h
-@@ -106,6 +106,7 @@
- 		bool notify_transform : 1;
- 
- 		bool visible : 1;
-+		bool visible_in_tree : 1;
- 		bool disable_scale : 1;
- 
- 		bool merging_allowed : 1;
-@@ -130,6 +131,9 @@
- 	void _notify_dirty();
- 	void _propagate_transform_changed(Spatial *p_origin);
- 
-+	void _update_visible_in_tree();
-+	bool _is_visible_in_tree_reference() const;
-+	void _propagate_visible_in_tree(bool p_visible_in_tree);
- 	void _propagate_visibility_changed();
- 	void _propagate_merging_allowed(bool p_merging_allowed);
- 
-@@ -245,7 +249,15 @@
- 	bool is_visible() const;
- 	void show();
- 	void hide();
--	bool is_visible_in_tree() const;
-+	bool is_visible_in_tree() const {
-+#if DEV_ENABLED
-+		// As this is newly introduced, regression test the old method against the new in DEV builds.
-+		// If no regressions, this can be removed after a beta.
-+		bool visible = _is_visible_in_tree_reference();
-+		ERR_FAIL_COND_V_MSG(data.visible_in_tree != visible, visible, "is_visible_in_tree regression detected, recovering.");
-+#endif
-+		return data.visible_in_tree;
-+	}
- 
- 	void force_update_transform();
- 
 diff --git a/scene/3d/spatial.cpp b/scene/3d/spatial.cpp
+index cac9673bfa..a6f4769b22 100644
 --- a/scene/3d/spatial.cpp
 +++ b/scene/3d/spatial.cpp
-@@ -157,6 +157,7 @@
+@@ -157,6 +157,7 @@ void Spatial::_notification(int p_what) {
  			} else {
  				data.C = nullptr;
  			}
@@ -47,7 +10,7 @@ diff --git a/scene/3d/spatial.cpp b/scene/3d/spatial.cpp
  
  			if (data.toplevel && !Engine::get_singleton()->is_editor_hint()) {
  				if (data.parent) {
-@@ -191,6 +192,8 @@
+@@ -191,6 +192,8 @@ void Spatial::_notification(int p_what) {
  			data.parent = nullptr;
  			data.C = nullptr;
  			data.toplevel_active = false;
@@ -56,7 +19,7 @@ diff --git a/scene/3d/spatial.cpp b/scene/3d/spatial.cpp
  			_disable_client_physics_interpolation();
  		} break;
  		case NOTIFICATION_ENTER_WORLD: {
-@@ -669,6 +672,36 @@
+@@ -669,6 +672,36 @@ Ref<World> Spatial::get_world() const {
  	return data.viewport->find_world();
  }
  
@@ -93,7 +56,7 @@ diff --git a/scene/3d/spatial.cpp b/scene/3d/spatial.cpp
  void Spatial::_propagate_visibility_changed() {
  	notification(NOTIFICATION_VISIBILITY_CHANGED);
  	emit_signal(SceneStringNames::get_singleton()->visibility_changed);
-@@ -728,6 +761,10 @@
+@@ -728,6 +761,10 @@ void Spatial::show() {
  		return;
  	}
  
@@ -104,7 +67,7 @@ diff --git a/scene/3d/spatial.cpp b/scene/3d/spatial.cpp
  	_propagate_visibility_changed();
  }
  
-@@ -742,10 +779,14 @@
+@@ -742,10 +779,14 @@ void Spatial::hide() {
  		return;
  	}
  
@@ -120,7 +83,7 @@ diff --git a/scene/3d/spatial.cpp b/scene/3d/spatial.cpp
  	const Spatial *s = this;
  
  	while (s) {
-@@ -1058,6 +1099,7 @@
+@@ -1058,6 +1099,7 @@ Spatial::Spatial() :
  	data.viewport = nullptr;
  	data.inside_world = false;
  	data.visible = true;
@@ -128,3 +91,42 @@ diff --git a/scene/3d/spatial.cpp b/scene/3d/spatial.cpp
  	data.disable_scale = false;
  	data.vi_visible = true;
  	data.merging_allowed = true;
+diff --git a/scene/3d/spatial.h b/scene/3d/spatial.h
+index 9c80044919..1ea225f228 100644
+--- a/scene/3d/spatial.h
++++ b/scene/3d/spatial.h
+@@ -106,6 +106,7 @@ private:
+ 		bool notify_transform : 1;
+ 
+ 		bool visible : 1;
++		bool visible_in_tree : 1;
+ 		bool disable_scale : 1;
+ 
+ 		bool merging_allowed : 1;
+@@ -130,6 +131,9 @@ private:
+ 	void _notify_dirty();
+ 	void _propagate_transform_changed(Spatial *p_origin);
+ 
++	void _update_visible_in_tree();
++	bool _is_visible_in_tree_reference() const;
++	void _propagate_visible_in_tree(bool p_visible_in_tree);
+ 	void _propagate_visibility_changed();
+ 	void _propagate_merging_allowed(bool p_merging_allowed);
+ 
+@@ -245,7 +249,15 @@ public:
+ 	bool is_visible() const;
+ 	void show();
+ 	void hide();
+-	bool is_visible_in_tree() const;
++	bool is_visible_in_tree() const {
++#if DEV_ENABLED
++		// As this is newly introduced, regression test the old method against the new in DEV builds.
++		// If no regressions, this can be removed after a beta.
++		bool visible = _is_visible_in_tree_reference();
++		ERR_FAIL_COND_V_MSG(data.visible_in_tree != visible, visible, "is_visible_in_tree regression detected, recovering.");
++#endif
++		return data.visible_in_tree;
++	}
+ 
+ 	void force_update_transform();
+ 

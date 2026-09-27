@@ -1,5 +1,5 @@
 diff --git a/platform/android/dir_access_jandroid.cpp b/platform/android/dir_access_jandroid.cpp
-index 2d7ce27..b7d25e3 100644
+index 2d7ce273d2..b7d25e358e 100644
 --- a/platform/android/dir_access_jandroid.cpp
 +++ b/platform/android/dir_access_jandroid.cpp
 @@ -219,7 +219,11 @@ bool DirAccessJAndroid::dir_exists(String p_dir) {
