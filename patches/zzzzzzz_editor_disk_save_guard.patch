@@ -1,0 +1,118 @@
+diff --git a/editor/editor_node.cpp b/editor/editor_node.cpp
+--- a/editor/editor_node.cpp
++++ b/editor/editor_node.cpp
+@@ -917,7 +917,11 @@
+ }
+ 
+ void EditorNode::_resave_scenes(String p_str) {
++	// The user picked "Save" in the "disk changed" dialog: an explicit overwrite of
++	// the files whose change on disk was just reported, so bypass the guard.
++	_force_overwrite_external_changes = true;
+ 	save_all_scenes();
++	_force_overwrite_external_changes = false;
+ 	ProjectSettings::get_singleton()->save();
+ 	disk_changed->hide();
+ }
+@@ -1024,6 +1028,29 @@
+ 	push_item(p_node);
+ }
+ 
++bool EditorNode::_block_save_if_changed_on_disk(const String &p_path, uint64_t p_loaded_modified_time) {
++	// Saving is an explicit user action for the file we are editing; the guard only
++	// exists so that a *different* writer (an external editor, a script, an agent)
++	// is not silently overwritten. The "disk changed" dialog's overwrite option and
++	// the opt-out setting both bypass it.
++	if (_force_overwrite_external_changes) {
++		return false;
++	}
++	if (!EditorSettings::get_singleton()->get("filesystem/on_save/abort_if_modified_externally")) {
++		return false;
++	}
++	// No baseline recorded (a new file, or something never loaded/saved through the
++	// editor) means there is nothing to compare against, so never block.
++	if (p_loaded_modified_time == 0 || !FileAccess::exists(p_path)) {
++		return false;
++	}
++	if (FileAccess::get_modified_time(p_path) > p_loaded_modified_time) {
++		show_accept(vformat(TTR("Can't save '%s': the file changed on disk after it was loaded. Reload it before saving, or the editor would overwrite the external changes (disable 'filesystem/on_save/abort_if_modified_externally' to force it)."), p_path), TTR("OK"));
++		return true;
++	}
++	return false;
++}
++
+ void EditorNode::save_resource_in_path(const Ref<Resource> &p_resource, const String &p_path) {
+ 	editor_data.apply_changes_in_editors();
+ 	int flg = 0;
+@@ -1032,6 +1059,13 @@
+ 	}
+ 
+ 	String path = ProjectSettings::get_singleton()->localize_path(p_path);
++
++	// Only guard the file this resource was loaded from: saving it to a different
++	// path ("Save As") is an explicit overwrite of that other file.
++	if (path == p_resource->get_path() && _block_save_if_changed_on_disk(path, p_resource->get_last_modified_time())) {
++		return;
++	}
++
+ 	Error err = ResourceSaver::save(path, p_resource, flg | ResourceSaver::FLAG_REPLACE_SUBRESOURCE_PATHS);
+ 
+ 	if (err != OK) {
+@@ -1537,6 +1571,16 @@
+ 		return;
+ 	}
+ 
++	// Overwriting a scene another tool changed on disk while it was open would
++	// discard those external changes. "Save As" (p_file != scene->get_filename())
++	// and the "disk changed" dialog's overwrite both bypass this.
++	if (ProjectSettings::get_singleton()->localize_path(p_file) == scene->get_filename()) {
++		int scene_idx = idx < 0 ? editor_data.get_edited_scene() : idx;
++		if (_block_save_if_changed_on_disk(p_file, editor_data.get_scene_modified_time(scene_idx))) {
++			return;
++		}
++	}
++
+ 	editor_data.apply_changes_in_editors();
+ 	List<Ref<AnimatedValuesBackup>> anim_backups;
+ 	_reset_animation_players(scene, &anim_backups);
+@@ -5984,6 +6028,7 @@
+ 	docks_visible = true;
+ 	restoring_scenes = false;
+ 	cmdline_export_mode = false;
++	_force_overwrite_external_changes = false;
+ 	scene_distraction = false;
+ 	script_distraction = false;
+ 
+diff --git a/editor/editor_node.h b/editor/editor_node.h
+--- a/editor/editor_node.h
++++ b/editor/editor_node.h
+@@ -584,6 +584,9 @@
+ 	} export_defer;
+ 
+ 	bool cmdline_export_mode;
++	// Set while the user explicitly chose to overwrite externally modified files
++	// from the "disk changed" dialog, to bypass the on-save external-change guard.
++	bool _force_overwrite_external_changes;
+ 
+ 	static EditorNode *singleton;
+ 
+@@ -661,6 +664,7 @@
+ 
+ 	void _resources_changed(const PoolVector<String> &p_resources);
+ 	void _scan_external_changes();
++	bool _block_save_if_changed_on_disk(const String &p_path, uint64_t p_loaded_modified_time);
+ 	void _reload_modified_scenes();
+ 	void _reload_project_settings();
+ 	void _resave_scenes(String p_str);
+diff --git a/editor/editor_settings.cpp b/editor/editor_settings.cpp
+--- a/editor/editor_settings.cpp
++++ b/editor/editor_settings.cpp
+@@ -395,6 +395,9 @@
+ 	// On save
+ 	_initial_set("filesystem/on_save/compress_binary_resources", true);
+ 	_initial_set("filesystem/on_save/safe_save_on_backup_then_rename", true);
++	// Refuse to overwrite a resource or scene whose file changed on disk after it
++	// was loaded (e.g. an external tool/agent edited it while the editor was open).
++	_initial_set("filesystem/on_save/abort_if_modified_externally", true);
+ 
+ 	// File dialog
+ 	_initial_set("filesystem/file_dialog/show_hidden_files", false);

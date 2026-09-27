@@ -94,6 +94,20 @@ if [ ! -e "$here/box3d/thirdparty/box3d/include/box3d/box3d.h" ]; then
 	exit 1
 fi
 
+# El thirdparty de box3d es un submódulo pineado al upstream, así que sus fixes
+# locales no pueden vivir en su repo: van en patches/box3d/*.patch y se aplican
+# acá. Igual que el engine, se parte de un checkout limpio para que un rebuild
+# local después de tocar un parche nunca los apile.
+box3d_dir="$here/box3d/thirdparty/box3d"
+if git -C "$box3d_dir" rev-parse --git-dir >/dev/null 2>&1; then
+	git -C "$box3d_dir" checkout --quiet -- .
+fi
+for patch in "$here"/patches/box3d/*.patch; do
+	[ -e "$patch" ] || continue
+	echo "==> Patch   box3d/$(basename "$patch")"
+	apply_patch "$patch" "$box3d_dir"
+done
+
 # Godot ships these two as archives assembled from a template bundle plus the
 # binaries, rather than as a single file scons emits.
 pack_macos() {
@@ -128,15 +142,24 @@ pack_ios() {
 # production=yes is what makes a binary publishable: no debug symbols (they are
 # 90% of the file -- 520 MB against 42 MB for a Linux template) and a statically
 # linked libstdc++, so the binary does not depend on the runner's toolchain
-# version. LTO is off because it roughly doubles build time for a preliminary
-# release. Set PRODUCTION=no when building to debug the module itself.
+# version. LTO is off by default because it roughly doubles build time; the
+# arm64 templates opt in via LTO=full (build() reads LTO). Set PRODUCTION=no
+# when building to debug the module itself.
+#
+# LTO en los templates arm64: medido en un RK3326 (4x Cortex-A35 in-order,
+# ROCKNIX) con el replay de RingHub, en A/B intercalado y pareado (n=16,
+# 15/16 positivo, p<0.001): +5% fps y binario -13% (35.4 -> 30.9 MB), sin
+# regresion medida. El costo es de build (link ~36 min en GCC), cacheable en CI.
+# No se activa en los targets de escritorio para no duplicar su tiempo de build
+# sin una medicion equivalente.
 PRODUCTION="${PRODUCTION:-yes}"
+LTO="${LTO:-none}"
 
 build() { # build <scons args...>
 	echo "==> scons $*"
 	(cd "$GODOT_DIR" && scons -j"$JOBS" \
 		custom_modules="${CUSTOM_MODULES:-$here}" progress=no \
-		production="$PRODUCTION" lto=none "$@")
+		production="$PRODUCTION" lto="$LTO" "$@")
 }
 
 frte_prep() { # prepara platform/frt: clone pineado + patches/frt/*.patch
@@ -178,8 +201,11 @@ for target in "$@"; do
 		linux-arm64-templates)
 			# Built natively on an ARM64 runner; scons names the output by bit
 			# width, so the artifact step is what tells the arm64 slot apart.
+			# LTO=full: ver la nota de arriba (medido en Cortex-A35).
+			LTO=full
 			build platform=x11 target=release tools=no
 			build platform=x11 target=release_debug tools=no
+			LTO=none
 			;;
 		frt-editor)
 			# Editor FRT/SDL2 x86_64: el mismo engine y modulo, con video SDL2.
@@ -204,8 +230,21 @@ for target in "$@"; do
 				export PATH="$GODOT_SDK_LINUX_ARM64/bin:$SDL2_ARM64/bin:$PATH"
 				# LINKFLAGS=-s es lo que usa el release de upstream FRT: production=yes
 				# no strippea, y los simbolos son 7 MB de los 42 en una tarjeta SD.
+				# LTO=full: ver la nota de arriba (medido en Cortex-A35).
+				LTO=full
 				build platform=frt arch=arm64 target=release tools=no LINKFLAGS=-s
 				build platform=frt arch=arm64 target=release_debug tools=no LINKFLAGS=-s
+				# FRT agrega '.lto' a env.extra_suffix cuando LTO esta on
+				# (platform/frt/detect.py), asi que el binario sale como
+				# godot.frt.opt.arm64.lto. Normalizamos al nombre canonico para que
+				# CI y los consumidores (PortMaster, godot_bin.sh) sigan encontrando
+				# godot.frt.opt.arm64 / godot.frt.opt.debug.arm64, que es el slot
+				# que el release publica.
+				for base in godot.frt.opt.arm64 godot.frt.opt.debug.arm64; do
+					if [ -f "$GODOT_DIR/bin/$base.lto" ]; then
+						mv -f "$GODOT_DIR/bin/$base.lto" "$GODOT_DIR/bin/$base"
+					fi
+				done
 			)
 			;;
 		frt-x86_64-templates)

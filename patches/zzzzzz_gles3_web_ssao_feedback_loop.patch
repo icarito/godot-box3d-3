@@ -1,0 +1,72 @@
+--- a/drivers/gles3/rasterizer_storage_gles3.cpp
++++ b/drivers/gles3/rasterizer_storage_gles3.cpp
+@@ -7382,8 +7409,18 @@
+ 			for (int i = 0; i < 2; i++) {
+ 				glGenFramebuffers(1, &rt->effects.ssao.blur_fbo[i]);
+ 				glBindFramebuffer(GL_FRAMEBUFFER, rt->effects.ssao.blur_fbo[i]);
++#ifndef JAVASCRIPT_ENABLED
++				// The SSAO and blur shaders sample the scene depth, and WebGL 2
++				// forbids sampling a texture attached to the current
++				// framebuffer: with this attachment every SSAO draw failed with
++				// "Feedback loop formed between Framebuffer and active Texture".
++				// It only existed for the GL_GREATER depth test around the SSAO
++				// passes, which the shaders do not need -- they already detect
++				// the skybox from the sampled depth (ssao.glsl) -- so on web the
++				// passes run without a depth buffer instead.
+ 				glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
+ 						GL_TEXTURE_2D, rt->depth, 0);
++#endif
+ 
+ 				glGenTextures(1, &rt->effects.ssao.blur_red[i]);
+ 				glBindTexture(GL_TEXTURE_2D, rt->effects.ssao.blur_red[i]);
+--- a/drivers/gles3/rasterizer_scene_gles3.cpp
++++ b/drivers/gles3/rasterizer_scene_gles3.cpp
+@@ -3752,6 +3752,11 @@
+ 		ss[0] = storage->frame.current_rt->width;
+ 		ss[1] = storage->frame.current_rt->height;
+ 
++#ifndef JAVASCRIPT_ENABLED
++		// On web the SSAO shader is built with MAX_MIP_LEVEL 0 (see initialize()),
++		// so this chain is never sampled and building it would only trip the
++		// WebGL feedback-loop check (each level is rendered while sampling the
++		// previous level of the same texture).
+ 		for (int i = 0; i < storage->frame.current_rt->effects.ssao.depth_mipmap_fbos.size(); i++) {
+ 			state.ssao_minify_shader.set_conditional(SsaoMinifyShaderGLES3::MINIFY_START, i == 0);
+ 			state.ssao_minify_shader.set_conditional(SsaoMinifyShaderGLES3::USE_ORTHOGONAL_PROJECTION, p_cam_projection.is_orthogonal());
+@@ -3775,6 +3780,7 @@
+ 
+ 			_copy_screen(true);
+ 		}
++#endif
+ 		ss[0] = storage->frame.current_rt->width;
+ 		ss[1] = storage->frame.current_rt->height;
+ 
+@@ -5715,6 +5721,16 @@
+ 		state.scene_shader.add_custom_define("#define GI_PROBES_AVAILABLE\n");
+ 	}
+ 
++#ifdef JAVASCRIPT_ENABLED
++	// WebGL 2 forbids sampling a texture attached to the current framebuffer.
++	// The SSAO depth mip chain is built by rendering each level while sampling
++	// the previous level of the same texture, which ANGLE rejects as a feedback
++	// loop. Force the SSAO shader to read the full-resolution depth for every
++	// tap (correct, just a little slower) and skip building the chain in
++	// _render_scene.
++	state.ssao_shader.add_custom_define("#define MAX_MIP_LEVEL 0\n");
++#endif
++
+ 	shadow_filter_mode = SHADOW_FILTER_NEAREST;
+ 
+ 	{ //reflection cubemaps
+--- a/drivers/gles3/shaders/ssao.glsl
++++ b/drivers/gles3/shaders/ssao.glsl
+@@ -33,7 +33,9 @@
+ #define LOG_MAX_OFFSET (3)
+ 
+ // This must be less than or equal to the MAX_MIP_LEVEL defined in SSAO.cpp
++#ifndef MAX_MIP_LEVEL
+ #define MAX_MIP_LEVEL (4)
++#endif
+ 
+ // This is the number of turns around the circle that the spiral pattern makes.  This should be prime to prevent
+ // taps from lining up.  This particular choice was tuned for NUM_SAMPLES == 9

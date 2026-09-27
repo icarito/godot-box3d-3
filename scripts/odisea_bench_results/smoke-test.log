@@ -1,0 +1,23 @@
+Could not open module param file '/sys/module/bifrost_kbase/parameters/large_page_conf'
+Godot Engine v3.6.4.rc.custom_build.6371881f6 - https://godotengine.org
+arm_release_ver: g29p1-12eac0, rk_so_ver: 5
+OpenGL ES 3.0 Renderer: Mali-G31
+Async. shader compilation: OFF (enabled for project, but not supported)
+Shader cache: ON
+ 
+[SessionManager] Early weak-hardware fast-path enabled.
+[SessionManager] run_seed = 1499269705
+[SessionManager] OYS Actor Registered: GhostManager -> GhostManager
+[PerformanceMonitor] Initialized
+[ANNAV2] Initialized. Telemetry: False PlayerID: 1789805321-2059183155 SessionID: 1790318870-10806160-6f7ceb1ef9a799822175b5245e5f6bcd
+[HotzoneRecorder] Disabled: strong hardware profile required
+[ANNAV2] Telemetry enabled by user preference.
+[CollisionCullManager] Backend Box3D: culling de props apagado (FD-290).
+[GLES3VendorGate] flat albedo: 2 overrides por defecto
+[GLES3VendorGate] mali-g31: ambiente conservador + lightmap manual
+[GLES3VendorGate] render: target_fps=0 physics=20
+[ANNAV2] UDP Discovery: listening on port 5500
+[RemoteControlManager] tier LOW: solo cliente (sin host)
+[ANNAV2] No local peer found; falling back to central: wss://odisea.educa.juegos/ws
+[ANNAV2] Attempting to connect to peer: wss://odisea.educa.juegos/ws
+EXIT_CODE=0

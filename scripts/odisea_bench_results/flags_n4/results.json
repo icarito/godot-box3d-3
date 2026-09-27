@@ -1,0 +1,1718 @@
+{
+ "meta": {
+  "session": "flags_n4",
+  "kernel": "7.1.2",
+  "arch": "aarch64",
+  "os_version": "20260901",
+  "governor_original": "ondemand",
+  "governor_pinned": "performance",
+  "governor_restore_cmd": "for c in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do echo ondemand > $c; done",
+  "replay": "replay_1790167671.json",
+  "replay_md5": "72d5f630633badad4796145793b4f969",
+  "pck": "/storage/roms/ports/odisea/odisea.pck.prev",
+  "pck_md5": "e69ba1f2f612d1a5f6664114b675383c",
+  "override_md5": "e60806795cabfe64e468b423cc36519b",
+  "shipped_engine_md5": "acf0ffd13ad08222a917f9e89166fa8c",
+  "runs": 4,
+  "timeout_s": 240,
+  "cooldown_target_c": 53,
+  "result_epoch": 1790313219
+ },
+ "baseline": "baseline",
+ "noise_floor_baseline_spread": {
+  "fps_mean": 1.188,
+  "fps_p50": 1.0,
+  "fps_p95": 1.4,
+  "ms_process_mean": 10.055,
+  "ms_process_p50": 2.479,
+  "ms_process_p95": 154.22,
+  "ms_physics_mean": 3.314,
+  "ms_physics_p50": 2.333,
+  "ms_physics_p95": 4.122
+ },
+ "paired_noise_floor_spread_control_base_vs_baseline": {
+  "fps_mean": 1.553,
+  "fps_p50": 2.0,
+  "ms_process_mean": 12.691,
+  "ms_process_p50": 3.685,
+  "ms_physics_mean": 2.479
+ },
+ "paired": {
+  "baseline": {
+   "base": {
+    "fps_mean": {
+     "n": 4,
+     "mean": 0.308,
+     "min": -0.616,
+     "max": 0.937,
+     "spread": 1.553,
+     "values": [
+      -0.616,
+      0.937,
+      0.552,
+      0.359
+     ]
+    },
+    "fps_p50": {
+     "n": 4,
+     "mean": 0.25,
+     "min": -1.0,
+     "max": 1.0,
+     "spread": 2.0,
+     "values": [
+      -1.0,
+      0.0,
+      1.0,
+      1.0
+     ]
+    },
+    "ms_process_mean": {
+     "n": 4,
+     "mean": -3.268,
+     "min": -9.812,
+     "max": 2.879,
+     "spread": 12.691,
+     "values": [
+      0.846,
+      -9.812,
+      2.879,
+      -6.985
+     ]
+    },
+    "ms_process_p50": {
+     "n": 4,
+     "mean": -0.051,
+     "min": -1.807,
+     "max": 1.878,
+     "spread": 3.685,
+     "values": [
+      1.878,
+      -1.807,
+      -0.26,
+      -0.013
+     ]
+    },
+    "ms_physics_mean": {
+     "n": 4,
+     "mean": 0.242,
+     "min": -1.244,
+     "max": 1.235,
+     "spread": 2.479,
+     "values": [
+      0.572,
+      0.404,
+      1.235,
+      -1.244
+     ]
+    }
+   }
+  },
+  "base": {
+   "baseline": {
+    "fps_mean": {
+     "n": 4,
+     "mean": -0.308,
+     "min": -0.937,
+     "max": 0.616,
+     "spread": 1.553,
+     "values": [
+      0.616,
+      -0.937,
+      -0.552,
+      -0.359
+     ]
+    },
+    "fps_p50": {
+     "n": 4,
+     "mean": -0.25,
+     "min": -1.0,
+     "max": 1.0,
+     "spread": 2.0,
+     "values": [
+      1.0,
+      0.0,
+      -1.0,
+      -1.0
+     ]
+    },
+    "ms_process_mean": {
+     "n": 4,
+     "mean": 3.268,
+     "min": -2.879,
+     "max": 9.812,
+     "spread": 12.691,
+     "values": [
+      -0.846,
+      9.812,
+      -2.879,
+      6.985
+     ]
+    },
+    "ms_process_p50": {
+     "n": 4,
+     "mean": 0.051,
+     "min": -1.878,
+     "max": 1.807,
+     "spread": 3.685,
+     "values": [
+      -1.878,
+      1.807,
+      0.26,
+      0.013
+     ]
+    },
+    "ms_physics_mean": {
+     "n": 4,
+     "mean": -0.242,
+     "min": -1.235,
+     "max": 1.244,
+     "spread": 2.479,
+     "values": [
+      -0.572,
+      -0.404,
+      -1.235,
+      1.244
+     ]
+    }
+   }
+  },
+  "mtune": {
+   "base": {
+    "fps_mean": {
+     "n": 4,
+     "mean": -0.145,
+     "min": -0.572,
+     "max": 0.097,
+     "spread": 0.669,
+     "values": [
+      0.07,
+      -0.572,
+      -0.174,
+      0.097
+     ]
+    },
+    "fps_p50": {
+     "n": 4,
+     "mean": -0.25,
+     "min": -1.0,
+     "max": 0.0,
+     "spread": 1.0,
+     "values": [
+      0.0,
+      -1.0,
+      0.0,
+      0.0
+     ]
+    },
+    "ms_process_mean": {
+     "n": 4,
+     "mean": -1.54,
+     "min": -4.091,
+     "max": 3.001,
+     "spread": 7.092,
+     "values": [
+      -3.661,
+      -1.409,
+      3.001,
+      -4.091
+     ]
+    },
+    "ms_process_p50": {
+     "n": 4,
+     "mean": -0.018,
+     "min": -0.653,
+     "max": 0.675,
+     "spread": 1.328,
+     "values": [
+      0.241,
+      -0.336,
+      0.675,
+      -0.653
+     ]
+    },
+    "ms_physics_mean": {
+     "n": 4,
+     "mean": -0.663,
+     "min": -2.59,
+     "max": 0.447,
+     "spread": 3.037,
+     "values": [
+      -2.59,
+      0.447,
+      0.34,
+      -0.851
+     ]
+    }
+   },
+   "baseline": {
+    "fps_mean": {
+     "n": 4,
+     "mean": -0.453,
+     "min": -1.509,
+     "max": 0.686,
+     "spread": 2.195,
+     "values": [
+      0.686,
+      -1.509,
+      -0.726,
+      -0.262
+     ]
+    },
+    "fps_p50": {
+     "n": 4,
+     "mean": -0.5,
+     "min": -1.0,
+     "max": 1.0,
+     "spread": 2.0,
+     "values": [
+      1.0,
+      -1.0,
+      -1.0,
+      -1.0
+     ]
+    },
+    "ms_process_mean": {
+     "n": 4,
+     "mean": 1.728,
+     "min": -4.507,
+     "max": 8.403,
+     "spread": 12.91,
+     "values": [
+      -4.507,
+      8.403,
+      0.122,
+      2.894
+     ]
+    },
+    "ms_process_p50": {
+     "n": 4,
+     "mean": 0.032,
+     "min": -1.637,
+     "max": 1.471,
+     "spread": 3.108,
+     "values": [
+      -1.637,
+      1.471,
+      0.935,
+      -0.64
+     ]
+    },
+    "ms_physics_mean": {
+     "n": 4,
+     "mean": -0.905,
+     "min": -3.162,
+     "max": 0.393,
+     "spread": 3.555,
+     "values": [
+      -3.162,
+      0.043,
+      -0.895,
+      0.393
+     ]
+    }
+   }
+  },
+  "lto": {
+   "base": {
+    "fps_mean": {
+     "n": 4,
+     "mean": 0.483,
+     "min": 0.206,
+     "max": 0.937,
+     "spread": 0.731,
+     "values": [
+      0.228,
+      0.206,
+      0.563,
+      0.937
+     ]
+    },
+    "fps_p50": {
+     "n": 4,
+     "mean": 0.75,
+     "min": 0.0,
+     "max": 2.0,
+     "spread": 2.0,
+     "values": [
+      0.0,
+      0.0,
+      1.0,
+      2.0
+     ]
+    },
+    "ms_process_mean": {
+     "n": 4,
+     "mean": -2.12,
+     "min": -5.95,
+     "max": 2.396,
+     "spread": 8.346,
+     "values": [
+      2.396,
+      -4.07,
+      -0.855,
+      -5.95
+     ]
+    },
+    "ms_process_p50": {
+     "n": 4,
+     "mean": 0.211,
+     "min": -1.588,
+     "max": 2.039,
+     "spread": 3.627,
+     "values": [
+      2.039,
+      0.519,
+      -1.588,
+      -0.128
+     ]
+    },
+    "ms_physics_mean": {
+     "n": 4,
+     "mean": -0.211,
+     "min": -2.322,
+     "max": 2.641,
+     "spread": 4.963,
+     "values": [
+      -2.322,
+      -0.001,
+      2.641,
+      -1.163
+     ]
+    }
+   },
+   "baseline": {
+    "fps_mean": {
+     "n": 4,
+     "mean": 0.175,
+     "min": -0.731,
+     "max": 0.844,
+     "spread": 1.575,
+     "values": [
+      0.844,
+      -0.731,
+      0.011,
+      0.578
+     ]
+    },
+    "fps_p50": {
+     "n": 4,
+     "mean": 0.5,
+     "min": 0.0,
+     "max": 1.0,
+     "spread": 1.0,
+     "values": [
+      1.0,
+      0.0,
+      0.0,
+      1.0
+     ]
+    },
+    "ms_process_mean": {
+     "n": 4,
+     "mean": 1.148,
+     "min": -3.734,
+     "max": 5.742,
+     "spread": 9.476,
+     "values": [
+      1.55,
+      5.742,
+      -3.734,
+      1.035
+     ]
+    },
+    "ms_process_p50": {
+     "n": 4,
+     "mean": 0.261,
+     "min": -1.328,
+     "max": 2.326,
+     "spread": 3.654,
+     "values": [
+      0.161,
+      2.326,
+      -1.328,
+      -0.115
+     ]
+    },
+    "ms_physics_mean": {
+     "n": 4,
+     "mean": -0.453,
+     "min": -2.894,
+     "max": 1.406,
+     "spread": 4.3,
+     "values": [
+      -2.894,
+      -0.405,
+      1.406,
+      0.081
+     ]
+    }
+   }
+  }
+ },
+ "engines": [
+  {
+   "label": "baseline",
+   "bin": "/storage/roms/ports/odisea/odisea.frt.aarch64",
+   "md5": "acf0ffd13ad08222a917f9e89166fa8c",
+   "runs_total": 4,
+   "runs_valid": 4,
+   "invalid": [],
+   "per_run": [
+    {
+     "run": 1,
+     "fps_mean": 9.793,
+     "fps_p50": 10.0,
+     "fps_p95": 12.0,
+     "ms_process_mean": 51.323,
+     "ms_process_p50": 38.33,
+     "ms_process_p95": 62.873,
+     "ms_physics_mean": 21.702,
+     "ms_physics_p50": 19.379,
+     "ms_physics_p95": 26.998,
+     "draw_calls_mean": 64.433,
+     "nodos_mean": 701.924,
+     "objetos_mean": 2733.401,
+     "seconds": 42,
+     "temp_soc_before": 57,
+     "temp_soc_after": 60,
+     "end_dist": 0.0003,
+     "flags": []
+    },
+    {
+     "run": 2,
+     "fps_mean": 10.981,
+     "fps_p50": 11.0,
+     "fps_p95": 13.4,
+     "ms_process_mean": 44.199,
+     "ms_process_p50": 35.851,
+     "ms_process_p95": 54.267,
+     "ms_physics_mean": 20.236,
+     "ms_physics_p50": 17.046,
+     "ms_physics_p95": 23.745,
+     "draw_calls_mean": 64.262,
+     "nodos_mean": 703.507,
+     "objetos_mean": 2736.637,
+     "seconds": 42,
+     "temp_soc_before": 61,
+     "temp_soc_after": 62,
+     "end_dist": 0.0003,
+     "flags": []
+    },
+    {
+     "run": 3,
+     "fps_mean": 10.492,
+     "fps_p50": 11.0,
+     "fps_p95": 12.0,
+     "ms_process_mean": 54.254,
+     "ms_process_p50": 37.451,
+     "ms_process_p95": 197.799,
+     "ms_physics_mean": 20.009,
+     "ms_physics_p50": 17.738,
+     "ms_physics_p95": 23.417,
+     "draw_calls_mean": 64.34,
+     "nodos_mean": 704.298,
+     "objetos_mean": 2737.254,
+     "seconds": 41,
+     "temp_soc_before": 62,
+     "temp_soc_after": 63,
+     "end_dist": 0.0003,
+     "flags": []
+    },
+    {
+     "run": 4,
+     "fps_mean": 10.315,
+     "fps_p50": 11.0,
+     "fps_p95": 13.0,
+     "ms_process_mean": 46.041,
+     "ms_process_p50": 37.066,
+     "ms_process_p95": 43.579,
+     "ms_physics_mean": 18.388,
+     "ms_physics_p50": 18.152,
+     "ms_physics_p95": 22.876,
+     "draw_calls_mean": 64.307,
+     "nodos_mean": 702.198,
+     "objetos_mean": 2733.622,
+     "seconds": 42,
+     "temp_soc_before": 61,
+     "temp_soc_after": 63,
+     "end_dist": 0.0003,
+     "flags": []
+    }
+   ],
+   "agg": {
+    "fps_mean": {
+     "min": 9.793,
+     "mean": 10.395,
+     "max": 10.981,
+     "spread": 1.188,
+     "values": [
+      9.793,
+      10.981,
+      10.492,
+      10.315
+     ]
+    },
+    "fps_p50": {
+     "min": 10.0,
+     "mean": 10.75,
+     "max": 11.0,
+     "spread": 1.0,
+     "values": [
+      10.0,
+      11.0,
+      11.0,
+      11.0
+     ]
+    },
+    "fps_p95": {
+     "min": 12.0,
+     "mean": 12.6,
+     "max": 13.4,
+     "spread": 1.4,
+     "values": [
+      12.0,
+      13.4,
+      12.0,
+      13.0
+     ]
+    },
+    "ms_process_mean": {
+     "min": 44.199,
+     "mean": 48.954,
+     "max": 54.254,
+     "spread": 10.055,
+     "values": [
+      51.323,
+      44.199,
+      54.254,
+      46.041
+     ]
+    },
+    "ms_process_p50": {
+     "min": 35.851,
+     "mean": 37.175,
+     "max": 38.33,
+     "spread": 2.479,
+     "values": [
+      38.33,
+      35.851,
+      37.451,
+      37.066
+     ]
+    },
+    "ms_process_p95": {
+     "min": 43.579,
+     "mean": 89.63,
+     "max": 197.799,
+     "spread": 154.22,
+     "values": [
+      62.873,
+      54.267,
+      197.799,
+      43.579
+     ]
+    },
+    "ms_physics_mean": {
+     "min": 18.388,
+     "mean": 20.084,
+     "max": 21.702,
+     "spread": 3.314,
+     "values": [
+      21.702,
+      20.236,
+      20.009,
+      18.388
+     ]
+    },
+    "ms_physics_p50": {
+     "min": 17.046,
+     "mean": 18.079,
+     "max": 19.379,
+     "spread": 2.333,
+     "values": [
+      19.379,
+      17.046,
+      17.738,
+      18.152
+     ]
+    },
+    "ms_physics_p95": {
+     "min": 22.876,
+     "mean": 24.259,
+     "max": 26.998,
+     "spread": 4.122,
+     "values": [
+      26.998,
+      23.745,
+      23.417,
+      22.876
+     ]
+    }
+   },
+   "pooled": {
+    "fps": {
+     "mean": 10.395,
+     "p50": 11.0,
+     "p95": 13.0,
+     "min": 5,
+     "max": 14,
+     "n": 5012
+    },
+    "ms_process": {
+     "mean": 48.955,
+     "p50": 37.086,
+     "p95": 62.873,
+     "min": 30.461,
+     "max": 336.956,
+     "n": 5012
+    },
+    "ms_physics": {
+     "mean": 20.084,
+     "p50": 18.397,
+     "p95": 25.215,
+     "min": 14.5,
+     "max": 93.304,
+     "n": 5012
+    },
+    "draw_calls": {
+     "mean": 64.336,
+     "p50": 64.0,
+     "p95": 99.35,
+     "min": 20,
+     "max": 110,
+     "n": 5012
+    },
+    "nodos": {
+     "mean": 702.982,
+     "p50": 714.0,
+     "p95": 717.0,
+     "min": 388,
+     "max": 718,
+     "n": 5012
+    },
+    "objetos": {
+     "mean": 2735.228,
+     "p50": 2743.0,
+     "p95": 2745.0,
+     "min": 2488,
+     "max": 2748,
+     "n": 5012
+    }
+   },
+   "top_systems": [
+    {
+     "sistema": "\u00b7 scripts del tick",
+     "ms_por_llamada_median": 9.47
+    },
+    {
+     "sistema": "SessionManager",
+     "ms_por_llamada_median": 6.017
+    },
+    {
+     "sistema": "\u00b7 scripts del frame",
+     "ms_por_llamada_median": 4.467
+    },
+    {
+     "sistema": "SM.player_step",
+     "ms_por_llamada_median": 4.125
+    },
+    {
+     "sistema": "PC.move",
+     "ms_por_llamada_median": 2.286
+    },
+    {
+     "sistema": "PC.move.pre",
+     "ms_por_llamada_median": 1.029
+    },
+    {
+     "sistema": "PC.move.slide",
+     "ms_por_llamada_median": 0.835
+    },
+    {
+     "sistema": "SM.sync_nodes",
+     "ms_por_llamada_median": 0.783
+    },
+    {
+     "sistema": "PC.post",
+     "ms_por_llamada_median": 0.778
+    },
+    {
+     "sistema": "PC.control",
+     "ms_por_llamada_median": 0.777
+    },
+    {
+     "sistema": "KinematicArm3D",
+     "ms_por_llamada_median": 0.676
+    },
+    {
+     "sistema": "SM.bookkeeping",
+     "ms_por_llamada_median": 0.538
+    }
+   ],
+   "temp_soc_range_c": [
+    57,
+    63
+   ],
+   "f100_median": {
+    "x": 9.0,
+    "y": 5.4543,
+    "z": -3.5344
+   },
+   "end_dist_median": 0.0003,
+   "frames": [
+    1352,
+    1352,
+    1352,
+    1352
+   ]
+  },
+  {
+   "label": "base",
+   "bin": "/storage/kilo-bench/godot.base.arm64",
+   "md5": "52df97fd0f96d7863ed60ec5ce1c07db",
+   "runs_total": 4,
+   "runs_valid": 4,
+   "invalid": [],
+   "per_run": [
+    {
+     "run": 1,
+     "fps_mean": 10.409,
+     "fps_p50": 11.0,
+     "fps_p95": 13.0,
+     "ms_process_mean": 50.477,
+     "ms_process_p50": 36.452,
+     "ms_process_p95": 57.596,
+     "ms_physics_mean": 21.13,
+     "ms_physics_p50": 18.369,
+     "ms_physics_p95": 26.322,
+     "draw_calls_mean": 64.221,
+     "nodos_mean": 703.245,
+     "objetos_mean": 2734.433,
+     "seconds": 42,
+     "temp_soc_before": 60,
+     "temp_soc_after": 63,
+     "end_dist": 0.0003,
+     "flags": []
+    },
+    {
+     "run": 2,
+     "fps_mean": 10.044,
+     "fps_p50": 11.0,
+     "fps_p95": 12.0,
+     "ms_process_mean": 54.011,
+     "ms_process_p50": 37.658,
+     "ms_process_p95": 181.348,
+     "ms_physics_mean": 19.832,
+     "ms_physics_p50": 18.49,
+     "ms_physics_p95": 25.56,
+     "draw_calls_mean": 64.226,
+     "nodos_mean": 702.457,
+     "objetos_mean": 2735.82,
+     "seconds": 42,
+     "temp_soc_before": 57,
+     "temp_soc_after": 62,
+     "end_dist": 0.0003,
+     "flags": []
+    },
+    {
+     "run": 3,
+     "fps_mean": 9.94,
+     "fps_p50": 10.0,
+     "fps_p95": 12.0,
+     "ms_process_mean": 51.375,
+     "ms_process_p50": 37.711,
+     "ms_process_p95": 169.761,
+     "ms_physics_mean": 18.774,
+     "ms_physics_p50": 18.713,
+     "ms_physics_p95": 22.262,
+     "draw_calls_mean": 64.381,
+     "nodos_mean": 703.508,
+     "objetos_mean": 2736.638,
+     "seconds": 42,
+     "temp_soc_before": 59,
+     "temp_soc_after": 62,
+     "end_dist": 0.0003,
+     "flags": []
+    },
+    {
+     "run": 4,
+     "fps_mean": 9.956,
+     "fps_p50": 10.0,
+     "fps_p95": 12.0,
+     "ms_process_mean": 53.026,
+     "ms_process_p50": 37.079,
+     "ms_process_p95": 182.683,
+     "ms_physics_mean": 19.632,
+     "ms_physics_p50": 19.399,
+     "ms_physics_p95": 24.573,
+     "draw_calls_mean": 64.355,
+     "nodos_mean": 702.972,
+     "objetos_mean": 2736.22,
+     "seconds": 42,
+     "temp_soc_before": 63,
+     "temp_soc_after": 64,
+     "end_dist": 0.0003,
+     "flags": []
+    }
+   ],
+   "agg": {
+    "fps_mean": {
+     "min": 9.94,
+     "mean": 10.087,
+     "max": 10.409,
+     "spread": 0.469,
+     "values": [
+      10.409,
+      10.044,
+      9.94,
+      9.956
+     ]
+    },
+    "fps_p50": {
+     "min": 10.0,
+     "mean": 10.5,
+     "max": 11.0,
+     "spread": 1.0,
+     "values": [
+      11.0,
+      11.0,
+      10.0,
+      10.0
+     ]
+    },
+    "fps_p95": {
+     "min": 12.0,
+     "mean": 12.25,
+     "max": 13.0,
+     "spread": 1.0,
+     "values": [
+      13.0,
+      12.0,
+      12.0,
+      12.0
+     ]
+    },
+    "ms_process_mean": {
+     "min": 50.477,
+     "mean": 52.222,
+     "max": 54.011,
+     "spread": 3.534,
+     "values": [
+      50.477,
+      54.011,
+      51.375,
+      53.026
+     ]
+    },
+    "ms_process_p50": {
+     "min": 36.452,
+     "mean": 37.225,
+     "max": 37.711,
+     "spread": 1.259,
+     "values": [
+      36.452,
+      37.658,
+      37.711,
+      37.079
+     ]
+    },
+    "ms_process_p95": {
+     "min": 57.596,
+     "mean": 147.847,
+     "max": 182.683,
+     "spread": 125.087,
+     "values": [
+      57.596,
+      181.348,
+      169.761,
+      182.683
+     ]
+    },
+    "ms_physics_mean": {
+     "min": 18.774,
+     "mean": 19.842,
+     "max": 21.13,
+     "spread": 2.356,
+     "values": [
+      21.13,
+      19.832,
+      18.774,
+      19.632
+     ]
+    },
+    "ms_physics_p50": {
+     "min": 18.369,
+     "mean": 18.743,
+     "max": 19.399,
+     "spread": 1.03,
+     "values": [
+      18.369,
+      18.49,
+      18.713,
+      19.399
+     ]
+    },
+    "ms_physics_p95": {
+     "min": 22.262,
+     "mean": 24.679,
+     "max": 26.322,
+     "spread": 4.06,
+     "values": [
+      26.322,
+      25.56,
+      22.262,
+      24.573
+     ]
+    }
+   },
+   "pooled": {
+    "fps": {
+     "mean": 10.087,
+     "p50": 10.0,
+     "p95": 12.0,
+     "min": 5,
+     "max": 13,
+     "n": 5012
+    },
+    "ms_process": {
+     "mean": 52.222,
+     "p50": 37.627,
+     "p95": 182.683,
+     "min": 31.085,
+     "max": 330.578,
+     "n": 5012
+    },
+    "ms_physics": {
+     "mean": 19.842,
+     "p50": 18.661,
+     "p95": 24.787,
+     "min": 13.663,
+     "max": 90.434,
+     "n": 5012
+    },
+    "draw_calls": {
+     "mean": 64.296,
+     "p50": 64.0,
+     "p95": 100.0,
+     "min": 20,
+     "max": 110,
+     "n": 5012
+    },
+    "nodos": {
+     "mean": 703.045,
+     "p50": 714.0,
+     "p95": 717.0,
+     "min": 388,
+     "max": 718,
+     "n": 5012
+    },
+    "objetos": {
+     "mean": 2735.778,
+     "p50": 2745.0,
+     "p95": 2745.0,
+     "min": 2488,
+     "max": 2748,
+     "n": 5012
+    }
+   },
+   "top_systems": [
+    {
+     "sistema": "\u00b7 scripts del tick",
+     "ms_por_llamada_median": 9.467
+    },
+    {
+     "sistema": "SessionManager",
+     "ms_por_llamada_median": 6.077
+    },
+    {
+     "sistema": "\u00b7 scripts del frame",
+     "ms_por_llamada_median": 4.512
+    },
+    {
+     "sistema": "SM.player_step",
+     "ms_por_llamada_median": 4.181
+    },
+    {
+     "sistema": "PC.move",
+     "ms_por_llamada_median": 2.321
+    },
+    {
+     "sistema": "PC.move.pre",
+     "ms_por_llamada_median": 1.046
+    },
+    {
+     "sistema": "PC.move.slide",
+     "ms_por_llamada_median": 0.855
+    },
+    {
+     "sistema": "PC.control",
+     "ms_por_llamada_median": 0.792
+    },
+    {
+     "sistema": "SM.sync_nodes",
+     "ms_por_llamada_median": 0.776
+    },
+    {
+     "sistema": "PC.post",
+     "ms_por_llamada_median": 0.775
+    },
+    {
+     "sistema": "KinematicArm3D",
+     "ms_por_llamada_median": 0.665
+    },
+    {
+     "sistema": "SM.bookkeeping",
+     "ms_por_llamada_median": 0.551
+    }
+   ],
+   "temp_soc_range_c": [
+    57,
+    64
+   ],
+   "f100_median": {
+    "x": 9.0,
+    "y": 5.4543,
+    "z": -3.5344
+   },
+   "end_dist_median": 0.0003,
+   "frames": [
+    1352,
+    1352,
+    1352,
+    1352
+   ]
+  },
+  {
+   "label": "mtune",
+   "bin": "/storage/kilo-bench/godot.mtune.a35.arm64",
+   "md5": "dbeaf83ff51d297ef2045e55f711e295",
+   "runs_total": 4,
+   "runs_valid": 4,
+   "invalid": [],
+   "per_run": [
+    {
+     "run": 1,
+     "fps_mean": 10.479,
+     "fps_p50": 11.0,
+     "fps_p95": 12.0,
+     "ms_process_mean": 46.816,
+     "ms_process_p50": 36.693,
+     "ms_process_p95": 56.479,
+     "ms_physics_mean": 18.54,
+     "ms_physics_p50": 17.652,
+     "ms_physics_p95": 22.045,
+     "draw_calls_mean": 64.378,
+     "nodos_mean": 702.192,
+     "objetos_mean": 2733.617,
+     "seconds": 42,
+     "temp_soc_before": 60,
+     "temp_soc_after": 61,
+     "end_dist": 0.0003,
+     "flags": []
+    },
+    {
+     "run": 2,
+     "fps_mean": 9.472,
+     "fps_p50": 10.0,
+     "fps_p95": 11.0,
+     "ms_process_mean": 52.602,
+     "ms_process_p50": 37.322,
+     "ms_process_p95": 189.683,
+     "ms_physics_mean": 20.279,
+     "ms_physics_p50": 20.204,
+     "ms_physics_p95": 24.698,
+     "draw_calls_mean": 64.248,
+     "nodos_mean": 702.456,
+     "objetos_mean": 2735.82,
+     "seconds": 42,
+     "temp_soc_before": 60,
+     "temp_soc_after": 62,
+     "end_dist": 0.0003,
+     "flags": []
+    },
+    {
+     "run": 3,
+     "fps_mean": 9.766,
+     "fps_p50": 10.0,
+     "fps_p95": 12.0,
+     "ms_process_mean": 54.376,
+     "ms_process_p50": 38.386,
+     "ms_process_p95": 180.127,
+     "ms_physics_mean": 19.114,
+     "ms_physics_p50": 19.019,
+     "ms_physics_p95": 24.692,
+     "draw_calls_mean": 64.291,
+     "nodos_mean": 702.183,
+     "objetos_mean": 2735.607,
+     "seconds": 42,
+     "temp_soc_before": 56,
+     "temp_soc_after": 62,
+     "end_dist": 0.0003,
+     "flags": []
+    },
+    {
+     "run": 4,
+     "fps_mean": 10.053,
+     "fps_p50": 10.0,
+     "fps_p95": 12.0,
+     "ms_process_mean": 48.935,
+     "ms_process_p50": 36.426,
+     "ms_process_p95": 48.97,
+     "ms_physics_mean": 18.781,
+     "ms_physics_p50": 18.627,
+     "ms_physics_p95": 22.659,
+     "draw_calls_mean": 64.14,
+     "nodos_mean": 701.942,
+     "objetos_mean": 2735.43,
+     "seconds": 42,
+     "temp_soc_before": 62,
+     "temp_soc_after": 64,
+     "end_dist": 0.0003,
+     "flags": []
+    }
+   ],
+   "agg": {
+    "fps_mean": {
+     "min": 9.472,
+     "mean": 9.942,
+     "max": 10.479,
+     "spread": 1.007,
+     "values": [
+      10.479,
+      9.472,
+      9.766,
+      10.053
+     ]
+    },
+    "fps_p50": {
+     "min": 10.0,
+     "mean": 10.25,
+     "max": 11.0,
+     "spread": 1.0,
+     "values": [
+      11.0,
+      10.0,
+      10.0,
+      10.0
+     ]
+    },
+    "fps_p95": {
+     "min": 11.0,
+     "mean": 11.75,
+     "max": 12.0,
+     "spread": 1.0,
+     "values": [
+      12.0,
+      11.0,
+      12.0,
+      12.0
+     ]
+    },
+    "ms_process_mean": {
+     "min": 46.816,
+     "mean": 50.682,
+     "max": 54.376,
+     "spread": 7.56,
+     "values": [
+      46.816,
+      52.602,
+      54.376,
+      48.935
+     ]
+    },
+    "ms_process_p50": {
+     "min": 36.426,
+     "mean": 37.207,
+     "max": 38.386,
+     "spread": 1.96,
+     "values": [
+      36.693,
+      37.322,
+      38.386,
+      36.426
+     ]
+    },
+    "ms_process_p95": {
+     "min": 48.97,
+     "mean": 118.815,
+     "max": 189.683,
+     "spread": 140.713,
+     "values": [
+      56.479,
+      189.683,
+      180.127,
+      48.97
+     ]
+    },
+    "ms_physics_mean": {
+     "min": 18.54,
+     "mean": 19.178,
+     "max": 20.279,
+     "spread": 1.739,
+     "values": [
+      18.54,
+      20.279,
+      19.114,
+      18.781
+     ]
+    },
+    "ms_physics_p50": {
+     "min": 17.652,
+     "mean": 18.875,
+     "max": 20.204,
+     "spread": 2.552,
+     "values": [
+      17.652,
+      20.204,
+      19.019,
+      18.627
+     ]
+    },
+    "ms_physics_p95": {
+     "min": 22.045,
+     "mean": 23.523,
+     "max": 24.698,
+     "spread": 2.653,
+     "values": [
+      22.045,
+      24.698,
+      24.692,
+      22.659
+     ]
+    }
+   },
+   "pooled": {
+    "fps": {
+     "mean": 9.943,
+     "p50": 10.0,
+     "p95": 12.0,
+     "min": 5,
+     "max": 13,
+     "n": 5012
+    },
+    "ms_process": {
+     "mean": 50.682,
+     "p50": 37.322,
+     "p95": 180.127,
+     "min": 30.557,
+     "max": 334.244,
+     "n": 5012
+    },
+    "ms_physics": {
+     "mean": 19.178,
+     "p50": 18.963,
+     "p95": 24.692,
+     "min": 14.365,
+     "max": 27.118,
+     "n": 5012
+    },
+    "draw_calls": {
+     "mean": 64.264,
+     "p50": 64.0,
+     "p95": 100.0,
+     "min": 20,
+     "max": 110,
+     "n": 5012
+    },
+    "nodos": {
+     "mean": 702.193,
+     "p50": 714.0,
+     "p95": 714.0,
+     "min": 388,
+     "max": 718,
+     "n": 5012
+    },
+    "objetos": {
+     "mean": 2735.119,
+     "p50": 2745.0,
+     "p95": 2745.0,
+     "min": 2488,
+     "max": 2748,
+     "n": 5012
+    }
+   },
+   "top_systems": [
+    {
+     "sistema": "\u00b7 scripts del tick",
+     "ms_por_llamada_median": 9.591
+    },
+    {
+     "sistema": "SessionManager",
+     "ms_por_llamada_median": 6.148
+    },
+    {
+     "sistema": "\u00b7 scripts del frame",
+     "ms_por_llamada_median": 4.527
+    },
+    {
+     "sistema": "SM.player_step",
+     "ms_por_llamada_median": 4.232
+    },
+    {
+     "sistema": "PC.move",
+     "ms_por_llamada_median": 2.346
+    },
+    {
+     "sistema": "PC.move.pre",
+     "ms_por_llamada_median": 1.066
+    },
+    {
+     "sistema": "PC.move.slide",
+     "ms_por_llamada_median": 0.855
+    },
+    {
+     "sistema": "PC.control",
+     "ms_por_llamada_median": 0.797
+    },
+    {
+     "sistema": "PC.post",
+     "ms_por_llamada_median": 0.791
+    },
+    {
+     "sistema": "SM.sync_nodes",
+     "ms_por_llamada_median": 0.785
+    },
+    {
+     "sistema": "KinematicArm3D",
+     "ms_por_llamada_median": 0.674
+    },
+    {
+     "sistema": "PC.move.pre.stepup",
+     "ms_por_llamada_median": 0.552
+    }
+   ],
+   "temp_soc_range_c": [
+    56,
+    64
+   ],
+   "f100_median": {
+    "x": 9.0,
+    "y": 5.4543,
+    "z": -3.5344
+   },
+   "end_dist_median": 0.0003,
+   "frames": [
+    1352,
+    1352,
+    1352,
+    1352
+   ]
+  },
+  {
+   "label": "lto",
+   "bin": "/storage/kilo-bench/godot.lto.arm64",
+   "md5": "84a1df051921b2df3dc1b06841054ece",
+   "runs_total": 4,
+   "runs_valid": 4,
+   "invalid": [],
+   "per_run": [
+    {
+     "run": 1,
+     "fps_mean": 10.637,
+     "fps_p50": 11.0,
+     "fps_p95": 12.0,
+     "ms_process_mean": 52.873,
+     "ms_process_p50": 38.491,
+     "ms_process_p95": 179.943,
+     "ms_physics_mean": 18.808,
+     "ms_physics_p50": 18.547,
+     "ms_physics_p95": 22.867,
+     "draw_calls_mean": 64.291,
+     "nodos_mean": 703.766,
+     "objetos_mean": 2736.836,
+     "seconds": 42,
+     "temp_soc_before": 61,
+     "temp_soc_after": 62,
+     "end_dist": 0.0003,
+     "flags": []
+    },
+    {
+     "run": 2,
+     "fps_mean": 10.25,
+     "fps_p50": 11.0,
+     "fps_p95": 12.0,
+     "ms_process_mean": 49.941,
+     "ms_process_p50": 38.177,
+     "ms_process_p95": 50.257,
+     "ms_physics_mean": 19.831,
+     "ms_physics_p50": 20.089,
+     "ms_physics_p95": 23.874,
+     "draw_calls_mean": 64.437,
+     "nodos_mean": 702.456,
+     "objetos_mean": 2735.823,
+     "seconds": 42,
+     "temp_soc_before": 59,
+     "temp_soc_after": 62,
+     "end_dist": 0.0003,
+     "flags": []
+    },
+    {
+     "run": 3,
+     "fps_mean": 10.503,
+     "fps_p50": 11.0,
+     "fps_p95": 12.0,
+     "ms_process_mean": 50.52,
+     "ms_process_p50": 36.123,
+     "ms_process_p95": 160.489,
+     "ms_physics_mean": 21.415,
+     "ms_physics_p50": 19.27,
+     "ms_physics_p95": 24.613,
+     "draw_calls_mean": 64.448,
+     "nodos_mean": 701.942,
+     "objetos_mean": 2735.429,
+     "seconds": 42,
+     "temp_soc_before": 61,
+     "temp_soc_after": 63,
+     "end_dist": 0.0003,
+     "flags": []
+    },
+    {
+     "run": 4,
+     "fps_mean": 10.893,
+     "fps_p50": 12.0,
+     "fps_p95": 13.0,
+     "ms_process_mean": 47.076,
+     "ms_process_p50": 36.951,
+     "ms_process_p95": 55.072,
+     "ms_physics_mean": 18.469,
+     "ms_physics_p50": 17.785,
+     "ms_physics_p95": 22.676,
+     "draw_calls_mean": 64.322,
+     "nodos_mean": 703.773,
+     "objetos_mean": 2736.848,
+     "seconds": 42,
+     "temp_soc_before": 58,
+     "temp_soc_after": 62,
+     "end_dist": 0.0003,
+     "flags": []
+    }
+   ],
+   "agg": {
+    "fps_mean": {
+     "min": 10.25,
+     "mean": 10.571,
+     "max": 10.893,
+     "spread": 0.643,
+     "values": [
+      10.637,
+      10.25,
+      10.503,
+      10.893
+     ]
+    },
+    "fps_p50": {
+     "min": 11.0,
+     "mean": 11.25,
+     "max": 12.0,
+     "spread": 1.0,
+     "values": [
+      11.0,
+      11.0,
+      11.0,
+      12.0
+     ]
+    },
+    "fps_p95": {
+     "min": 12.0,
+     "mean": 12.25,
+     "max": 13.0,
+     "spread": 1.0,
+     "values": [
+      12.0,
+      12.0,
+      12.0,
+      13.0
+     ]
+    },
+    "ms_process_mean": {
+     "min": 47.076,
+     "mean": 50.102,
+     "max": 52.873,
+     "spread": 5.797,
+     "values": [
+      52.873,
+      49.941,
+      50.52,
+      47.076
+     ]
+    },
+    "ms_process_p50": {
+     "min": 36.123,
+     "mean": 37.435,
+     "max": 38.491,
+     "spread": 2.368,
+     "values": [
+      38.491,
+      38.177,
+      36.123,
+      36.951
+     ]
+    },
+    "ms_process_p95": {
+     "min": 50.257,
+     "mean": 111.44,
+     "max": 179.943,
+     "spread": 129.686,
+     "values": [
+      179.943,
+      50.257,
+      160.489,
+      55.072
+     ]
+    },
+    "ms_physics_mean": {
+     "min": 18.469,
+     "mean": 19.631,
+     "max": 21.415,
+     "spread": 2.946,
+     "values": [
+      18.808,
+      19.831,
+      21.415,
+      18.469
+     ]
+    },
+    "ms_physics_p50": {
+     "min": 17.785,
+     "mean": 18.923,
+     "max": 20.089,
+     "spread": 2.304,
+     "values": [
+      18.547,
+      20.089,
+      19.27,
+      17.785
+     ]
+    },
+    "ms_physics_p95": {
+     "min": 22.676,
+     "mean": 23.508,
+     "max": 24.613,
+     "spread": 1.937,
+     "values": [
+      22.867,
+      23.874,
+      24.613,
+      22.676
+     ]
+    }
+   },
+   "pooled": {
+    "fps": {
+     "mean": 10.571,
+     "p50": 11.0,
+     "p95": 13.0,
+     "min": 6,
+     "max": 13,
+     "n": 5012
+    },
+    "ms_process": {
+     "mean": 50.103,
+     "p50": 37.035,
+     "p95": 60.973,
+     "min": 29.995,
+     "max": 336.649,
+     "n": 5012
+    },
+    "ms_physics": {
+     "mean": 19.63,
+     "p50": 19.058,
+     "p95": 23.519,
+     "min": 14.641,
+     "max": 86.719,
+     "n": 5012
+    },
+    "draw_calls": {
+     "mean": 64.375,
+     "p50": 64.0,
+     "p95": 100.45,
+     "min": 20,
+     "max": 110,
+     "n": 5012
+    },
+    "nodos": {
+     "mean": 702.984,
+     "p50": 714.0,
+     "p95": 717.0,
+     "min": 388,
+     "max": 718,
+     "n": 5012
+    },
+    "objetos": {
+     "mean": 2736.234,
+     "p50": 2745.0,
+     "p95": 2747.0,
+     "min": 2490,
+     "max": 2748,
+     "n": 5012
+    }
+   },
+   "top_systems": [
+    {
+     "sistema": "\u00b7 scripts del tick",
+     "ms_por_llamada_median": 9.427
+    },
+    {
+     "sistema": "SessionManager",
+     "ms_por_llamada_median": 6.113
+    },
+    {
+     "sistema": "\u00b7 scripts del frame",
+     "ms_por_llamada_median": 4.302
+    },
+    {
+     "sistema": "SM.player_step",
+     "ms_por_llamada_median": 4.229
+    },
+    {
+     "sistema": "PC.move",
+     "ms_por_llamada_median": 2.335
+    },
+    {
+     "sistema": "PC.move.pre",
+     "ms_por_llamada_median": 1.072
+    },
+    {
+     "sistema": "PC.move.slide",
+     "ms_por_llamada_median": 0.85
+    },
+    {
+     "sistema": "PC.control",
+     "ms_por_llamada_median": 0.811
+    },
+    {
+     "sistema": "PC.post",
+     "ms_por_llamada_median": 0.784
+    },
+    {
+     "sistema": "SM.sync_nodes",
+     "ms_por_llamada_median": 0.762
+    },
+    {
+     "sistema": "KinematicArm3D",
+     "ms_por_llamada_median": 0.659
+    },
+    {
+     "sistema": "PC.move.pre.stepup",
+     "ms_por_llamada_median": 0.561
+    }
+   ],
+   "temp_soc_range_c": [
+    58,
+    63
+   ],
+   "f100_median": {
+    "x": 9.0,
+    "y": 5.4543,
+    "z": -3.5344
+   },
+   "end_dist_median": 0.0003,
+   "frames": [
+    1352,
+    1352,
+    1352,
+    1352
+   ]
+  }
+ ]
+}

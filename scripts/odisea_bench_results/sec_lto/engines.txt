@@ -1,0 +1,5 @@
+# LTO confirmation on the SHIPPED pck (secondary context, md5 2f50f664).
+# label|absolute_path
+baseline|/storage/roms/ports/odisea/odisea.frt.aarch64
+base|/storage/kilo-bench/godot.base.arm64
+lto|/storage/kilo-bench/godot.lto.arm64

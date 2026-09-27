@@ -1,0 +1,3 @@
+# merged primary1(3) + confirm1(5) baseline vs nightly13, pck.prev
+baseline|/storage/roms/ports/odisea/odisea.frt.aarch64
+nightly13|/storage/kilo-bench/godot.nightly13.arm64

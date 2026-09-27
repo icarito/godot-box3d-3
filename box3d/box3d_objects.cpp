@@ -360,6 +360,14 @@ void Box3DBody::free_shape_geometry(int p_idx) {
 
 void Box3DBody::_create_shape(int p_idx) {
 	ShapeInstance &si = shapes.write[p_idx];
+	// Rebuild must retire the old shape from the world before rebuilding it.
+	// free_shape_geometry() below destroys the backing data (mesh BVH, baked
+	// compound bytes); an id left registered keeps the broadphase pointing at
+	// that freed memory, and the next mover query walks a dead BVH and traps.
+	// destroy_shape() does exactly this, in this order.
+	if (B3_IS_NON_NULL(si.id)) {
+		b3DestroyShape(si.id, false);
+	}
 	si.id = b3_nullShapeId;
 	if (!in_world() || si.disabled || !si.shape) {
 		return;

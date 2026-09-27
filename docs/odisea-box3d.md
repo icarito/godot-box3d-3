@@ -195,6 +195,23 @@ Gotcha de serialización: el compound horneado depende de las versiones de
 anterior del engine puede quedar inválido; `is_valid_compound()` lo detecta
 (version mismatch) y conviene re-hornear en vez de fallar en runtime.
 
+Gotcha de **layout del header**: `b3CompoundData` embebe un `b3DynamicTree`, así
+que la posición de sus campos depende del ABI (tamaño de puntero y alineación).
+`patches/box3d/compound_portable_layout.patch` fija el árbol al final del header
+para que 32-bit y 64-bit compartan offsets, pero **cambió el layout de 64-bit**
+respecto de los builds previos. Un blob horneado por un build con un layout y
+leído por otro tiene la misma versión, `byteCount`, `nodeOffset` y `proxyOffset`
+(esos campos no se mueven), así que la validación de versión pasaba y el árbol
+interno se leía de bytes equivocados: `tree.proxyCount` daba 0 y **todas las
+queries de compound devolvían vacío en silencio** (síntoma: el jugador y los
+raycasts atraviesan el piso en arm64). `b3ConvertBytesToCompound` ahora
+reconstruye las invariantes del horneado (`nodeOffset == align8(sizeof)`,
+`proxyCount/nodeEnd` sanos, `proxyOffset`/`materialOffset` en el lugar que les
+toca) y rechaza el blob, así que un mismatch se ve como
+`Box3D: bytes de compound invalidos (version/offsets)` en vez de colisiones
+cero. Regla práctica: el editor que hornea y el runtime que lee deben venir del
+mismo build; si no, re-hornear.
+
 Test de aceptación: `test_project/tests/m33_compound.tscn` (hornea
 mesh+caja+esfera+cápsula, valida bytes buenos/corruptos y verifica las queries
 contra cada hijo).
