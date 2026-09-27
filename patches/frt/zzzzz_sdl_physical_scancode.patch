@@ -1,0 +1,190 @@
+--- a/frt_godot.cc
++++ b/frt_godot.cc
+@@ -368,14 +368,16 @@
+ 		video_mode_.width = size.x;
+ 		video_mode_.height = size.y;
+ 	}
+-	void handle_key_event(int sdl2_code, int unicode, bool pressed) override {
++	void handle_key_event(int sdl2_code, int scancode, int unicode, bool pressed) override {
+ 		int code = map_key_sdl2_code(sdl2_code);
+ 		Ref<InputEventKey> key;
+ 		key.instance();
+ 		fill_modifier_state(key);
+ 		key->set_pressed(pressed);
+ 		key->set_scancode(code);
+-		key->set_physical_scancode(code); // TODO
++		// El scancode logico (keysym) queda para juegos/ImGui; el fisico es la
++		// posicion real de la tecla (mapa US) para el compositor wayland.
++		key->set_physical_scancode(map_key_sdl2_scancode(scancode));
+ 		key->set_unicode(unicode);
+ 		key->set_echo(false);
+ 		input_->parse_input_event(key);
+--- a/sdl2_adapter.h
++++ b/sdl2_adapter.h
+@@ -166,7 +166,7 @@
+ struct EventHandler {
+ 	virtual ~EventHandler();
+ 	virtual void handle_resize_event(ivec2 size) = 0;
+-	virtual void handle_key_event(int sdl2_code, int unicode, bool pressed) = 0;
++	virtual void handle_key_event(int sdl2_code, int scancode, int unicode, bool pressed) = 0;
+ 	virtual void handle_mouse_motion_event(ivec2 pos, ivec2 dpos) = 0;
+ 	virtual void handle_mouse_button_event(int button, bool pressed, bool doubleclick) = 0;
+ 	virtual void handle_js_status_event(int id, bool connected, const char *name, const char *guid) = 0;
+@@ -280,7 +280,7 @@
+ 			return;
+ 		key_unicode_ = utf8_to_unicode(text.text);
+ 		int sdl2_code = key_ev_.keysym.sym;
+-		handler_->handle_key_event(sdl2_code, key_unicode_, true);
++		handler_->handle_key_event(sdl2_code, key_ev_.keysym.scancode, key_unicode_, true);
+ 	}
+ 	bool require_unicode(int c) {
+ 		return (c >= 0x20 && c < 0x80) || (c >= 0xa0 && c < 0xff);
+@@ -312,12 +312,17 @@
+ 				return;
+ 			}
+ 		}
+-		if (pressed && !key.repeat && require_unicode(sdl2_code)) {
++		// Ctrl/Super no generan SDL_TEXTINPUT, asi que esperar el text event
++		// dejaria el evento de tecla (p.ej. la c de Ctrl+C) sin salir nunca:
++		// en ese caso se emite ya, con unicode 0. AltGr (KMOD_RALT sin Ctrl)
++		// si produce texto (@, #, ...): se sigue esperando el text event.
++		bool no_text = key.keysym.mod & (KMOD_CTRL | KMOD_GUI);
++		if (pressed && !key.repeat && require_unicode(sdl2_code) && !no_text) {
+ 			key_ev_ = key;
+ 			key_unicode_ = REQUEST_UNICODE;
+ 			return;
+ 		}
+-		handler_->handle_key_event(sdl2_code, key_unicode_, pressed);
++		handler_->handle_key_event(sdl2_code, key.keysym.scancode, no_text ? 0 : key_unicode_, pressed);
+ 		if (!pressed)
+ 			key_unicode_ = 0;
+ 	}
+--- a/sdl2_godot_map.h
++++ b/sdl2_godot_map.h
+@@ -175,4 +175,126 @@
+ 	return 0;
+ }
+ 
++// Mapa posicional (teclado US) del SDL_Scancode al codigo *fisico* de Godot. A
++// diferencia de map_key_sdl2_code (que traduce el keysym, dependiente de la
++// distribucion, y por eso pierde el guion y la puntuacion no-US), el scancode de
++// SDL es la posicion fisica de la tecla. El compositor wayland lo retraduce a
++// evdev y deja que el cliente resuelva el caracter con su propio keymap xkb.
++//
++// Convencion para teclas sin constante propia en Godot 3, que el compositor debe
++// respetar (ver _scancode_to_evdev en wayland_compositor.cpp):
++//   RALT (AltGr)            -> KEY_HYPER_R -> evdev KEY_RIGHTALT
++//   NONUSBACKSLASH (<> ISO) -> KEY_HYPER_L -> evdev KEY_102ND
++int map_key_sdl2_scancode(int sdl2_scancode) {
++	switch (sdl2_scancode) {
++	case SDL_SCANCODE_A: return KEY_A;
++	case SDL_SCANCODE_B: return KEY_B;
++	case SDL_SCANCODE_C: return KEY_C;
++	case SDL_SCANCODE_D: return KEY_D;
++	case SDL_SCANCODE_E: return KEY_E;
++	case SDL_SCANCODE_F: return KEY_F;
++	case SDL_SCANCODE_G: return KEY_G;
++	case SDL_SCANCODE_H: return KEY_H;
++	case SDL_SCANCODE_I: return KEY_I;
++	case SDL_SCANCODE_J: return KEY_J;
++	case SDL_SCANCODE_K: return KEY_K;
++	case SDL_SCANCODE_L: return KEY_L;
++	case SDL_SCANCODE_M: return KEY_M;
++	case SDL_SCANCODE_N: return KEY_N;
++	case SDL_SCANCODE_O: return KEY_O;
++	case SDL_SCANCODE_P: return KEY_P;
++	case SDL_SCANCODE_Q: return KEY_Q;
++	case SDL_SCANCODE_R: return KEY_R;
++	case SDL_SCANCODE_S: return KEY_S;
++	case SDL_SCANCODE_T: return KEY_T;
++	case SDL_SCANCODE_U: return KEY_U;
++	case SDL_SCANCODE_V: return KEY_V;
++	case SDL_SCANCODE_W: return KEY_W;
++	case SDL_SCANCODE_X: return KEY_X;
++	case SDL_SCANCODE_Y: return KEY_Y;
++	case SDL_SCANCODE_Z: return KEY_Z;
++	case SDL_SCANCODE_1: return KEY_1;
++	case SDL_SCANCODE_2: return KEY_2;
++	case SDL_SCANCODE_3: return KEY_3;
++	case SDL_SCANCODE_4: return KEY_4;
++	case SDL_SCANCODE_5: return KEY_5;
++	case SDL_SCANCODE_6: return KEY_6;
++	case SDL_SCANCODE_7: return KEY_7;
++	case SDL_SCANCODE_8: return KEY_8;
++	case SDL_SCANCODE_9: return KEY_9;
++	case SDL_SCANCODE_0: return KEY_0;
++	case SDL_SCANCODE_MINUS: return KEY_MINUS;
++	case SDL_SCANCODE_EQUALS: return KEY_EQUAL;
++	case SDL_SCANCODE_LEFTBRACKET: return KEY_BRACKETLEFT;
++	case SDL_SCANCODE_RIGHTBRACKET: return KEY_BRACKETRIGHT;
++	case SDL_SCANCODE_BACKSLASH: return KEY_BACKSLASH;
++	case SDL_SCANCODE_NONUSHASH: return KEY_BACKSLASH;
++	case SDL_SCANCODE_SEMICOLON: return KEY_SEMICOLON;
++	case SDL_SCANCODE_APOSTROPHE: return KEY_APOSTROPHE;
++	case SDL_SCANCODE_GRAVE: return KEY_QUOTELEFT;
++	case SDL_SCANCODE_COMMA: return KEY_COMMA;
++	case SDL_SCANCODE_PERIOD: return KEY_PERIOD;
++	case SDL_SCANCODE_SLASH: return KEY_SLASH;
++	case SDL_SCANCODE_RETURN: return KEY_ENTER;
++	case SDL_SCANCODE_ESCAPE: return KEY_ESCAPE;
++	case SDL_SCANCODE_BACKSPACE: return KEY_BACKSPACE;
++	case SDL_SCANCODE_TAB: return KEY_TAB;
++	case SDL_SCANCODE_SPACE: return KEY_SPACE;
++	case SDL_SCANCODE_CAPSLOCK: return KEY_CAPSLOCK;
++	case SDL_SCANCODE_F1: return KEY_F1;
++	case SDL_SCANCODE_F2: return KEY_F2;
++	case SDL_SCANCODE_F3: return KEY_F3;
++	case SDL_SCANCODE_F4: return KEY_F4;
++	case SDL_SCANCODE_F5: return KEY_F5;
++	case SDL_SCANCODE_F6: return KEY_F6;
++	case SDL_SCANCODE_F7: return KEY_F7;
++	case SDL_SCANCODE_F8: return KEY_F8;
++	case SDL_SCANCODE_F9: return KEY_F9;
++	case SDL_SCANCODE_F10: return KEY_F10;
++	case SDL_SCANCODE_F11: return KEY_F11;
++	case SDL_SCANCODE_F12: return KEY_F12;
++	case SDL_SCANCODE_PRINTSCREEN: return KEY_PRINT;
++	case SDL_SCANCODE_SCROLLLOCK: return KEY_SCROLLLOCK;
++	case SDL_SCANCODE_PAUSE: return KEY_PAUSE;
++	case SDL_SCANCODE_INSERT: return KEY_INSERT;
++	case SDL_SCANCODE_HOME: return KEY_HOME;
++	case SDL_SCANCODE_PAGEUP: return KEY_PAGEUP;
++	case SDL_SCANCODE_DELETE: return KEY_DELETE;
++	case SDL_SCANCODE_END: return KEY_END;
++	case SDL_SCANCODE_PAGEDOWN: return KEY_PAGEDOWN;
++	case SDL_SCANCODE_UP: return KEY_UP;
++	case SDL_SCANCODE_DOWN: return KEY_DOWN;
++	case SDL_SCANCODE_LEFT: return KEY_LEFT;
++	case SDL_SCANCODE_RIGHT: return KEY_RIGHT;
++	case SDL_SCANCODE_KP_0: return KEY_KP_0;
++	case SDL_SCANCODE_KP_1: return KEY_KP_1;
++	case SDL_SCANCODE_KP_2: return KEY_KP_2;
++	case SDL_SCANCODE_KP_3: return KEY_KP_3;
++	case SDL_SCANCODE_KP_4: return KEY_KP_4;
++	case SDL_SCANCODE_KP_5: return KEY_KP_5;
++	case SDL_SCANCODE_KP_6: return KEY_KP_6;
++	case SDL_SCANCODE_KP_7: return KEY_KP_7;
++	case SDL_SCANCODE_KP_8: return KEY_KP_8;
++	case SDL_SCANCODE_KP_9: return KEY_KP_9;
++	case SDL_SCANCODE_KP_PERIOD: return KEY_KP_PERIOD;
++	case SDL_SCANCODE_KP_DIVIDE: return KEY_KP_DIVIDE;
++	case SDL_SCANCODE_KP_MULTIPLY: return KEY_KP_MULTIPLY;
++	case SDL_SCANCODE_KP_MINUS: return KEY_KP_SUBTRACT;
++	case SDL_SCANCODE_KP_PLUS: return KEY_KP_ADD;
++	case SDL_SCANCODE_KP_ENTER: return KEY_KP_ENTER;
++	case SDL_SCANCODE_NUMLOCKCLEAR: return KEY_NUMLOCK;
++	case SDL_SCANCODE_LCTRL: return KEY_CONTROL;
++	case SDL_SCANCODE_RCTRL: return KEY_CONTROL;
++	case SDL_SCANCODE_LSHIFT: return KEY_SHIFT;
++	case SDL_SCANCODE_RSHIFT: return KEY_SHIFT;
++	case SDL_SCANCODE_LALT: return KEY_ALT;
++	case SDL_SCANCODE_LGUI: return KEY_SUPER_L;
++	case SDL_SCANCODE_RGUI: return KEY_SUPER_R;
++	case SDL_SCANCODE_APPLICATION: return KEY_MENU;
++	case SDL_SCANCODE_RALT: return KEY_HYPER_R;
++	case SDL_SCANCODE_NONUSBACKSLASH: return KEY_HYPER_L;
++	default: return 0;
++	}
++}
++
+ } // namespace frt
