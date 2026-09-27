@@ -1,7 +1,8 @@
 diff --git a/servers/visual/visual_server_blob_shadows.cpp b/servers/visual/visual_server_blob_shadows.cpp
+index 5006279c88..69aacf0951 100644
 --- a/servers/visual/visual_server_blob_shadows.cpp
 +++ b/servers/visual/visual_server_blob_shadows.cpp
-@@ -245,7 +245,16 @@
+@@ -245,7 +245,16 @@ int VisualServerBlobShadows::qsort_cmp_func(const void *a, const void *b) {
  	const SortFocusCaster *pa = (const SortFocusCaster *)a;
  	const SortFocusCaster *pb = (const SortFocusCaster *)b;
  
@@ -19,7 +20,7 @@ diff --git a/servers/visual/visual_server_blob_shadows.cpp b/servers/visual/visu
  }
  
  VisualServerBlobShadows::Focus *VisualServerBlobShadows::request_focus(uint32_t &r_handle) {
-@@ -323,7 +332,11 @@
+@@ -323,7 +332,11 @@ void VisualServerBlobShadows::update_focus_blobs_or_capsules(const Focus &p_focu
  				if (fc.last_update_frame == data.update_frame) {
  					fc.state = FocusCaster::FCS_ENTERING;
  				} else {
@@ -32,7 +33,7 @@ diff --git a/servers/visual/visual_server_blob_shadows.cpp b/servers/visual/visu
  					fc.fraction = (real_t)fc.in_count / 60;
  					if (!fc.in_count) {
  						// Decrement ref count so we can free
-@@ -368,12 +381,16 @@
+@@ -368,12 +381,16 @@ void VisualServerBlobShadows::update_focus_blobs_or_capsules(const Focus &p_focu
  			ref_capsule(fc.caster_id + 1);
  		}
  
@@ -52,7 +53,7 @@ diff --git a/servers/visual/visual_server_blob_shadows.cpp b/servers/visual/visu
  	}
  }
  
-@@ -385,6 +402,14 @@
+@@ -385,6 +402,14 @@ void VisualServerBlobShadows::update_focus(Focus &r_focus) {
  void VisualServerBlobShadows::update_focus_caster(bool p_blobs_or_capsules, FocusInfo &r_focus_info, const SortFocusCaster &p_sort_focus_caster) {
  	FocusInfo &fi = r_focus_info;
  
@@ -67,7 +68,7 @@ diff --git a/servers/visual/visual_server_blob_shadows.cpp b/servers/visual/visu
  	// Does the focus caster exist already?
  	for (uint32_t n = 0; n < fi.blobs.size(); n++) {
  		FocusCaster &fc = fi.blobs[n];
-@@ -482,6 +507,11 @@
+@@ -482,6 +507,11 @@ void VisualServerBlobShadows::find_best_light(bool p_blobs_or_capsules, FocusCas
  #ifdef GODOT_BLOB_SHADOWS_TEST_DIRECTION_INTERPOLATION
  	test_direction_interpolation();
  #endif
@@ -79,7 +80,7 @@ diff --git a/servers/visual/visual_server_blob_shadows.cpp b/servers/visual/visu
  	Caster *caster = nullptr;
  	if (p_blobs_or_capsules) {
  		Blob &blob = data.blobs[r_focus_caster.caster_id];
-@@ -678,6 +708,13 @@
+@@ -678,6 +708,13 @@ void VisualServerBlobShadows::render_set_focus_handle(uint32_t p_focus_handle, c
  		// Cull spheres to camera.
  		for (uint32_t i = 0; i < blobs.blobs.size(); i++) {
  			const FocusCaster &fc = blobs.blobs[i];
@@ -93,7 +94,7 @@ diff --git a/servers/visual/visual_server_blob_shadows.cpp b/servers/visual/visu
  			const Blob &caster = get_blob(fc.caster_id + 1);
  
  			blobs.blobs_in_camera[i] = caster.aabb_boosted.intersects_convex_shape(data.frustum_planes.ptr(), 6, data.frustum_points.ptr(), 8) ? 255 : 0;
-@@ -688,6 +725,11 @@
+@@ -688,6 +725,11 @@ void VisualServerBlobShadows::render_set_focus_handle(uint32_t p_focus_handle, c
  		// Cull capsules to camera.
  		for (uint32_t i = 0; i < capsules.blobs.size(); i++) {
  			const FocusCaster &fc = capsules.blobs[i];
