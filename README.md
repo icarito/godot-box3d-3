@@ -231,6 +231,11 @@ scripts/build.sh ios-templates             # needs Xcode
 
 Run it with no arguments for the list.
 
+`scripts/build.sh` caches objects in `~/.cache/scons-godot3` (`SCONS_CACHE`) and builds in
+`../godot` unless `GODOT_DIR` points elsewhere: keep one engine tree per consumer and switch
+branches without rebuilding the whole engine. Why, and the pitfalls:
+`docs/local-build-workflow.md`.
+
 The resulting editor binary includes both the builtin `Bullet` server and the
 new `Box3D` server.
 
@@ -419,6 +424,9 @@ It captures a glowing emitter with a black glow map and without it, and prints
   CPU cost and which audio levers actually matter.
 - **FRT desktop parity / Wayland**: `docs/desktop_parity.md` — the desktop-GL
   switch, the missing platform pieces and what remains.
+- **Local build workflow**: `docs/local-build-workflow.md` — scons cache, one
+  engine tree per consumer, released binaries for Odisea, the generated-headers
+  pitfall and the FRT physical-scancode keyboard patch.
 - **Box3D engine** (`box3d/thirdparty/box3d/docs/`): upstream's own guide —
   `overview.md`, `collision.md`, `simulation.md` (sub-steps, determinism),
   `character.md`, `large_worlds.md`, `faq.md`.
