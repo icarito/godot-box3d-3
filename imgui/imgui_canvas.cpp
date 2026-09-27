@@ -263,6 +263,30 @@ void ImGuiCanvas::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("implot_push_style_color", "idx", "color"), &ImGuiCanvas::implot_push_style_color);
 	ClassDB::bind_method(D_METHOD("implot_pop_style_color", "n"), &ImGuiCanvas::implot_pop_style_color, DEFVAL(1));
 	ClassDB::bind_vararg_method(METHOD_FLAGS_DEFAULT, "implot_plot_heatmap", &ImGuiCanvas::_implot_plot_heatmap_vararg, MethodInfo("implot_plot_heatmap"));
+
+	ClassDB::bind_method(D_METHOD("implot_set_next_line_style", "color", "weight"), &ImGuiCanvas::implot_set_next_line_style, DEFVAL(-1.0f));
+	ClassDB::bind_method(D_METHOD("implot_set_next_fill_style", "color", "alpha"), &ImGuiCanvas::implot_set_next_fill_style, DEFVAL(-1.0f));
+	ClassDB::bind_method(D_METHOD("implot_set_next_marker_style", "marker", "size", "fill", "weight", "outline"), &ImGuiCanvas::implot_set_next_marker_style, DEFVAL(-1), DEFVAL(-1.0f), DEFVAL(Color(0, 0, 0, 0)), DEFVAL(-1.0f), DEFVAL(Color(0, 0, 0, 0)));
+	ClassDB::bind_method(D_METHOD("implot_push_style_var_float", "idx", "v"), &ImGuiCanvas::implot_push_style_var_float);
+	ClassDB::bind_method(D_METHOD("implot_push_style_var_vec2", "idx", "v"), &ImGuiCanvas::implot_push_style_var_vec2);
+	ClassDB::bind_method(D_METHOD("implot_pop_style_var", "n"), &ImGuiCanvas::implot_pop_style_var, DEFVAL(1));
+
+	ClassDB::bind_method(D_METHOD("implot_plot_to_pixels", "x", "y"), &ImGuiCanvas::implot_plot_to_pixels);
+	ClassDB::bind_method(D_METHOD("implot_get_plot_pos"), &ImGuiCanvas::implot_get_plot_pos);
+	ClassDB::bind_method(D_METHOD("implot_get_plot_size"), &ImGuiCanvas::implot_get_plot_size);
+	ClassDB::bind_method(D_METHOD("implot_push_plot_clip_rect"), &ImGuiCanvas::implot_push_plot_clip_rect);
+	ClassDB::bind_method(D_METHOD("implot_pop_plot_clip_rect"), &ImGuiCanvas::implot_pop_plot_clip_rect);
+
+	ClassDB::bind_integer_constant(get_class_static(), StringName(), "IMPLOT_MARKER_NONE", ImPlotMarker_None);
+	ClassDB::bind_integer_constant(get_class_static(), StringName(), "IMPLOT_MARKER_CIRCLE", ImPlotMarker_Circle);
+	ClassDB::bind_integer_constant(get_class_static(), StringName(), "IMPLOT_MARKER_SQUARE", ImPlotMarker_Square);
+	ClassDB::bind_integer_constant(get_class_static(), StringName(), "IMPLOT_MARKER_DIAMOND", ImPlotMarker_Diamond);
+	ClassDB::bind_integer_constant(get_class_static(), StringName(), "IMPLOT_STYLE_VAR_LINE_WEIGHT", ImPlotStyleVar_LineWeight);
+	ClassDB::bind_integer_constant(get_class_static(), StringName(), "IMPLOT_STYLE_VAR_FILL_ALPHA", ImPlotStyleVar_FillAlpha);
+	ClassDB::bind_integer_constant(get_class_static(), StringName(), "IMPLOT_STYLE_VAR_MARKER_SIZE", ImPlotStyleVar_MarkerSize);
+	ClassDB::bind_integer_constant(get_class_static(), StringName(), "IMPLOT_STYLE_VAR_PLOT_PADDING", ImPlotStyleVar_PlotPadding);
+	ClassDB::bind_integer_constant(get_class_static(), StringName(), "IMPLOT_STYLE_VAR_PLOT_BORDER_SIZE", ImPlotStyleVar_PlotBorderSize);
+	ClassDB::bind_integer_constant(get_class_static(), StringName(), "IMPLOT_STYLE_VAR_MINOR_ALPHA", ImPlotStyleVar_MinorAlpha);
 #endif
 
 	// ImPlot3D
@@ -275,6 +299,14 @@ void ImGuiCanvas::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("implot3d_plot_scatter", "label", "xs", "ys", "zs"), &ImGuiCanvas::implot3d_plot_scatter);
 	ClassDB::bind_vararg_method(METHOD_FLAGS_DEFAULT, "implot3d_plot_surface", &ImGuiCanvas::_implot3d_plot_surface_vararg, MethodInfo("implot3d_plot_surface"));
 #endif
+
+	// Primitivas de dibujo
+	ClassDB::bind_method(D_METHOD("imgui_draw_line", "a", "b", "color", "thickness"), &ImGuiCanvas::imgui_draw_line, DEFVAL(1.0f));
+	ClassDB::bind_method(D_METHOD("imgui_draw_polyline", "points", "color", "thickness", "closed"), &ImGuiCanvas::imgui_draw_polyline, DEFVAL(1.0f), DEFVAL(false));
+	ClassDB::bind_method(D_METHOD("imgui_draw_circle_filled", "center", "radius", "color", "segments"), &ImGuiCanvas::imgui_draw_circle_filled, DEFVAL(0));
+	ClassDB::bind_method(D_METHOD("imgui_draw_circle", "center", "radius", "color", "segments", "thickness"), &ImGuiCanvas::imgui_draw_circle, DEFVAL(0), DEFVAL(1.0f));
+	ClassDB::bind_method(D_METHOD("imgui_draw_rect_filled", "rect", "color", "rounding"), &ImGuiCanvas::imgui_draw_rect_filled, DEFVAL(0.0f));
+	ClassDB::bind_method(D_METHOD("imgui_draw_rect_filled_multicolor", "rect", "top_left", "top_right", "bottom_right", "bottom_left"), &ImGuiCanvas::imgui_draw_rect_filled_multicolor);
 
 	// Menu radial
 	ClassDB::bind_method(D_METHOD("open_pie_menu", "id"), &ImGuiCanvas::open_pie_menu);
@@ -298,7 +330,8 @@ void ImGuiCanvas::_bind_methods() {
 
 	ClassDB::bind_method(D_METHOD("request_redraw"), &ImGuiCanvas::request_redraw);
 
-	ClassDB::bind_method(D_METHOD("add_font", "path", "size_px"), &ImGuiCanvas::add_font);
+	ClassDB::bind_method(D_METHOD("add_font_default", "size_px"), &ImGuiCanvas::add_font_default, DEFVAL(13.0f));
+	ClassDB::bind_method(D_METHOD("add_font", "path", "size_px", "glyph_ranges"), &ImGuiCanvas::add_font, DEFVAL("default"));
 	ClassDB::bind_method(D_METHOD("push_font", "idx"), &ImGuiCanvas::push_font);
 	ClassDB::bind_method(D_METHOD("pop_font"), &ImGuiCanvas::pop_font);
 	ClassDB::bind_method(D_METHOD("set_default_font", "idx"), &ImGuiCanvas::set_default_font);
@@ -432,6 +465,16 @@ void ImGuiCanvas::_build_font_texture() {
 	int width = 0;
 	int height = 0;
 	io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
+
+	// Rangos de glifos CJK a tamaños grandes generan atlas enormes (miles de
+	// glifos empaquetados). No hay crash posible (ImGui ya hizo el packing),
+	// pero avisamos si el lado del atlas pasa 4096px: en ese punto la textura
+	// ya pesa >64MB en RGBA8 y probablemente conviene subsetear los rangos.
+	const int kMaxAtlasSide = 4096;
+	if (width > kMaxAtlasSide || height > kMaxAtlasSide) {
+		ERR_PRINT("ImGuiCanvas: atlas de fuentes de " + itos(width) + "x" + itos(height) +
+				"px supera el limite recomendado de " + itos(kMaxAtlasSide) + "px de lado");
+	}
 
 	PoolVector<uint8_t> data;
 	data.resize(width * height * 4);
@@ -1359,6 +1402,68 @@ void ImGuiCanvas::pop_style_var(int p_n) {
 	ImGui::PopStyleVar(p_n);
 }
 
+// --- Primitivas de dibujo ---
+
+// Dibuja sobre el plot activo (si hay uno abierto con implot_begin_plot) o
+// sobre la ventana actual. GetForegroundDrawList no hace falta: alcanza con
+// estos dos casos para overlays de HUD (ECG, gauges, etc.).
+ImDrawList *ImGuiCanvas::_current_draw_list() {
+#ifdef IMGUI_MODULE_IMPLOT
+	if (implot_in_plot) {
+		return ImPlot::GetPlotDrawList();
+	}
+#endif
+	return ImGui::GetWindowDrawList();
+}
+
+void ImGuiCanvas::imgui_draw_line(const Vector2 &p_a, const Vector2 &p_b, const Color &p_color, float p_thickness) {
+	_set_contexts();
+	_current_draw_list()->AddLine(_to_imvec2(p_a), _to_imvec2(p_b), ImGui::ColorConvertFloat4ToU32(_to_imvec4(p_color)), p_thickness);
+}
+
+void ImGuiCanvas::imgui_draw_polyline(const PoolVector2Array &p_points, const Color &p_color, float p_thickness, bool p_closed) {
+	_set_contexts();
+	int count = p_points.size();
+	if (count < 2) {
+		return;
+	}
+	Vector<ImVec2> pts;
+	pts.resize(count);
+	PoolVector2Array::Read r = p_points.read();
+	for (int i = 0; i < count; i++) {
+		pts.write[i] = _to_imvec2(r.ptr()[i]);
+	}
+	_current_draw_list()->AddPolyline(pts.ptr(), count, ImGui::ColorConvertFloat4ToU32(_to_imvec4(p_color)), p_closed ? ImDrawFlags_Closed : 0, p_thickness);
+}
+
+void ImGuiCanvas::imgui_draw_circle_filled(const Vector2 &p_center, float p_radius, const Color &p_color, int p_segments) {
+	_set_contexts();
+	_current_draw_list()->AddCircleFilled(_to_imvec2(p_center), p_radius, ImGui::ColorConvertFloat4ToU32(_to_imvec4(p_color)), p_segments);
+}
+
+void ImGuiCanvas::imgui_draw_circle(const Vector2 &p_center, float p_radius, const Color &p_color, int p_segments, float p_thickness) {
+	_set_contexts();
+	_current_draw_list()->AddCircle(_to_imvec2(p_center), p_radius, ImGui::ColorConvertFloat4ToU32(_to_imvec4(p_color)), p_segments, p_thickness);
+}
+
+void ImGuiCanvas::imgui_draw_rect_filled(const Rect2 &p_rect, const Color &p_color, float p_rounding) {
+	_set_contexts();
+	ImVec2 mins(p_rect.position.x, p_rect.position.y);
+	ImVec2 maxs(p_rect.position.x + p_rect.size.x, p_rect.position.y + p_rect.size.y);
+	_current_draw_list()->AddRectFilled(mins, maxs, ImGui::ColorConvertFloat4ToU32(_to_imvec4(p_color)), p_rounding);
+}
+
+void ImGuiCanvas::imgui_draw_rect_filled_multicolor(const Rect2 &p_rect, const Color &p_top_left, const Color &p_top_right, const Color &p_bottom_right, const Color &p_bottom_left) {
+	_set_contexts();
+	ImVec2 mins(p_rect.position.x, p_rect.position.y);
+	ImVec2 maxs(p_rect.position.x + p_rect.size.x, p_rect.position.y + p_rect.size.y);
+	_current_draw_list()->AddRectFilledMultiColor(mins, maxs,
+			ImGui::ColorConvertFloat4ToU32(_to_imvec4(p_top_left)),
+			ImGui::ColorConvertFloat4ToU32(_to_imvec4(p_top_right)),
+			ImGui::ColorConvertFloat4ToU32(_to_imvec4(p_bottom_right)),
+			ImGui::ColorConvertFloat4ToU32(_to_imvec4(p_bottom_left)));
+}
+
 // --- Demos ---
 
 #ifdef IMGUI_MODULE_DEMOS
@@ -1393,12 +1498,14 @@ void ImGuiCanvas::implot3d_show_demo_window() {
 
 bool ImGuiCanvas::implot_begin_plot(const String &p_title, const Vector2 &p_size, int p_flags) {
 	_set_contexts();
-	return ImPlot::BeginPlot(p_title.utf8().get_data(), ImVec2(p_size.x, p_size.y), (ImPlotFlags)p_flags);
+	implot_in_plot = ImPlot::BeginPlot(p_title.utf8().get_data(), ImVec2(p_size.x, p_size.y), (ImPlotFlags)p_flags);
+	return implot_in_plot;
 }
 
 void ImGuiCanvas::implot_end_plot() {
 	_set_contexts();
 	ImPlot::EndPlot();
+	implot_in_plot = false;
 }
 
 void ImGuiCanvas::implot_setup_axes(const String &p_x_label, const String &p_y_label, int p_x_flags, int p_y_flags) {
@@ -1449,6 +1556,69 @@ void ImGuiCanvas::implot_push_style_color(int p_idx, const Color &p_color) {
 void ImGuiCanvas::implot_pop_style_color(int p_n) {
 	_set_contexts();
 	ImPlot::PopStyleColor(p_n);
+}
+
+// Un alpha/weight negativo (default -1) mapea a IMPLOT_AUTO / IMPLOT_AUTO_COL:
+// "dejalo como ImPlot decida". Color(0,0,0,0) para fill/outline en
+// set_next_marker_style tiene el mismo significado (alpha 0 = auto).
+void ImGuiCanvas::implot_set_next_line_style(const Color &p_color, float p_weight) {
+	_set_contexts();
+	ImPlot::SetNextLineStyle(_to_imvec4(p_color), p_weight);
+}
+
+void ImGuiCanvas::implot_set_next_fill_style(const Color &p_color, float p_alpha) {
+	_set_contexts();
+	ImPlot::SetNextFillStyle(_to_imvec4(p_color), p_alpha);
+}
+
+void ImGuiCanvas::implot_set_next_marker_style(int p_marker, float p_size, const Color &p_fill, float p_weight, const Color &p_outline) {
+	_set_contexts();
+	ImVec4 fill = p_fill.a == 0.0f ? IMPLOT_AUTO_COL : _to_imvec4(p_fill);
+	ImVec4 outline = p_outline.a == 0.0f ? IMPLOT_AUTO_COL : _to_imvec4(p_outline);
+	ImPlot::SetNextMarkerStyle(p_marker, p_size, fill, p_weight, outline);
+}
+
+void ImGuiCanvas::implot_push_style_var_float(int p_idx, float p_v) {
+	_set_contexts();
+	ImPlot::PushStyleVar(p_idx, p_v);
+}
+
+void ImGuiCanvas::implot_push_style_var_vec2(int p_idx, const Vector2 &p_v) {
+	_set_contexts();
+	ImPlot::PushStyleVar(p_idx, _to_imvec2(p_v));
+}
+
+void ImGuiCanvas::implot_pop_style_var(int p_n) {
+	_set_contexts();
+	ImPlot::PopStyleVar(p_n);
+}
+
+Vector2 ImGuiCanvas::implot_plot_to_pixels(float p_x, float p_y) {
+	_set_contexts();
+	ImVec2 px = ImPlot::PlotToPixels(p_x, p_y);
+	return Vector2(px.x, px.y);
+}
+
+Vector2 ImGuiCanvas::implot_get_plot_pos() {
+	_set_contexts();
+	ImVec2 p = ImPlot::GetPlotPos();
+	return Vector2(p.x, p.y);
+}
+
+Vector2 ImGuiCanvas::implot_get_plot_size() {
+	_set_contexts();
+	ImVec2 p = ImPlot::GetPlotSize();
+	return Vector2(p.x, p.y);
+}
+
+void ImGuiCanvas::implot_push_plot_clip_rect() {
+	_set_contexts();
+	ImPlot::PushPlotClipRect();
+}
+
+void ImGuiCanvas::implot_pop_plot_clip_rect() {
+	_set_contexts();
+	ImPlot::PopPlotClipRect();
 }
 
 void ImGuiCanvas::implot_plot_heatmap(const String &p_label, const PoolRealArray &p_values, int p_rows, int p_cols, float p_min, float p_max) {
@@ -1598,7 +1768,45 @@ void ImGuiCanvas::request_redraw() {
 	requested_redraw = true;
 }
 
-int ImGuiCanvas::add_font(const String &p_path, float p_size_px) {
+int ImGuiCanvas::add_font_default(float p_size_px) {
+	_set_contexts();
+	if (context == nullptr) {
+		return -1;
+	}
+	ImFontAtlas *atlas = ImGui::GetIO().Fonts;
+	ImFontConfig cfg;
+	cfg.SizePixels = p_size_px;
+	ImFont *font = atlas->AddFontDefault(&cfg);
+	if (font == nullptr) {
+		return -1;
+	}
+	// AddFontDefault ya invalido el atlas; se reconstruye y se vuelve a subir
+	// la textura (mismo mecanismo que add_font).
+	_build_font_texture();
+	atlas_ready = true;
+	return atlas->Fonts.Size - 1;
+}
+
+// Traduce el string GDScript al array de rangos de ImGui. Los arrays que
+// devuelven los Get*Glyph* de ImGui son estaticos: no hace falta copiarlos,
+// el puntero vive tanto como el atlas.
+static const ImWchar *_glyph_ranges_from_name(ImFontAtlas *p_atlas, const String &p_name) {
+	if (p_name == "default") {
+		return p_atlas->GetGlyphRangesDefault();
+	} else if (p_name == "korean") {
+		return p_atlas->GetGlyphRangesKorean();
+	} else if (p_name == "chinese_simplified") {
+		return p_atlas->GetGlyphRangesChineseSimplifiedCommon();
+	} else if (p_name == "japanese") {
+		return p_atlas->GetGlyphRangesJapanese();
+	} else if (p_name == "cyrillic") {
+		return p_atlas->GetGlyphRangesCyrillic();
+	}
+	ERR_PRINT("ImGuiCanvas::add_font: glyph_ranges desconocido '" + p_name + "', usando 'default'");
+	return p_atlas->GetGlyphRangesDefault();
+}
+
+int ImGuiCanvas::add_font(const String &p_path, float p_size_px, const String &p_glyph_ranges) {
 	_set_contexts();
 	if (context == nullptr) {
 		return -1;
@@ -1632,7 +1840,7 @@ int ImGuiCanvas::add_font(const String &p_path, float p_size_px) {
 	ImFontAtlas *atlas = ImGui::GetIO().Fonts;
 	ImFontConfig cfg;
 	cfg.FontDataOwnedByAtlas = false;
-	ImFont *font = atlas->AddFontFromMemoryTTF((void *)r.ptr(), len, p_size_px, &cfg, atlas->GetGlyphRangesDefault());
+	ImFont *font = atlas->AddFontFromMemoryTTF((void *)r.ptr(), len, p_size_px, &cfg, _glyph_ranges_from_name(atlas, p_glyph_ranges));
 	if (font == nullptr) {
 		return -1;
 	}
@@ -1778,6 +1986,7 @@ ImGuiCanvas::ImGuiCanvas() {
 	scale = 1.0f;
 	frame_rounding = 0.0f;
 	window_open = true;
+	implot_in_plot = false;
 
 	update_hz = 0.0f;
 	input_hz = 30.0f;

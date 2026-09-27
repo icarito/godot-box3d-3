@@ -57,10 +57,14 @@ class ImGuiCanvas : public Node2D {
 	Vector<RID *> frame_texture_rids;
 	List<Ref<Texture> > frame_textures;
 	bool window_open;
+	// true entre implot_begin_plot()/implot_end_plot(): las primitivas de
+	// dibujo dibujan sobre el draw list del plot en vez del de la ventana.
+	bool implot_in_plot;
 
 	void _process_frame(float p_delta);
 	RID _get_canvas_item(int p_index);
 	void _set_contexts();
+	struct ImDrawList *_current_draw_list();
 
 protected:
 	static void _bind_methods();
@@ -213,6 +217,21 @@ public:
 	void implot_pop_style_color(int p_n = 1);
 	void implot_plot_heatmap(const String &p_label, const PoolRealArray &p_values, int p_rows, int p_cols, float p_min = 0.0f, float p_max = 0.0f);
 
+	// Estilo por item (ECG-style plots: glow, phosphor trail, etc.)
+	void implot_set_next_line_style(const Color &p_color, float p_weight = -1.0f);
+	void implot_set_next_fill_style(const Color &p_color, float p_alpha = -1.0f);
+	void implot_set_next_marker_style(int p_marker = -1, float p_size = -1.0f, const Color &p_fill = Color(0, 0, 0, 0), float p_weight = -1.0f, const Color &p_outline = Color(0, 0, 0, 0));
+	void implot_push_style_var_float(int p_idx, float p_v);
+	void implot_push_style_var_vec2(int p_idx, const Vector2 &p_v);
+	void implot_pop_style_var(int p_n = 1);
+
+	// Coordenadas del plot activo
+	Vector2 implot_plot_to_pixels(float p_x, float p_y);
+	Vector2 implot_get_plot_pos();
+	Vector2 implot_get_plot_size();
+	void implot_push_plot_clip_rect();
+	void implot_pop_plot_clip_rect();
+
 	// ImPlot3D
 	bool implot3d_begin_plot(const String &p_title, const Vector2 &p_size = Vector2(-1, 0), int p_flags = 0);
 	void implot3d_end_plot();
@@ -221,6 +240,15 @@ public:
 	void implot3d_plot_line(const String &p_label, const PoolRealArray &p_xs, const PoolRealArray &p_ys, const PoolRealArray &p_zs);
 	void implot3d_plot_scatter(const String &p_label, const PoolRealArray &p_xs, const PoolRealArray &p_ys, const PoolRealArray &p_zs);
 	void implot3d_plot_surface(const String &p_label, const PoolRealArray &p_xs, const PoolRealArray &p_ys, const PoolRealArray &p_zs, int p_x_count, int p_y_count);
+
+	// Primitivas de dibujo (sobre el draw list del plot activo si hay uno
+	// abierto con implot_begin_plot, si no sobre el draw list de la ventana).
+	void imgui_draw_line(const Vector2 &p_a, const Vector2 &p_b, const Color &p_color, float p_thickness = 1.0f);
+	void imgui_draw_polyline(const PoolVector2Array &p_points, const Color &p_color, float p_thickness = 1.0f, bool p_closed = false);
+	void imgui_draw_circle_filled(const Vector2 &p_center, float p_radius, const Color &p_color, int p_segments = 0);
+	void imgui_draw_circle(const Vector2 &p_center, float p_radius, const Color &p_color, int p_segments = 0, float p_thickness = 1.0f);
+	void imgui_draw_rect_filled(const Rect2 &p_rect, const Color &p_color, float p_rounding = 0.0f);
+	void imgui_draw_rect_filled_multicolor(const Rect2 &p_rect, const Color &p_top_left, const Color &p_top_right, const Color &p_bottom_right, const Color &p_bottom_left);
 
 	// Menu radial
 	void open_pie_menu(const String &p_id);
@@ -250,7 +278,8 @@ public:
 	float get_input_hz() const;
 	void request_redraw();
 
-	int add_font(const String &p_path, float p_size_px);
+	int add_font_default(float p_size_px = 13.0f);
+	int add_font(const String &p_path, float p_size_px, const String &p_glyph_ranges = "default");
 	void push_font(int p_idx);
 	void pop_font();
 	void set_default_font(int p_idx);

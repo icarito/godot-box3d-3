@@ -369,6 +369,26 @@ Godot 3: HUDs, debug/tool panels, editor-less overlays. Moved here from
 - **`DebugLog`**: an `Engine` singleton plus an `OS::Logger` sink, so
   `push_error`/`print` land in an ImGui-drawable log buffer.
 - **pie menu**: a radial menu widget (`pie_menu.*`).
+- **Fonts**: `add_font_default(size_px=13.0)` loads ImGui's built-in ProggyClean
+  font at a given pixel size; `add_font(path, size_px, glyph_ranges="default")`
+  takes a 3rd optional param — `"default"`, `"korean"`, `"chinese_simplified"`,
+  `"japanese"` or `"cyrillic"` — to pick the matching ImGui glyph range (an
+  unknown value falls back to `"default"` with an `ERR_PRINT`). CJK ranges at
+  large sizes can blow up the atlas texture; both rebuild through the same
+  atlas/texture path, which warns via `ERR_PRINT` if either side exceeds 4096px.
+- **ImPlot per-item styling and draw primitives** (for HUD-style plots — ECG
+  traces, gauges): `implot_set_next_line_style`/`implot_set_next_fill_style`/
+  `implot_set_next_marker_style` (with `IMPLOT_MARKER_*` constants),
+  `implot_push_style_var_float`/`_vec2`/`implot_pop_style_var` (with
+  `IMPLOT_STYLE_VAR_*` constants), plot-space helpers
+  (`implot_plot_to_pixels`, `implot_get_plot_pos`/`_size`,
+  `implot_push_plot_clip_rect`/`_pop_plot_clip_rect`), and `imgui_draw_line`/
+  `_polyline`/`_circle`/`_circle_filled`/`_rect_filled`/
+  `_rect_filled_multicolor` — raw `ImDrawList` primitives drawn on the active
+  plot's draw list (inside `implot_begin_plot`/`implot_end_plot`) or the
+  current window's otherwise. Prefixed `imgui_draw_*` (not `draw_*`) because
+  `ImGuiCanvas` is a `Node2D` and `draw_line`/`draw_circle`/`draw_rect_filled`
+  already exist as `CanvasItem`'s own (unrelated) `_draw()`-time API.
 - Build options (`configure`/`SCsub` read them from `ARGUMENTS`, gdtk-style):
   `imgui_implot=yes|no` (default **yes**), `imgui_implot3d=yes|no` (default
   **no**), `imgui_demos=yes|no|auto` (default **auto**: on when `tools=yes`,
