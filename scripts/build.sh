@@ -43,6 +43,11 @@ here="$(cd "$(dirname "$0")/.." && pwd)"
 THEGATES_ENV_DIR="${THEGATES_ENV_DIR:-$here/.thegates-env}"
 GODOT_DIR="${GODOT_DIR:-$(dirname "$here")/godot}"
 JOBS="${JOBS:-$(nproc 2>/dev/null || echo 4)}"
+# Caché de objetos de scons (soportada por SConstruct via SCONS_CACHE): cambiar de rama o de
+# conjunto de parches y volver recupera los objetos en vez de recompilar el motor entero.
+# Compartida entre árboles del motor (GODOT_DIR distintos). SCONS_CACHE="" la desactiva.
+export SCONS_CACHE="${SCONS_CACHE-$HOME/.cache/scons-godot3}"
+export SCONS_CACHE_LIMIT="${SCONS_CACHE_LIMIT:-30000}" # MB
 
 if [ $# -eq 0 ]; then
 	sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'
