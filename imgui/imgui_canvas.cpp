@@ -524,6 +524,8 @@ void ImGuiCanvas::_process_frame(float p_delta) {
 
 	Size2 size = get_viewport_rect().size;
 	io.DisplaySize = ImVec2(size.x, size.y);
+	if (OS::get_singleton()->get_environment("IMGUI_DEBUG_INPUT") != "") {
+	}
 	io.DeltaTime = p_delta > 0.0001f ? p_delta : 0.0001f;
 
 	ImGui::NewFrame();
@@ -1890,9 +1892,25 @@ void ImGuiCanvas::_input(const Ref<InputEvent> &p_event) {
 	ImGui::SetCurrentContext(context);
 	ImGuiIO &io = ImGui::GetIO();
 
+	// El dibujo de ImGui se vuelca en el canvas item de ESTE nodo (hereda la
+	// transformacion del arbol: slots del HUD, zoom de HudViewMount, SubViewport de
+	// la Criopod). El input tiene que vivir en el MISMO espacio, o un canvas anclado
+	// lejos del origen (widget del slot) hit-testea ventanas que no son las que se
+	// ven: el boton dibuja donde esta el widget y el click aterriza en el vacio.
+	// Canvases a pantalla completa en el origen (demos, Criopod, HUD de casco) tienen
+	// transformacion identidad y quedan exactamente igual que antes.
+	Transform2D to_local;
+	if (is_inside_tree()) {
+		Transform2D global = get_global_transform_with_canvas();
+		if (global != Transform2D()) {
+			to_local = global.affine_inverse();
+		}
+	}
+
 	Ref<InputEventMouseMotion> mm = p_event;
 	if (mm.is_valid()) {
-		io.AddMousePosEvent(mm->get_position().x, mm->get_position().y);
+		Point2 local = to_local.xform(mm->get_position());
+		io.AddMousePosEvent(local.x, local.y);
 	}
 
 	Ref<InputEventMouseButton> mb = p_event;
@@ -1913,7 +1931,8 @@ void ImGuiCanvas::_input(const Ref<InputEvent> &p_event) {
 				index = 2;
 			}
 			if (index >= 0) {
-				io.AddMousePosEvent(mb->get_position().x, mb->get_position().y);
+				Point2 local = to_local.xform(mb->get_position());
+				io.AddMousePosEvent(local.x, local.y);
 				io.AddMouseButtonEvent(index, mb->is_pressed());
 			}
 		}
@@ -1922,14 +1941,16 @@ void ImGuiCanvas::_input(const Ref<InputEvent> &p_event) {
 	Ref<InputEventScreenTouch> st = p_event;
 	if (st.is_valid() && st->get_index() == 0) {
 		io.AddMouseSourceEvent(ImGuiMouseSource_TouchScreen);
-		io.AddMousePosEvent(st->get_position().x, st->get_position().y);
+		Point2 local = to_local.xform(st->get_position());
+		io.AddMousePosEvent(local.x, local.y);
 		io.AddMouseButtonEvent(0, st->is_pressed());
 	}
 
 	Ref<InputEventScreenDrag> sd = p_event;
 	if (sd.is_valid() && sd->get_index() == 0) {
 		io.AddMouseSourceEvent(ImGuiMouseSource_TouchScreen);
-		io.AddMousePosEvent(sd->get_position().x, sd->get_position().y);
+		Point2 local = to_local.xform(sd->get_position());
+		io.AddMousePosEvent(local.x, local.y);
 	}
 
 	Ref<InputEventKey> k = p_event;
