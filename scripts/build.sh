@@ -29,6 +29,14 @@ set -euo pipefail
 # install; see the README's release notes.
 GODOT_REF="${GODOT_REF:-6371881f6742425cc14eaa367f18dd95955bf5e5}"
 GODOT_URL="${GODOT_URL:-https://github.com/godotengine/godot.git}"
+# Lo que se compila es la rama box3d-3.6 del fork icarito/godot: GODOT_REF mas un
+# commit por parche (scripts/engine_branch.sh). ENGINE_REF pinea su cabeza y lo
+# mueve `engine_branch.sh export`; patches/*.patch es el export de esa rama, para
+# llevar los cambios a otro fork o upstream. GODOT_PATCHES=yes compila como antes:
+# GODOT_REF upstream con patches/*.patch aplicados encima.
+ENGINE_REF="${ENGINE_REF:-6de43e5da98150faded90fb6367d45108c4db780}"
+ENGINE_URL="${ENGINE_URL:-https://github.com/icarito/godot.git}"
+GODOT_PATCHES="${GODOT_PATCHES:-no}"
 # FRT es un "platform" out-of-tree (efornara/frt) que se clona en platform/frt.
 # Pineado por la misma razon que el engine: un binario publicable tiene que ser
 # reproducible. Los hooks que el engine necesita para conocer la plataforma van
@@ -54,7 +62,12 @@ if [ $# -eq 0 ]; then
 	exit 1
 fi
 
-echo "==> Godot   $GODOT_DIR @ $GODOT_REF"
+if [ "$GODOT_PATCHES" = yes ]; then
+	build_ref="$GODOT_REF" build_url="$GODOT_URL"
+else
+	build_ref="$ENGINE_REF" build_url="$ENGINE_URL"
+fi
+echo "==> Godot   $GODOT_DIR @ $build_ref ($build_url)"
 echo "==> Module  $here"
 
 if [ ! -d "$GODOT_DIR/.git" ]; then
@@ -62,11 +75,14 @@ if [ ! -d "$GODOT_DIR/.git" ]; then
 	git clone --filter=blob:none "$GODOT_URL" "$GODOT_DIR"
 fi
 # Only reach the network when the pinned commit is not here yet: a rebuild after
-# touching a patch has no reason to fail offline.
-if ! git -C "$GODOT_DIR" cat-file -e "$GODOT_REF^{commit}" 2>/dev/null; then
-	git -C "$GODOT_DIR" fetch --quiet origin "$GODOT_REF" 2>/dev/null || git -C "$GODOT_DIR" fetch --quiet origin
+# touching a patch has no reason to fail offline. Fetch por URL: el origin de un
+# clon existente es upstream, y el commit del fork no esta ahi.
+if ! git -C "$GODOT_DIR" cat-file -e "$build_ref^{commit}" 2>/dev/null; then
+	git -C "$GODOT_DIR" fetch --quiet "$build_url" "$build_ref" 2>/dev/null || git -C "$GODOT_DIR" fetch --quiet "$build_url"
 fi
-git -C "$GODOT_DIR" checkout --quiet --detach "$GODOT_REF"
+# -f: un arbol que traia los parches aplicados tiene sus archivos nuevos como
+# untracked, y el commit del fork trackea esos mismos caminos.
+git -C "$GODOT_DIR" checkout --quiet -f --detach "$build_ref"
 
 # Patches are reapplied from a clean checkout each time, so a build never
 # stacks them or silently skips one that stopped applying.
@@ -89,10 +105,12 @@ apply_patch() { # apply_patch <patch-path> <repo-dir>
 	git -C "$2" apply "$1"
 }
 
-for patch in "$here"/patches/*.patch; do
-	echo "==> Patch   $(basename "$patch")"
-	apply_patch "$patch" "$GODOT_DIR"
-done
+if [ "$GODOT_PATCHES" = yes ]; then
+	for patch in "$here"/patches/*.patch; do
+		echo "==> Patch   $(basename "$patch")"
+		apply_patch "$patch" "$GODOT_DIR"
+	done
+fi
 
 if [ ! -e "$here/box3d/thirdparty/box3d/include/box3d/box3d.h" ]; then
 	echo "!!! box3d submodule missing: git submodule update --init --recursive" >&2

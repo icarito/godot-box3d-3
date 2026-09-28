@@ -28,12 +28,15 @@ layout fix for the GLES3 directional light UBO and an idempotent
   map (`Environment.glow_map`, the "lens dirt" effect) and the shader
   cache / asynchronous-compilation work the desktop editor leans on.
 
-Upstream Godot source stays untouched: every engine change lives in `patches/`
-applied over a pinned Godot commit, and the `box3d/` and `decal/` modules are
-consumed through Godot's `custom_modules` build option.
+Engine changes are commits on the `box3d-3.6` branch of the
+[icarito/godot](https://github.com/icarito/godot/tree/box3d-3.6) fork, one per
+change over upstream 3.6, and that is what gets built; `patches/` is their
+export, kept so they are easy to carry to another fork or upstream. The `box3d/`
+and `decal/` modules are consumed through Godot's `custom_modules` build option.
 
 ```text
-godotengine/godot        (pinned dependency, branch 3.6)
+godotengine/godot        (upstream, branch 3.6: the base of the fork branch)
+icarito/godot            (fork, branch box3d-3.6: what build.sh compiles, pinned)
 efornara/frt             (out-of-tree platform, cloned into platform/frt)
 icarito/godot-box3d-3    (this repo: modules + patches, evolves independently)
 ```
@@ -124,9 +127,10 @@ necessarily replay bit-for-bit on the other.
 
 ## Engine patches
 
-Everything the fork changes in Godot lives in `patches/`, applied by
-`scripts/build.sh` over a pinned commit before compiling (and `patches/frt/`
-over the pinned FRT checkout). The engine patches are **generated**: their source
+Everything the fork changes in Godot is a commit on `icarito/godot`
+`box3d-3.6`, which `scripts/build.sh` checks out at the pinned `ENGINE_REF`
+(`patches/frt/` is still applied over the pinned FRT checkout;
+`GODOT_PATCHES=yes` builds the old way, upstream plus `patches/*.patch`). The engine patches are **generated**: their source
 of truth is the branch [`box3d-3.6` of icarito/godot](https://github.com/icarito/godot/tree/box3d-3.6),
 one commit per patch over the pinned commit, and `scripts/engine_branch.sh export`
 writes `patches/*.patch` from it (`check` verifies both match). Work on the branch

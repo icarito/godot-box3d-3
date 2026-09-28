@@ -1,8 +1,9 @@
 # Engine patches
 
 Changes to Godot itself (and, under `frt/`, to the FRT platform) that the built
-binaries carry. They are applied by `scripts/build.sh` before compiling, so
-every binary this repo publishes has them. Most are upstreamable fixes; some
+binaries carry. `scripts/build.sh` compiles the fork branch they are exported
+from (`frt/` and `box3d/` are applied at build time), so every binary this repo
+publishes has them. Most are upstreamable fixes; some
 are platform support, diagnostics or features, marked as such in the table.
 
 **`patches/*.patch` is generated — do not edit it by hand.** Its source of truth is the

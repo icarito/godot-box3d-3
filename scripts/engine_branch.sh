@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Rama del motor: la fuente de verdad de los parches a Godot es una rama de git
 # (ENGINE_BRANCH en ENGINE_URL, un commit por parche sobre GODOT_REF); patches/*.patch
-# se GENERA desde ella y es lo que build.sh y el CI siguen aplicando.
+# se GENERA desde ella. build.sh compila la rama (pin ENGINE_REF, que `export` actualiza);
+# patches/ queda para llevar los cambios a otros forks o upstream (y GODOT_PATCHES=yes).
 #
 #   scripts/engine_branch.sh import   crea/reescribe la rama desde patches/*.patch (bootstrap)
 #   scripts/engine_branch.sh export   regenera patches/*.patch desde la rama
@@ -81,7 +82,8 @@ cmd_export() {
 	done
 	rm -f "$PATCHES"/*.patch
 	mv "$out"/*.patch "$PATCHES"/ && rmdir "$out"
-	echo "engine_branch: ${#commits[@]} parches exportados a patches/"
+	sed -i "s/^ENGINE_REF=\"\${ENGINE_REF:-[0-9a-f]*}\"/ENGINE_REF=\"\${ENGINE_REF:-$(g rev-parse "$ENGINE_BRANCH")}\"/" "$here/scripts/build.sh"
+	echo "engine_branch: ${#commits[@]} parches exportados a patches/, ENGINE_REF=$(g rev-parse --short "$ENGINE_BRANCH") en build.sh"
 }
 
 cmd_check() {
