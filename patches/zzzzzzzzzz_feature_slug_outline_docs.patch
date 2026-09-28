@@ -1,0 +1,435 @@
+diff --git a/modules/slug/config.py b/modules/slug/config.py
+index d22f9454ed..012b920276 100644
+--- a/modules/slug/config.py
++++ b/modules/slug/config.py
+@@ -4,3 +4,14 @@ def can_build(env, platform):
+ 
+ def configure(env):
+     pass
++
++
++def get_doc_classes():
++    return [
++        "SlugFont",
++        "SlugLabel3D",
++    ]
++
++
++def get_doc_path():
++    return "doc_classes"
+diff --git a/modules/slug/doc_classes/SlugFont.xml b/modules/slug/doc_classes/SlugFont.xml
+new file mode 100644
+index 0000000000..e83e0f7608
+--- /dev/null
++++ b/modules/slug/doc_classes/SlugFont.xml
+@@ -0,0 +1,46 @@
++<?xml version="1.0" encoding="UTF-8" ?>
++<class name="SlugFont" inherits="Resource" version="3.6" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../../../doc/class.xsd">
++	<brief_description>
++		GPU font data for rendering resolution-independent text with the Slug algorithm.
++	</brief_description>
++	<description>
++		SlugFont holds the data [SlugLabel3D] needs to draw text directly from Bézier glyph outlines on the GPU, following Eric Lengyel's Slug algorithm. Unlike a rasterized [DynamicFont], a Slug glyph has no fixed resolution: the same font data stays sharp at any distance or angle, which makes it a good fit for large or close-up world-space text such as signs.
++		SlugFont is built from a [member font_data] [DynamicFontData] pointing at a TrueType file. Only quadratic outlines are supported; CFF/OTF fonts with cubic outlines are rejected and [method is_valid] returns [code]false[/code]. The charset covers ASCII, Latin-1, and the replacement character U+FFFD.
++		The font is not built eagerly: the curve, band, and glyph textures are generated lazily, in a few milliseconds, the first time a [SlugLabel3D] needs them. SlugFont only works with the GLES3 rendering backend.
++	</description>
++	<tutorials>
++	</tutorials>
++	<methods>
++		<method name="get_build_time_usec">
++			<return type="int" />
++			<description>
++				Returns how long the last build of this font's GPU data took, in microseconds. Triggers the build if it hasn't happened yet.
++			</description>
++		</method>
++		<method name="get_glyph_count">
++			<return type="int" />
++			<description>
++				Returns the number of glyphs baked into this font's data. Triggers the build if it hasn't happened yet.
++			</description>
++		</method>
++		<method name="get_max_curves_per_band">
++			<return type="int" />
++			<description>
++				Returns the largest number of curves found in any single band of any glyph, a measure of the worst-case per-pixel cost when rasterizing this font. Triggers the build if it hasn't happened yet.
++			</description>
++		</method>
++		<method name="is_valid">
++			<return type="bool" />
++			<description>
++				Returns [code]true[/code] if [member font_data] is set and was built successfully. Returns [code]false[/code] if [member font_data] is empty, or if the source font has cubic (CFF/OTF) outlines, which Slug does not support.
++			</description>
++		</method>
++	</methods>
++	<members>
++		<member name="font_data" type="DynamicFontData" setter="set_font_data" getter="get_font_data">
++			The TrueType font file this SlugFont's GPU data is built from. Must have quadratic outlines; CFF/OTF fonts with cubic outlines make the font invalid.
++		</member>
++	</members>
++	<constants>
++	</constants>
++</class>
+diff --git a/modules/slug/doc_classes/SlugLabel3D.xml b/modules/slug/doc_classes/SlugLabel3D.xml
+new file mode 100644
+index 0000000000..aedafd06d2
+--- /dev/null
++++ b/modules/slug/doc_classes/SlugLabel3D.xml
+@@ -0,0 +1,59 @@
++<?xml version="1.0" encoding="UTF-8" ?>
++<class name="SlugLabel3D" inherits="GeometryInstance" version="3.6" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../../../doc/class.xsd">
++	<brief_description>
++		Displays sharp, resolution-independent text in a 3D world using the Slug algorithm.
++	</brief_description>
++	<description>
++		SlugLabel3D draws text in world space directly from a [SlugFont]'s Bézier glyph outlines, so it stays crisp no matter how large it is on screen or how close the camera gets. This makes it a good choice for signs, billboards, and other large or close-up diegetic text with perspective. It is not meant for dense blocks of small text; use [Label3D] for that instead.
++		[member size] is the world-space size of one em, so a glyph's on-screen size follows [member size] and the camera distance the same way any other 3D object would.
++		SlugLabel3D only works with the GLES3 rendering backend. When running under GLES2, or when [member font] is null or invalid, it falls back to drawing with an internal [Label3D] built from [member fallback_font] if one is set; otherwise nothing is drawn.
++		An outline can be added with [member outline_size] and [member outline_modulate]. Outline pixels outside the glyph cost up to 17 times the fragment work of a plain fill pixel, so keep [member outline_size] no larger than needed. Very thick outlines show small steps at sharp corners. The outline is not drawn in the GLES2/fallback path.
++	</description>
++	<tutorials>
++	</tutorials>
++	<methods>
++	</methods>
++	<members>
++		<member name="align" type="int" setter="set_align" getter="get_align" enum="SlugLabel3D.Align" default="1">
++			The horizontal alignment of the text. See [enum Align] for possible values.
++		</member>
++		<member name="billboard" type="bool" setter="set_billboard" getter="get_billboard" default="false">
++			If [code]true[/code], the text always faces the camera, matching the camera's rotation instead of the node's.
++		</member>
++		<member name="fallback_font" type="Font" setter="set_fallback_font" getter="get_fallback_font">
++			The [Font] used to draw text through an internal [Label3D] when Slug rendering is unavailable, either because the video driver is GLES2 or because [member font] is null or invalid. If left empty in that situation, nothing is drawn.
++		</member>
++		<member name="font" type="SlugFont" setter="set_font" getter="get_font">
++			The [SlugFont] used to draw the text. Required for Slug rendering; see [member fallback_font] for what happens when it is missing or invalid.
++		</member>
++		<member name="line_spacing" type="float" setter="set_line_spacing" getter="get_line_spacing" default="0.0">
++			Additional vertical spacing, in world units, added between lines of text.
++		</member>
++		<member name="modulate" type="Color" setter="set_modulate" getter="get_modulate" default="Color( 1, 1, 1, 1 )">
++			The color multiplied onto the text's fill.
++		</member>
++		<member name="outline_modulate" type="Color" setter="set_outline_modulate" getter="get_outline_modulate" default="Color( 0, 0, 0, 1 )">
++			The color of the outline drawn when [member outline_size] is greater than [code]0[/code]. Also forwarded to the [member fallback_font] path's [member Label3D.outline_modulate], though the fallback only shows an outline if [member fallback_font] itself has one configured.
++		</member>
++		<member name="outline_size" type="float" setter="set_outline_size" getter="get_outline_size" default="0.0">
++			The width of the outline drawn around each glyph, in em (fractions of [member size]). A value of [code]0[/code] disables the outline. Not applied when falling back to [member fallback_font].
++		</member>
++		<member name="size" type="float" setter="set_size" getter="get_size" default="1.0">
++			The size, in world units, of one em of text. This is the world-space equivalent of a font's pixel size.
++		</member>
++		<member name="text" type="String" setter="set_text" getter="get_text" default="&quot;&quot;">
++			The text to display. Supports multiple lines separated by [code]\n[/code].
++		</member>
++	</members>
++	<constants>
++		<constant name="ALIGN_LEFT" value="0" enum="Align">
++			Aligns the text to the left.
++		</constant>
++		<constant name="ALIGN_CENTER" value="1" enum="Align">
++			Aligns the text to the center.
++		</constant>
++		<constant name="ALIGN_RIGHT" value="2" enum="Align">
++			Aligns the text to the right.
++		</constant>
++	</constants>
++</class>
+diff --git a/modules/slug/slug_label_3d.cpp b/modules/slug/slug_label_3d.cpp
+index 85b3860689..4233d0e7a9 100644
+--- a/modules/slug/slug_label_3d.cpp
++++ b/modules/slug/slug_label_3d.cpp
+@@ -24,6 +24,12 @@ void SlugLabel3D::_bind_methods() {
+ 	ClassDB::bind_method(D_METHOD("set_modulate", "modulate"), &SlugLabel3D::set_modulate);
+ 	ClassDB::bind_method(D_METHOD("get_modulate"), &SlugLabel3D::get_modulate);
+ 
++	ClassDB::bind_method(D_METHOD("set_outline_size", "size"), &SlugLabel3D::set_outline_size);
++	ClassDB::bind_method(D_METHOD("get_outline_size"), &SlugLabel3D::get_outline_size);
++
++	ClassDB::bind_method(D_METHOD("set_outline_modulate", "modulate"), &SlugLabel3D::set_outline_modulate);
++	ClassDB::bind_method(D_METHOD("get_outline_modulate"), &SlugLabel3D::get_outline_modulate);
++
+ 	ClassDB::bind_method(D_METHOD("set_align", "align"), &SlugLabel3D::set_align);
+ 	ClassDB::bind_method(D_METHOD("get_align"), &SlugLabel3D::get_align);
+ 
+@@ -43,6 +49,8 @@ void SlugLabel3D::_bind_methods() {
+ 	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "font", PROPERTY_HINT_RESOURCE_TYPE, "SlugFont"), "set_font", "get_font");
+ 	ADD_PROPERTY(PropertyInfo(Variant::REAL, "size", PROPERTY_HINT_RANGE, "0.001,1000,0.001"), "set_size", "get_size");
+ 	ADD_PROPERTY(PropertyInfo(Variant::COLOR, "modulate"), "set_modulate", "get_modulate");
++	ADD_PROPERTY(PropertyInfo(Variant::REAL, "outline_size", PROPERTY_HINT_RANGE, "0,0.5,0.001"), "set_outline_size", "get_outline_size");
++	ADD_PROPERTY(PropertyInfo(Variant::COLOR, "outline_modulate"), "set_outline_modulate", "get_outline_modulate");
+ 	ADD_PROPERTY(PropertyInfo(Variant::INT, "align", PROPERTY_HINT_ENUM, "Left,Center,Right"), "set_align", "get_align");
+ 	ADD_PROPERTY(PropertyInfo(Variant::REAL, "line_spacing"), "set_line_spacing", "get_line_spacing");
+ 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "billboard"), "set_billboard", "get_billboard");
+@@ -117,6 +125,29 @@ Color SlugLabel3D::get_modulate() const {
+ 	return modulate;
+ }
+ 
++void SlugLabel3D::set_outline_size(float p_size) {
++	ERR_FAIL_COND(p_size < 0.0f);
++	if (outline_size != p_size) {
++		outline_size = p_size;
++		_queue_update();
++	}
++}
++
++float SlugLabel3D::get_outline_size() const {
++	return outline_size;
++}
++
++void SlugLabel3D::set_outline_modulate(const Color &p_color) {
++	if (outline_modulate != p_color) {
++		outline_modulate = p_color;
++		_queue_update();
++	}
++}
++
++Color SlugLabel3D::get_outline_modulate() const {
++	return outline_modulate;
++}
++
+ void SlugLabel3D::set_align(Align p_align) {
+ 	ERR_FAIL_INDEX(p_align, 3);
+ 	if (align != p_align) {
+@@ -185,6 +216,11 @@ void SlugLabel3D::_update_fallback_label() {
+ 	fallback_label->set_billboard_mode(billboard ? Material3D::BILLBOARD_ENABLED : Material3D::BILLBOARD_DISABLED);
+ 	fallback_label->set_draw_flag(Label3D::FLAG_DOUBLE_SIDED, true);
+ 	fallback_label->set_font(fallback_font);
++	// The outline needs the fallback font's own outline_size set, which would
++	// mutate a resource the caller may share elsewhere; the fallback path
++	// draws fill only. outline_modulate is still forwarded so it takes effect
++	// if the caller's font already carries an outline.
++	fallback_label->set_outline_modulate(outline_modulate);
+ 
+ 	// One em of the Label3D must equal `size` world units. A DynamicFont's
+ 	// size is already the em in pixels; a generic Font only exposes its
+@@ -286,9 +322,15 @@ void SlugLabel3D::_update_mesh() {
+ 	PoolVector2Array uvs;
+ 	PoolVector2Array uv2s;
+ 	PoolColorArray colors;
+-	PoolIntArray indices;
++	PoolRealArray tangents;
++	// Outline quads must precede fill quads in the index buffer so the fill
++	// draws over the outline within the single draw call; built as two lists
++	// and concatenated once all glyphs are laid out.
++	PoolIntArray fill_indices;
++	PoolIntArray outline_indices;
+ 
+ 	Color linear_modulate = modulate.to_linear();
++	Color linear_outline_modulate = outline_modulate.to_linear();
+ 	float billboard_flag = billboard ? 1.0f : 0.0f;
+ 	bool has_point = false;
+ 
+@@ -319,12 +361,6 @@ void SlugLabel3D::_update_mesh() {
+ 				continue;
+ 			}
+ 			if (g->has_outline) {
+-				Vector2 corners[4] = {
+-					Vector2(g->bounds.position.x, g->bounds.position.y),
+-					Vector2(g->bounds.position.x + g->bounds.size.x, g->bounds.position.y),
+-					Vector2(g->bounds.position.x + g->bounds.size.x, g->bounds.position.y + g->bounds.size.y),
+-					Vector2(g->bounds.position.x, g->bounds.position.y + g->bounds.size.y),
+-				};
+ 				Vector2 normal_dirs[4] = {
+ 					Vector2(-1, -1),
+ 					Vector2(1, -1),
+@@ -332,6 +368,50 @@ void SlugLabel3D::_update_mesh() {
+ 					Vector2(-1, 1),
+ 				};
+ 
++				if (outline_size > 0.0f) {
++					Rect2 grown = g->bounds.grow(outline_size);
++					Vector2 outline_corners[4] = {
++						Vector2(grown.position.x, grown.position.y),
++						Vector2(grown.position.x + grown.size.x, grown.position.y),
++						Vector2(grown.position.x + grown.size.x, grown.position.y + grown.size.y),
++						Vector2(grown.position.x, grown.position.y + grown.size.y),
++					};
++
++					int base = vertices.size();
++					for (int ci = 0; ci < 4; ci++) {
++						Vector3 v((x + outline_corners[ci].x) * size, (y + outline_corners[ci].y) * size, 0.0f);
++						vertices.push_back(v);
++						normals.push_back(Vector3(normal_dirs[ci].x, normal_dirs[ci].y, billboard_flag));
++						uvs.push_back(outline_corners[ci]);
++						uv2s.push_back(Vector2((float)g->index, 1.0f / size));
++						colors.push_back(linear_outline_modulate);
++						tangents.push_back(outline_size);
++						tangents.push_back(0.0f);
++						tangents.push_back(0.0f);
++						tangents.push_back(1.0f);
++
++						if (!has_point) {
++							aabb.position = v;
++							has_point = true;
++						} else {
++							aabb.expand_to(v);
++						}
++					}
++					outline_indices.push_back(base + 0);
++					outline_indices.push_back(base + 1);
++					outline_indices.push_back(base + 2);
++					outline_indices.push_back(base + 0);
++					outline_indices.push_back(base + 2);
++					outline_indices.push_back(base + 3);
++				}
++
++				Vector2 corners[4] = {
++					Vector2(g->bounds.position.x, g->bounds.position.y),
++					Vector2(g->bounds.position.x + g->bounds.size.x, g->bounds.position.y),
++					Vector2(g->bounds.position.x + g->bounds.size.x, g->bounds.position.y + g->bounds.size.y),
++					Vector2(g->bounds.position.x, g->bounds.position.y + g->bounds.size.y),
++				};
++
+ 				int base = vertices.size();
+ 				for (int ci = 0; ci < 4; ci++) {
+ 					Vector3 v((x + corners[ci].x) * size, (y + corners[ci].y) * size, 0.0f);
+@@ -340,6 +420,10 @@ void SlugLabel3D::_update_mesh() {
+ 					uvs.push_back(corners[ci]);
+ 					uv2s.push_back(Vector2((float)g->index, 1.0f / size));
+ 					colors.push_back(linear_modulate);
++					tangents.push_back(0.0f);
++					tangents.push_back(0.0f);
++					tangents.push_back(0.0f);
++					tangents.push_back(1.0f);
+ 
+ 					if (!has_point) {
+ 						aabb.position = v;
+@@ -348,12 +432,12 @@ void SlugLabel3D::_update_mesh() {
+ 						aabb.expand_to(v);
+ 					}
+ 				}
+-				indices.push_back(base + 0);
+-				indices.push_back(base + 1);
+-				indices.push_back(base + 2);
+-				indices.push_back(base + 0);
+-				indices.push_back(base + 2);
+-				indices.push_back(base + 3);
++				fill_indices.push_back(base + 0);
++				fill_indices.push_back(base + 1);
++				fill_indices.push_back(base + 2);
++				fill_indices.push_back(base + 0);
++				fill_indices.push_back(base + 2);
++				fill_indices.push_back(base + 3);
+ 			}
+ 			x += g->advance;
+ 		}
+@@ -378,6 +462,11 @@ void SlugLabel3D::_update_mesh() {
+ 		aabb = AABB(Vector3(-r, -r, -r), Vector3(2.0f * r, 2.0f * r, 2.0f * r));
+ 	}
+ 
++	// Outline quads first so the fill draws over them within the one surface.
++	PoolIntArray indices;
++	indices.append_array(outline_indices);
++	indices.append_array(fill_indices);
++
+ 	Array arrays;
+ 	arrays.resize(VS::ARRAY_MAX);
+ 	arrays[VS::ARRAY_VERTEX] = vertices;
+@@ -385,6 +474,7 @@ void SlugLabel3D::_update_mesh() {
+ 	arrays[VS::ARRAY_COLOR] = colors;
+ 	arrays[VS::ARRAY_TEX_UV] = uvs;
+ 	arrays[VS::ARRAY_TEX_UV2] = uv2s;
++	arrays[VS::ARRAY_TANGENT] = tangents;
+ 	arrays[VS::ARRAY_INDEX] = indices;
+ 
+ 	VS::get_singleton()->mesh_add_surface_from_arrays(mesh, VS::PRIMITIVE_TRIANGLES, arrays, Array(), 0);
+diff --git a/modules/slug/slug_label_3d.h b/modules/slug/slug_label_3d.h
+index 1142a322ae..b1cbd16856 100644
+--- a/modules/slug/slug_label_3d.h
++++ b/modules/slug/slug_label_3d.h
+@@ -26,6 +26,8 @@ private:
+ 	Ref<SlugFont> font;
+ 	float size = 1.0f;
+ 	Color modulate = Color(1, 1, 1, 1);
++	float outline_size = 0.0f;
++	Color outline_modulate = Color(0, 0, 0, 1);
+ 	Align align = ALIGN_CENTER;
+ 	float line_spacing = 0.0f;
+ 	bool billboard = false;
+@@ -58,6 +60,12 @@ public:
+ 	void set_modulate(const Color &p_color);
+ 	Color get_modulate() const;
+ 
++	void set_outline_size(float p_size);
++	float get_outline_size() const;
++
++	void set_outline_modulate(const Color &p_color);
++	Color get_outline_modulate() const;
++
+ 	void set_align(Align p_align);
+ 	Align get_align() const;
+ 
+diff --git a/modules/slug/slug_shader.h b/modules/slug/slug_shader.h
+index 2b8431b81e..93dc3f2827 100644
+--- a/modules/slug/slug_shader.h
++++ b/modules/slug/slug_shader.h
+@@ -16,6 +16,8 @@
+ //   UV         em-space coordinates of the corner, in the glyph's frame
+ //   UV2        (glyph index, em per local unit)
+ //   COLOR      linear color
++//   TANGENT.x  outline radius in em; 0 for fill quads. Outline quads come
++//              first in the index buffer so the fill draws over them.
+ // glyph_tex, one row per glyph: texel 0 = band scale.xy, band offset.zw;
+ // texel 1 = glyph data location in band_tex .xy, band max .zw.
+ // curve_tex, band_tex: see slug_font.cpp. Both 4096 texels wide; a glyph's
+@@ -30,6 +32,7 @@ uniform sampler2D glyph_tex;
+ 
+ varying flat vec4 v_band;
+ varying flat vec4 v_glyph;
++varying flat float v_outline;
+ 
+ void vertex() {
+ 	if (NORMAL.z > 0.5) {
+@@ -40,6 +43,7 @@ void vertex() {
+ 	int gi = int(UV2.x + 0.5);
+ 	v_band = texelFetch(glyph_tex, ivec2(0, gi), 0);
+ 	v_glyph = texelFetch(glyph_tex, ivec2(1, gi), 0);
++	v_outline = TANGENT.x;
+ 
+ 	// SlugDilate: push the corner out along its normal so the quad covers
+ 	// half a pixel more on screen, and move the em coordinate with it.
+@@ -106,12 +110,10 @@ vec2 solve_vert_poly(vec4 p12, vec2 p3) {
+ 	return vec2((a.y * t1 - b.y * 2.0) * t1 + p12.y, (a.y * t2 - b.y * 2.0) * t2 + p12.y);
+ }
+ 
+-void fragment() {
+-	vec2 rc = UV;
+-	vec2 pixels_per_em = 1.0 / fwidth(rc);
+-	ivec2 band_max = ivec2(v_glyph.zw);
+-	ivec2 band_index = clamp(ivec2(rc * v_band.xy + v_band.zw), ivec2(0), band_max);
+-	ivec2 gloc = ivec2(v_glyph.xy);
++float slug_coverage(vec2 rc, vec2 pixels_per_em, vec4 band, vec4 glyph) {
++	ivec2 band_max = ivec2(glyph.zw);
++	ivec2 band_index = clamp(ivec2(rc * band.xy + band.zw), ivec2(0), band_max);
++	ivec2 gloc = ivec2(glyph.xy);
+ 
+ 	float xcov = 0.0;
+ 	float xwgt = 0.0;
+@@ -168,7 +170,26 @@ void fragment() {
+ 
+ 	// Nonzero fill rule; abs() accepts either winding direction.
+ 	float coverage = max(abs(xcov * xwgt + ycov * ywgt) / max(xwgt + ywgt, 1.0 / 65536.0), min(abs(xcov), abs(ycov)));
+-	coverage = clamp(coverage, 0.0, 1.0);
++	return clamp(coverage, 0.0, 1.0);
++}
++
++
++void fragment() {
++	vec2 pixels_per_em = 1.0 / fwidth(UV);
++	float coverage = slug_coverage(UV, pixels_per_em, v_band, v_glyph);
++	if (v_outline > 0.0 && coverage < 1.0) {
++		// Outline: the glyph dilated by v_outline em, as the max coverage over
++		// the glyph shifted in 16 directions. Where the center is fully covered
++		// the fill hides the outline, so the extra samples are skipped.
++		// ponytail: shifted copies of a sharp corner (e.g. the flat end of the
++		// @ tail) leave steps of ~2% of the radius; invisible at 0.02-0.05 em,
++		// a few pixels on huge outlines. A distance-to-curve pass fixes it.
++		for (int k = 0; k < 16 && coverage < 1.0; k++) {
++			float a = float(k) * 0.392699;
++			vec2 o = vec2(cos(a), sin(a)) * v_outline;
++			coverage = max(coverage, slug_coverage(UV + o, pixels_per_em, v_band, v_glyph));
++		}
++	}
+ 
+ 	ALBEDO = COLOR.rgb;
+ 	ALPHA = COLOR.a * coverage;

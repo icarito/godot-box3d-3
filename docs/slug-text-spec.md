@@ -14,6 +14,10 @@ Medido 2026-09-28 (NotoSans Regular, TrueType):
 - Fallback (fase C, hecho): `SlugLabel3D.fallback_font` muestra un `Label3D`
   interno bajo GLES2 o si la fuente no carga; verificado con
   `--video-driver GLES2` (sin errores en el log) y con una fuente inexistente.
+- Contorno (fase C, hecho): `outline_size`/`outline_modulate`; 16 muestras de
+  cobertura desplazada, solo en píxeles fuera del glifo. Límite conocido:
+  escalones de ~2% del radio en esquinas vivas (visibles solo en contornos muy
+  gruesos). Referencia de clases en `modules/slug/doc_classes`.
 - Única corrección al port: el tokenizador de 3.6 rechaza el sufijo `u` en
   literales hex (`0x2E74u`); se usan decimales.
 
