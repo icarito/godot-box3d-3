@@ -11,6 +11,9 @@ Medido 2026-09-28 (NotoSans Regular, TrueType):
   (idénticas): huecos de `O B 8 @ a e`, perspectiva rasante y zoom extremo
   (borde de curva limpio a cientos de píxeles por em). El riesgo de `fwidth`
   en software queda descartado para llvmpipe.
+- Fallback (fase C, hecho): `SlugLabel3D.fallback_font` muestra un `Label3D`
+  interno bajo GLES2 o si la fuente no carga; verificado con
+  `--video-driver GLES2` (sin errores en el log) y con una fuente inexistente.
 - Única corrección al port: el tokenizador de 3.6 rechaza el sufijo `u` en
   literales hex (`0x2E74u`); se usan decimales.
 

@@ -11,6 +11,7 @@ var orbit_paused = false
 var spinning_label: SlugLabel3D
 var stats_label: Label
 var slug_fonts = [] # Array de [nombre, SlugFont] para el HUD.
+var _fallback_font: DynamicFont
 
 var _screenshot_path = ""
 var _frame_count = 0
@@ -33,6 +34,11 @@ func _ready():
 	serif_font.font_data = serif_data
 
 	slug_fonts = [["Sans", sans_font], ["Serif", serif_font]]
+
+	var fallback_font = DynamicFont.new()
+	fallback_font.font_data = sans_data
+	fallback_font.size = 64
+	_fallback_font = fallback_font
 
 	if not sans_font.is_valid() or not serif_font.is_valid():
 		push_error("SlugFont inválido: faltan las fuentes. Corré fetch_fonts.sh")
@@ -140,6 +146,7 @@ func _make_label(text: String, font: SlugFont, size: float, pos: Vector3, color:
 	label.size = size
 	label.translation = pos
 	label.modulate = color
+	label.fallback_font = _fallback_font
 	add_child(label)
 	return label
 
