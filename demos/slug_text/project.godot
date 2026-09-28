@@ -1,0 +1,15 @@
+config_version=4
+
+[application]
+
+config/name="Slug Text Demo"
+run/main_scene="res://demo.tscn"
+
+[display]
+
+window/size/width=1280
+window/size/height=720
+
+[rendering]
+
+quality/driver/driver_name="GLES3"
