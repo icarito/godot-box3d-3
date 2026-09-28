@@ -64,8 +64,9 @@ nothing. But:
 The 37 engine patches used to be the source of truth: `.patch` files ordered by name
 (`zzz…_`), edited and rebased by hand. Now the source of truth is the branch
 **`box3d-3.6` of `icarito/godot`**: one commit per patch over `GODOT_REF`, each with a
-`Patch-File: <name>.patch` trailer. `patches/*.patch` is generated from it, so
-`scripts/build.sh` and CI did not change.
+`Patch-File: <name>.patch` trailer. `patches/*.patch` is generated from it, and
+`scripts/build.sh` compiles the branch itself, pinned by `ENGINE_REF` (bumped by
+`export`); `GODOT_PATCHES=yes` still builds upstream `GODOT_REF` + `patches/`.
 
 ```sh
 scripts/engine_branch.sh import   # (re)build the branch from patches/ — bootstrap only
