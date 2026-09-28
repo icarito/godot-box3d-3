@@ -2,5 +2,5 @@
 
 [ext_resource path="res://demo.gd" type="Script" id=1]
 
-[node name="Demo" type="Spatial"]
+[node name="SlugTextDemo" type="Spatial"]
 script = ExtResource( 1 )

@@ -1,23 +1,31 @@
 #!/usr/bin/env bash
-# Descarga las fuentes Noto usadas por el demo, si no están ya en fonts/.
+# Descarga las fuentes Noto que usa el demo de Slug.
+# Idempotente: si el archivo ya existe lo salta.
 set -euo pipefail
 
-dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/fonts"
-mkdir -p "$dir"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+FONT_DIR="$SCRIPT_DIR/fonts"
+mkdir -p "$FONT_DIR"
 
 fetch() {
-	local name="$1" url="$2"
-	if [[ -f "$dir/$name" ]]; then
-		echo "ya existe: $name"
-		return
+	local url="$1"
+	local dest="$2"
+	if [[ -f "$dest" ]]; then
+		echo "skip $(basename "$dest") (ya existe)"
+		return 0
 	fi
-	echo "descargando: $name"
-	curl -fL -o "$dir/$name" "$url"
+	echo "download $(basename "$dest")"
+	curl -fL --retry 3 -o "$dest" "$url"
 }
 
-fetch NotoSans-Regular.ttf \
-	"https://github.com/notofonts/notofonts.github.io/raw/main/fonts/NotoSans/hinted/ttf/NotoSans-Regular.ttf"
-fetch NotoSerif-Regular.ttf \
-	"https://github.com/notofonts/notofonts.github.io/raw/main/fonts/NotoSerif/hinted/ttf/NotoSerif-Regular.ttf"
-fetch OFL.txt \
-	"https://raw.githubusercontent.com/notofonts/latin-greek-cyrillic/main/OFL.txt"
+fetch \
+	"https://github.com/notofonts/notofonts.github.io/raw/main/fonts/NotoSans/hinted/ttf/NotoSans-Regular.ttf" \
+	"$FONT_DIR/NotoSans-Regular.ttf"
+fetch \
+	"https://github.com/notofonts/notofonts.github.io/raw/main/fonts/NotoSerif/hinted/ttf/NotoSerif-Regular.ttf" \
+	"$FONT_DIR/NotoSerif-Regular.ttf"
+fetch \
+	"https://raw.githubusercontent.com/notofonts/latin-greek-cyrillic/main/OFL.txt" \
+	"$FONT_DIR/OFL.txt"
+
+echo "listo: fuentes en $FONT_DIR"
