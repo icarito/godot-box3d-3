@@ -1,0 +1,1414 @@
+diff --git a/modules/slug/SCsub b/modules/slug/SCsub
+new file mode 100644
+index 0000000000..f43c0f7378
+--- /dev/null
++++ b/modules/slug/SCsub
+@@ -0,0 +1,11 @@
++#!/usr/bin/env python
++
++Import("env")
++Import("env_modules")
++
++env_slug = env_modules.Clone()
++
++if env["builtin_freetype"]:
++    env_slug.Prepend(CPPPATH=["#thirdparty/freetype/include"])
++
++env_slug.add_source_files(env.modules_sources, "*.cpp")
+diff --git a/modules/slug/SLUG_LICENSE.txt b/modules/slug/SLUG_LICENSE.txt
+new file mode 100644
+index 0000000000..8f99cd5f5b
+--- /dev/null
++++ b/modules/slug/SLUG_LICENSE.txt
+@@ -0,0 +1,30 @@
++The GLSL port of the Slug shaders in this module (slug_shader.h) follows
++the reference implementation at https://github.com/EricLengyel/Slug.
++
++Slug shader code Copyright 2017 by Eric Lengyel.
++
++Dual-licensed MIT OR Apache-2.0 in the upstream repository; this module
++takes the MIT option:
++
++Permission is hereby granted, free of charge, to any person obtaining a
++copy of this software and associated documentation files (the
++"Software"), to deal in the Software without restriction, including
++without limitation the rights to use, copy, modify, merge, publish,
++distribute, sublicense, and/or sell copies of the Software, and to
++permit persons to whom the Software is furnished to do so, subject to
++the following conditions:
++
++The above copyright notice and this permission notice shall be included
++in all copies or substantial portions of the Software.
++
++THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
++OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
++MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
++IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
++CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
++TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
++SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
++
++The patent covering the Slug algorithm (US 10,373,352) was dedicated to
++the public domain on 2026-03-17 via terminal disclaimer
++(terathon.com/blog/decade-slug.html).
+diff --git a/modules/slug/config.py b/modules/slug/config.py
+new file mode 100644
+index 0000000000..d22f9454ed
+--- /dev/null
++++ b/modules/slug/config.py
+@@ -0,0 +1,6 @@
++def can_build(env, platform):
++    return True
++
++
++def configure(env):
++    pass
+diff --git a/modules/slug/register_types.cpp b/modules/slug/register_types.cpp
+new file mode 100644
+index 0000000000..a11ffcfc60
+--- /dev/null
++++ b/modules/slug/register_types.cpp
+@@ -0,0 +1,19 @@
++/*************************************************************************/
++/*  register_types.cpp                                                  */
++/*************************************************************************/
++/* Godot 3.6 module: modules/slug                                       */
++/*************************************************************************/
++
++#include "register_types.h"
++
++#include "core/class_db.h"
++#include "slug_font.h"
++#include "slug_label_3d.h"
++
++void register_slug_types() {
++	ClassDB::register_class<SlugFont>();
++	ClassDB::register_class<SlugLabel3D>();
++}
++
++void unregister_slug_types() {
++}
+diff --git a/modules/slug/register_types.h b/modules/slug/register_types.h
+new file mode 100644
+index 0000000000..aca0d307e2
+--- /dev/null
++++ b/modules/slug/register_types.h
+@@ -0,0 +1,13 @@
++/*************************************************************************/
++/*  register_types.h                                                    */
++/*************************************************************************/
++/* Godot 3.6 module: modules/slug                                       */
++/*************************************************************************/
++
++#ifndef SLUG_REGISTER_TYPES_H
++#define SLUG_REGISTER_TYPES_H
++
++void register_slug_types();
++void unregister_slug_types();
++
++#endif // SLUG_REGISTER_TYPES_H
+diff --git a/modules/slug/slug_font.cpp b/modules/slug/slug_font.cpp
+new file mode 100644
+index 0000000000..c7f5340fcd
+--- /dev/null
++++ b/modules/slug/slug_font.cpp
+@@ -0,0 +1,606 @@
++/*************************************************************************/
++/*  slug_font.cpp                                                       */
++/*************************************************************************/
++/* Godot 3.6 module: modules/slug                                       */
++/*************************************************************************/
++
++#include "slug_font.h"
++
++#include "core/os/file_access.h"
++#include "core/os/os.h"
++#include "core/print_string.h"
++#include "slug_shader.h"
++
++#include <ft2build.h>
++#include FT_FREETYPE_H
++#include FT_OUTLINE_H
++
++// Both curve_tex and band_tex are 4096 texels wide; see slug_shader.h for
++// how the fragment shader walks them. Bands overlap slightly (BAND_EPS) so a
++// curve that straddles a band boundary is tested by both sides.
++static const int SLUG_TEX_WIDTH = 4096;
++static const int SLUG_MAX_BANDS = 16;
++static const float SLUG_BAND_EPS = 1.0f / 1024.0f;
++
++// One quadratic Bezier in em space; straight lines are stored as {p1, p2, p2}.
++struct SlugQCurve {
++	Vector2 p1, p2, p3;
++};
++
++struct SlugContour {
++	Vector<SlugQCurve> curves;
++};
++
++struct SlugGlyphBuild {
++	uint32_t codepoint = 0;
++	FT_UInt gi = 0;
++	float advance = 0.0f;
++	Vector<SlugContour> contours;
++	Rect2 bounds;
++	bool has_outline = false;
++};
++
++// A curve already placed in curve_tex, with the bbox needed to bin it into
++// bands and to sort each band's list.
++struct SlugCurveRef {
++	Point2i loc;
++	float xmin, xmax, ymin, ymax;
++};
++
++struct SlugSortDescX {
++	bool operator()(const SlugCurveRef &p_a, const SlugCurveRef &p_b) const { return p_a.xmax > p_b.xmax; }
++};
++
++struct SlugSortDescY {
++	bool operator()(const SlugCurveRef &p_a, const SlugCurveRef &p_b) const { return p_a.ymax > p_b.ymax; }
++};
++
++struct SlugDecomposeCtx {
++	Vector<SlugContour> *contours = nullptr;
++	Vector2 cur;
++	float inv_upem = 1.0f;
++	bool has_cubic = false;
++};
++
++static int _slug_move_to(const FT_Vector *p_to, void *p_user) {
++	SlugDecomposeCtx *ctx = (SlugDecomposeCtx *)p_user;
++	ctx->contours->push_back(SlugContour());
++	ctx->cur = Vector2(p_to->x * ctx->inv_upem, p_to->y * ctx->inv_upem);
++	return 0;
++}
++
++static int _slug_line_to(const FT_Vector *p_to, void *p_user) {
++	SlugDecomposeCtx *ctx = (SlugDecomposeCtx *)p_user;
++	Vector2 p(p_to->x * ctx->inv_upem, p_to->y * ctx->inv_upem);
++	if (ctx->cur != p) { // Skip a degenerate {p1, p2, p2} where p1 == p2.
++		SlugQCurve c;
++		c.p1 = ctx->cur;
++		c.p2 = p;
++		c.p3 = p;
++		ctx->contours->write[ctx->contours->size() - 1].curves.push_back(c);
++	}
++	ctx->cur = p;
++	return 0;
++}
++
++static int _slug_conic_to(const FT_Vector *p_control, const FT_Vector *p_to, void *p_user) {
++	SlugDecomposeCtx *ctx = (SlugDecomposeCtx *)p_user;
++	Vector2 ctrl(p_control->x * ctx->inv_upem, p_control->y * ctx->inv_upem);
++	Vector2 p(p_to->x * ctx->inv_upem, p_to->y * ctx->inv_upem);
++	if (!(ctx->cur == ctrl && ctrl == p)) { // Skip a fully degenerate curve.
++		SlugQCurve c;
++		c.p1 = ctx->cur;
++		c.p2 = ctrl;
++		c.p3 = p;
++		ctx->contours->write[ctx->contours->size() - 1].curves.push_back(c);
++	}
++	ctx->cur = p;
++	return 0;
++}
++
++static int _slug_cubic_to(const FT_Vector *p_c1, const FT_Vector *p_c2, const FT_Vector *p_to, void *p_user) {
++	SlugDecomposeCtx *ctx = (SlugDecomposeCtx *)p_user;
++	ctx->has_cubic = true;
++	return 1; // Abort the decomposition; the font is rejected as a whole.
++}
++
++// Max curves in any band if the [p_lo, p_hi] extent is split into p_bands
++// equal bands (using .ymin/.ymax when p_use_y, .xmin/.xmax otherwise).
++static int _slug_max_band_count(const Vector<SlugCurveRef> &p_list, float p_lo, float p_hi, int p_bands, bool p_use_y) {
++	float extent = p_hi - p_lo;
++	int max_count = 0;
++	for (int b = 0; b < p_bands; b++) {
++		float lo = p_lo + extent * b / p_bands;
++		float hi = p_lo + extent * (b + 1) / p_bands;
++		int count = 0;
++		for (int i = 0; i < p_list.size(); i++) {
++			float cmin = p_use_y ? p_list[i].ymin : p_list[i].xmin;
++			float cmax = p_use_y ? p_list[i].ymax : p_list[i].xmax;
++			if (cmax >= lo - SLUG_BAND_EPS && cmin <= hi + SLUG_BAND_EPS) {
++				count++;
++			}
++		}
++		max_count = MAX(max_count, count);
++	}
++	return max_count;
++}
++
++void SlugFont::_bind_methods() {
++	ClassDB::bind_method(D_METHOD("set_font_data", "font_data"), &SlugFont::set_font_data);
++	ClassDB::bind_method(D_METHOD("get_font_data"), &SlugFont::get_font_data);
++
++	ClassDB::bind_method(D_METHOD("is_valid"), &SlugFont::is_valid);
++	ClassDB::bind_method(D_METHOD("get_glyph_count"), &SlugFont::get_glyph_count);
++	ClassDB::bind_method(D_METHOD("get_build_time_usec"), &SlugFont::get_build_time_usec);
++	ClassDB::bind_method(D_METHOD("get_max_curves_per_band"), &SlugFont::get_max_curves_per_band);
++
++	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "font_data", PROPERTY_HINT_RESOURCE_TYPE, "DynamicFontData"), "set_font_data", "get_font_data");
++}
++
++void SlugFont::set_font_data(const Ref<DynamicFontData> &p_font_data) {
++	if (font_data == p_font_data) {
++		return;
++	}
++	font_data = p_font_data;
++	_clear_built();
++	emit_changed();
++}
++
++Ref<DynamicFontData> SlugFont::get_font_data() const {
++	return font_data;
++}
++
++void SlugFont::_clear_built() {
++	built = false;
++	valid = false;
++	build_time_usec = 0;
++	max_curves_per_band = 0;
++	ascent = 0.0f;
++	descent = 0.0f;
++	line_height = 0.0f;
++	glyphs.clear();
++	kerning.clear();
++	curve_tex.unref();
++	band_tex.unref();
++	glyph_tex.unref();
++	material.unref();
++	shader.unref();
++}
++
++void SlugFont::_ensure_built() {
++	if (built) {
++		return;
++	}
++	built = true;
++
++	if (font_data.is_null()) {
++		return;
++	}
++	String path = font_data->get_font_path();
++	ERR_FAIL_COND(path.empty());
++
++	Vector<uint8_t> file_data = FileAccess::get_file_as_array(path);
++	ERR_FAIL_COND_MSG(file_data.empty(), "SlugFont: could not read font file '" + path + "'.");
++
++	uint64_t start_usec = OS::get_singleton()->get_ticks_usec();
++
++	FT_Library library;
++	ERR_FAIL_COND_MSG(FT_Init_FreeType(&library) != 0, "SlugFont: error initializing FreeType.");
++
++	FT_Face face;
++	if (FT_New_Memory_Face(library, file_data.ptr(), file_data.size(), 0, &face) != 0) {
++		FT_Done_FreeType(library);
++		ERR_FAIL_MSG("SlugFont: could not load font face '" + path + "'.");
++	}
++	if (!FT_IS_SCALABLE(face)) {
++		FT_Done_Face(face);
++		FT_Done_FreeType(library);
++		ERR_FAIL_MSG("SlugFont: font is not scalable: '" + path + "'.");
++	}
++
++	float inv_upem = 1.0f / (float)face->units_per_EM;
++	ascent = face->ascender * inv_upem;
++	descent = -face->descender * inv_upem;
++	line_height = face->height * inv_upem;
++
++	// Charset: ASCII, Latin-1 supplement, and the replacement character.
++	Vector<uint32_t> codepoints;
++	for (uint32_t c = 0x0020; c <= 0x007E; c++) {
++		codepoints.push_back(c);
++	}
++	for (uint32_t c = 0x00A0; c <= 0x00FF; c++) {
++		codepoints.push_back(c);
++	}
++	codepoints.push_back(0xFFFD);
++
++	Vector<SlugGlyphBuild> builds;
++	bool any_cubic = false;
++
++	FT_Outline_Funcs funcs;
++	funcs.move_to = _slug_move_to;
++	funcs.line_to = _slug_line_to;
++	funcs.conic_to = _slug_conic_to;
++	funcs.cubic_to = _slug_cubic_to;
++	funcs.shift = 0;
++	funcs.delta = 0;
++
++	for (int i = 0; i < codepoints.size(); i++) {
++		FT_UInt gi = FT_Get_Char_Index(face, codepoints[i]);
++		if (gi == 0) {
++			continue;
++		}
++		if (FT_Load_Glyph(face, gi, FT_LOAD_NO_SCALE | FT_LOAD_NO_HINTING | FT_LOAD_NO_BITMAP) != 0) {
++			continue;
++		}
++
++		SlugGlyphBuild gb;
++		gb.codepoint = codepoints[i];
++		gb.gi = gi;
++		gb.advance = face->glyph->advance.x * inv_upem;
++
++		if (face->glyph->format == FT_GLYPH_FORMAT_OUTLINE && face->glyph->outline.n_contours > 0) {
++			SlugDecomposeCtx ctx;
++			ctx.contours = &gb.contours;
++			ctx.inv_upem = inv_upem;
++			FT_Outline_Decompose(&face->glyph->outline, &funcs, &ctx);
++
++			if (ctx.has_cubic) {
++				any_cubic = true;
++			}
++
++			bool first = true;
++			for (int ci = 0; ci < gb.contours.size(); ci++) {
++				const Vector<SlugQCurve> &curves = gb.contours[ci].curves;
++				for (int qi = 0; qi < curves.size(); qi++) {
++					Vector2 pts[3] = { curves[qi].p1, curves[qi].p2, curves[qi].p3 };
++					for (int pi = 0; pi < 3; pi++) {
++						if (first) {
++							gb.bounds = Rect2(pts[pi], Size2());
++							first = false;
++						} else {
++							gb.bounds.expand_to(pts[pi]);
++						}
++					}
++				}
++			}
++			gb.has_outline = !first;
++		}
++
++		builds.push_back(gb);
++	}
++
++	if (any_cubic) {
++		FT_Done_Face(face);
++		FT_Done_FreeType(library);
++		ERR_FAIL_MSG("SlugFont: cubic (CFF/OTF) outlines are not supported: " + path);
++	}
++
++	if (FT_HAS_KERNING(face)) {
++		for (int i = 0; i < builds.size(); i++) {
++			for (int j = 0; j < builds.size(); j++) {
++				FT_Vector k;
++				if (FT_Get_Kerning(face, builds[i].gi, builds[j].gi, FT_KERNING_UNSCALED, &k) == 0 && k.x != 0) {
++					uint64_t key = ((uint64_t)builds[i].codepoint << 32) | builds[j].codepoint;
++					kerning[key] = k.x * inv_upem;
++				}
++			}
++		}
++	}
++
++	FT_Done_Face(face);
++	FT_Done_FreeType(library);
++
++	// Pack every contour's curves into curve_tex, one contour per row span;
++	// a contour never crosses a row. Keep each curve's texel location so the
++	// band pass below can reference it.
++	Vector<Color> curve_px;
++	int curve_cx = 0, curve_cy = 0;
++	Vector<Vector<SlugCurveRef> > glyph_curves;
++	glyph_curves.resize(builds.size());
++
++	for (int bi = 0; bi < builds.size(); bi++) {
++		if (!builds[bi].has_outline) {
++			continue;
++		}
++		Vector<SlugCurveRef> &refs = glyph_curves.write[bi];
++		const Vector<SlugContour> &contours = builds[bi].contours;
++		for (int ci = 0; ci < contours.size(); ci++) {
++			const Vector<SlugQCurve> &curves = contours[ci].curves;
++			int n = curves.size();
++			if (n == 0) {
++				continue;
++			}
++			if (curve_cx + n + 1 > SLUG_TEX_WIDTH) {
++				curve_cx = 0;
++				curve_cy++;
++			}
++			int need = (curve_cy + 1) * SLUG_TEX_WIDTH;
++			if (curve_px.size() < need) {
++				curve_px.resize(need);
++			}
++			for (int qi = 0; qi < n; qi++) {
++				const SlugQCurve &c = curves[qi];
++				SlugCurveRef ref;
++				ref.loc = Point2i(curve_cx + qi, curve_cy);
++				ref.xmin = MIN(c.p1.x, MIN(c.p2.x, c.p3.x));
++				ref.xmax = MAX(c.p1.x, MAX(c.p2.x, c.p3.x));
++				ref.ymin = MIN(c.p1.y, MIN(c.p2.y, c.p3.y));
++				ref.ymax = MAX(c.p1.y, MAX(c.p2.y, c.p3.y));
++				refs.push_back(ref);
++				curve_px.write[curve_cy * SLUG_TEX_WIDTH + curve_cx + qi] = Color(c.p1.x, c.p1.y, c.p2.x, c.p2.y);
++			}
++			curve_px.write[curve_cy * SLUG_TEX_WIDTH + curve_cx + n] = Color(curves[n - 1].p3.x, curves[n - 1].p3.y, 0.0f, 0.0f);
++			curve_cx += n + 1;
++		}
++	}
++	int curve_rows = MAX(1, curve_px.size() / SLUG_TEX_WIDTH);
++	curve_px.resize(curve_rows * SLUG_TEX_WIDTH);
++
++	// One band block per glyph in band_tex, and the two summary texels of
++	// glyph_tex; see slug_shader.h for the exact layout both encode.
++	Vector<Color> band_px;
++	int band_cx = 0, band_cy = 0;
++	Vector<Color> glyph_px;
++	glyph_px.resize(builds.size() * 2);
++
++	for (int bi = 0; bi < builds.size(); bi++) {
++		const SlugGlyphBuild &gb = builds[bi];
++
++		Glyph glyph;
++		glyph.index = bi;
++		glyph.advance = gb.advance;
++		glyph.bounds = gb.bounds;
++		glyph.has_outline = gb.has_outline;
++		glyphs[gb.codepoint] = glyph;
++
++		if (!gb.has_outline) {
++			glyph_px.write[bi * 2 + 0] = Color();
++			glyph_px.write[bi * 2 + 1] = Color();
++			continue;
++		}
++
++		const Vector<SlugCurveRef> &all_refs = glyph_curves[bi];
++		float xmin = gb.bounds.position.x, xmax = gb.bounds.position.x + gb.bounds.size.x;
++		float ymin = gb.bounds.position.y, ymax = gb.bounds.position.y + gb.bounds.size.y;
++
++		Vector<SlugCurveRef> h_all, v_all;
++		for (int i = 0; i < all_refs.size(); i++) {
++			const SlugCurveRef &c = all_refs[i];
++			if (!(c.ymin == c.ymax)) { // Not a horizontal line: eligible for horizontal bands.
++				h_all.push_back(c);
++			}
++			if (!(c.xmin == c.xmax)) { // Not a vertical line: eligible for vertical bands.
++				v_all.push_back(c);
++			}
++		}
++
++		int best_nh = 1;
++		int best_nh_max = _slug_max_band_count(h_all, ymin, ymax, 1, true);
++		for (int nh = 2; nh <= SLUG_MAX_BANDS; nh++) {
++			int m = _slug_max_band_count(h_all, ymin, ymax, nh, true);
++			if (m < best_nh_max) {
++				best_nh_max = m;
++				best_nh = nh;
++			}
++		}
++		int best_nv = 1;
++		int best_nv_max = _slug_max_band_count(v_all, xmin, xmax, 1, false);
++		for (int nv = 2; nv <= SLUG_MAX_BANDS; nv++) {
++			int m = _slug_max_band_count(v_all, xmin, xmax, nv, false);
++			if (m < best_nv_max) {
++				best_nv_max = m;
++				best_nv = nv;
++			}
++		}
++
++		Vector<Vector<SlugCurveRef> > h_bands;
++		h_bands.resize(best_nh);
++		for (int b = 0; b < best_nh; b++) {
++			float lo = ymin + (ymax - ymin) * b / best_nh;
++			float hi = ymin + (ymax - ymin) * (b + 1) / best_nh;
++			for (int i = 0; i < h_all.size(); i++) {
++				if (h_all[i].ymax >= lo - SLUG_BAND_EPS && h_all[i].ymin <= hi + SLUG_BAND_EPS) {
++					h_bands.write[b].push_back(h_all[i]);
++				}
++			}
++			h_bands.write[b].sort_custom<SlugSortDescX>();
++			max_curves_per_band = MAX(max_curves_per_band, h_bands[b].size());
++		}
++
++		Vector<Vector<SlugCurveRef> > v_bands;
++		v_bands.resize(best_nv);
++		for (int b = 0; b < best_nv; b++) {
++			float lo = xmin + (xmax - xmin) * b / best_nv;
++			float hi = xmin + (xmax - xmin) * (b + 1) / best_nv;
++			for (int i = 0; i < v_all.size(); i++) {
++				if (v_all[i].xmax >= lo - SLUG_BAND_EPS && v_all[i].xmin <= hi + SLUG_BAND_EPS) {
++					v_bands.write[b].push_back(v_all[i]);
++				}
++			}
++			v_bands.write[b].sort_custom<SlugSortDescY>();
++			max_curves_per_band = MAX(max_curves_per_band, v_bands[b].size());
++		}
++
++		int block_size = best_nh + best_nv;
++		for (int b = 0; b < best_nh; b++) {
++			block_size += h_bands[b].size();
++		}
++		for (int b = 0; b < best_nv; b++) {
++			block_size += v_bands[b].size();
++		}
++		if (block_size > SLUG_TEX_WIDTH) {
++			ERR_FAIL_MSG("SlugFont: glyph band block (" + itos(block_size) + " texels) exceeds the texture width in '" + path + "'.");
++		}
++
++		if (band_cx + block_size > SLUG_TEX_WIDTH) {
++			band_cx = 0;
++			band_cy++;
++		}
++		int need = (band_cy + 1) * SLUG_TEX_WIDTH;
++		if (band_px.size() < need) {
++			band_px.resize(need);
++		}
++
++		int block_x = band_cx, block_y = band_cy;
++		int cursor = best_nh + best_nv;
++		Vector<int> h_offsets, v_offsets;
++		h_offsets.resize(best_nh);
++		for (int b = 0; b < best_nh; b++) {
++			h_offsets.write[b] = cursor;
++			cursor += h_bands[b].size();
++		}
++		v_offsets.resize(best_nv);
++		for (int b = 0; b < best_nv; b++) {
++			v_offsets.write[b] = cursor;
++			cursor += v_bands[b].size();
++		}
++
++		int row_base = block_y * SLUG_TEX_WIDTH + block_x;
++		for (int b = 0; b < best_nh; b++) {
++			band_px.write[row_base + b] = Color((float)h_bands[b].size(), (float)h_offsets[b], 0.0f, 0.0f);
++		}
++		for (int b = 0; b < best_nv; b++) {
++			band_px.write[row_base + best_nh + b] = Color((float)v_bands[b].size(), (float)v_offsets[b], 0.0f, 0.0f);
++		}
++		for (int b = 0; b < best_nh; b++) {
++			for (int k = 0; k < h_bands[b].size(); k++) {
++				const Point2i &loc = h_bands[b][k].loc;
++				band_px.write[row_base + h_offsets[b] + k] = Color((float)loc.x, (float)loc.y, 0.0f, 0.0f);
++			}
++		}
++		for (int b = 0; b < best_nv; b++) {
++			for (int k = 0; k < v_bands[b].size(); k++) {
++				const Point2i &loc = v_bands[b][k].loc;
++				band_px.write[row_base + v_offsets[b] + k] = Color((float)loc.x, (float)loc.y, 0.0f, 0.0f);
++			}
++		}
++		band_cx = block_x + block_size;
++
++		float sx = (xmax > xmin) ? (float)best_nv / (xmax - xmin) : 0.0f;
++		float sy = (ymax > ymin) ? (float)best_nh / (ymax - ymin) : 0.0f;
++		glyph_px.write[bi * 2 + 0] = Color(sx, sy, -xmin * sx, -ymin * sy);
++		glyph_px.write[bi * 2 + 1] = Color((float)block_x, (float)block_y, (float)(best_nv - 1), (float)(best_nh - 1));
++	}
++	int band_rows = MAX(1, band_px.size() / SLUG_TEX_WIDTH);
++	band_px.resize(band_rows * SLUG_TEX_WIDTH);
++
++	Ref<Image> curve_img;
++	curve_img.instance();
++	curve_img->create(SLUG_TEX_WIDTH, curve_rows, false, Image::FORMAT_RGBAF);
++	curve_img->lock();
++	for (int y = 0; y < curve_rows; y++) {
++		for (int x = 0; x < SLUG_TEX_WIDTH; x++) {
++			curve_img->set_pixel(x, y, curve_px[y * SLUG_TEX_WIDTH + x]);
++		}
++	}
++	curve_img->unlock();
++
++	Ref<Image> band_img;
++	band_img.instance();
++	band_img->create(SLUG_TEX_WIDTH, band_rows, false, Image::FORMAT_RGF);
++	band_img->lock();
++	for (int y = 0; y < band_rows; y++) {
++		for (int x = 0; x < SLUG_TEX_WIDTH; x++) {
++			band_img->set_pixel(x, y, band_px[y * SLUG_TEX_WIDTH + x]);
++		}
++	}
++	band_img->unlock();
++
++	Ref<Image> glyph_img;
++	glyph_img.instance();
++	int glyph_rows = MAX(1, builds.size());
++	glyph_img->create(2, glyph_rows, false, Image::FORMAT_RGBAF);
++	glyph_img->lock();
++	for (int y = 0; y < builds.size(); y++) {
++		glyph_img->set_pixel(0, y, glyph_px[y * 2 + 0]);
++		glyph_img->set_pixel(1, y, glyph_px[y * 2 + 1]);
++	}
++	glyph_img->unlock();
++
++	curve_tex.instance();
++	curve_tex->create_from_image(curve_img, 0);
++	band_tex.instance();
++	band_tex->create_from_image(band_img, 0);
++	glyph_tex.instance();
++	glyph_tex->create_from_image(glyph_img, 0);
++
++	shader.instance();
++	shader->set_code(SLUG_SHADER_CODE);
++
++	material.instance();
++	material->set_shader(shader);
++	material->set_shader_param("curve_tex", curve_tex);
++	material->set_shader_param("band_tex", band_tex);
++	material->set_shader_param("glyph_tex", glyph_tex);
++
++	valid = true;
++	build_time_usec = (int)(OS::get_singleton()->get_ticks_usec() - start_usec);
++
++	print_verbose("SlugFont: " + itos(glyphs.size()) + " glyphs, " + itos(curve_rows) + " curve rows, " +
++			itos(band_rows) + " band rows, max " + itos(max_curves_per_band) + " curves/band, " +
++			itos(build_time_usec) + " usec (" + path + ")");
++}
++
++bool SlugFont::is_valid() {
++	_ensure_built();
++	return valid;
++}
++
++int SlugFont::get_glyph_count() {
++	_ensure_built();
++	return glyphs.size();
++}
++
++int SlugFont::get_build_time_usec() {
++	_ensure_built();
++	return build_time_usec;
++}
++
++int SlugFont::get_max_curves_per_band() {
++	_ensure_built();
++	return max_curves_per_band;
++}
++
++const SlugFont::Glyph *SlugFont::get_glyph(CharType p_char) {
++	_ensure_built();
++	if (!valid) {
++		return nullptr;
++	}
++	return glyphs.getptr((uint32_t)p_char);
++}
++
++float SlugFont::get_kerning(CharType p_a, CharType p_b) {
++	_ensure_built();
++	if (!valid) {
++		return 0.0f;
++	}
++	uint64_t key = ((uint64_t)(uint32_t)p_a << 32) | (uint32_t)p_b;
++	const float *k = kerning.getptr(key);
++	return k ? *k : 0.0f;
++}
++
++float SlugFont::get_ascent() {
++	_ensure_built();
++	return ascent;
++}
++
++float SlugFont::get_descent() {
++	_ensure_built();
++	return descent;
++}
++
++float SlugFont::get_line_height() {
++	_ensure_built();
++	return line_height;
++}
++
++RID SlugFont::get_material_rid() {
++	_ensure_built();
++	return material.is_valid() ? material->get_rid() : RID();
++}
++
++SlugFont::SlugFont() {
++}
++
++SlugFont::~SlugFont() {
++}
+diff --git a/modules/slug/slug_font.h b/modules/slug/slug_font.h
+new file mode 100644
+index 0000000000..86255ce63e
+--- /dev/null
++++ b/modules/slug/slug_font.h
+@@ -0,0 +1,78 @@
++/*************************************************************************/
++/*  slug_font.h                                                         */
++/*************************************************************************/
++/* Godot 3.6 module: modules/slug                                       */
++/* Builds the curve/band/glyph textures and shared ShaderMaterial that   */
++/* slug_shader.h expects, out of a DynamicFontData's outlines.          */
++/*************************************************************************/
++
++#ifndef SLUG_FONT_H
++#define SLUG_FONT_H
++
++#include "core/hash_map.h"
++#include "scene/resources/dynamic_font.h"
++#include "scene/resources/material.h"
++#include "scene/resources/shader.h"
++#include "scene/resources/texture.h"
++
++class SlugFont : public Resource {
++	GDCLASS(SlugFont, Resource);
++
++public:
++	// Everything is in em (font units / upem).
++	struct Glyph {
++		int index = 0;
++		float advance = 0.0f;
++		Rect2 bounds;
++		bool has_outline = false;
++	};
++
++private:
++	Ref<DynamicFontData> font_data;
++
++	bool built = false;
++	bool valid = false;
++	int build_time_usec = 0;
++	int max_curves_per_band = 0;
++
++	float ascent = 0.0f;
++	float descent = 0.0f;
++	float line_height = 0.0f;
++
++	HashMap<uint32_t, Glyph> glyphs; // Codepoint -> glyph.
++	HashMap<uint64_t, float> kerning; // (a << 32 | b) -> kerning in em.
++
++	Ref<ImageTexture> curve_tex;
++	Ref<ImageTexture> band_tex;
++	Ref<ImageTexture> glyph_tex;
++	Ref<Shader> shader;
++	Ref<ShaderMaterial> material;
++
++	void _ensure_built();
++	void _clear_built();
++
++protected:
++	static void _bind_methods();
++
++public:
++	void set_font_data(const Ref<DynamicFontData> &p_font_data);
++	Ref<DynamicFontData> get_font_data() const;
++
++	bool is_valid();
++	int get_glyph_count();
++	int get_build_time_usec();
++	int get_max_curves_per_band();
++
++	// Internal API used by SlugLabel3D; not bound to script.
++	const Glyph *get_glyph(CharType p_char);
++	float get_kerning(CharType p_a, CharType p_b);
++	float get_ascent();
++	float get_descent();
++	float get_line_height();
++	RID get_material_rid();
++
++	SlugFont();
++	~SlugFont();
++};
++
++#endif // SLUG_FONT_H
+diff --git a/modules/slug/slug_label_3d.cpp b/modules/slug/slug_label_3d.cpp
+new file mode 100644
+index 0000000000..986c9557f0
+--- /dev/null
++++ b/modules/slug/slug_label_3d.cpp
+@@ -0,0 +1,339 @@
++/*************************************************************************/
++/*  slug_label_3d.cpp                                                   */
++/*************************************************************************/
++/* Godot 3.6 module: modules/slug                                       */
++/*************************************************************************/
++
++#include "slug_label_3d.h"
++
++#include "core/core_string_names.h"
++#include "core/os/os.h"
++#include "servers/visual_server.h"
++
++void SlugLabel3D::_bind_methods() {
++	ClassDB::bind_method(D_METHOD("set_text", "text"), &SlugLabel3D::set_text);
++	ClassDB::bind_method(D_METHOD("get_text"), &SlugLabel3D::get_text);
++
++	ClassDB::bind_method(D_METHOD("set_font", "font"), &SlugLabel3D::set_font);
++	ClassDB::bind_method(D_METHOD("get_font"), &SlugLabel3D::get_font);
++
++	ClassDB::bind_method(D_METHOD("set_size", "size"), &SlugLabel3D::set_size);
++	ClassDB::bind_method(D_METHOD("get_size"), &SlugLabel3D::get_size);
++
++	ClassDB::bind_method(D_METHOD("set_modulate", "modulate"), &SlugLabel3D::set_modulate);
++	ClassDB::bind_method(D_METHOD("get_modulate"), &SlugLabel3D::get_modulate);
++
++	ClassDB::bind_method(D_METHOD("set_align", "align"), &SlugLabel3D::set_align);
++	ClassDB::bind_method(D_METHOD("get_align"), &SlugLabel3D::get_align);
++
++	ClassDB::bind_method(D_METHOD("set_line_spacing", "line_spacing"), &SlugLabel3D::set_line_spacing);
++	ClassDB::bind_method(D_METHOD("get_line_spacing"), &SlugLabel3D::get_line_spacing);
++
++	ClassDB::bind_method(D_METHOD("set_billboard", "billboard"), &SlugLabel3D::set_billboard);
++	ClassDB::bind_method(D_METHOD("get_billboard"), &SlugLabel3D::get_billboard);
++
++	ClassDB::bind_method(D_METHOD("_update_mesh"), &SlugLabel3D::_update_mesh);
++	ClassDB::bind_method(D_METHOD("_font_changed"), &SlugLabel3D::_font_changed);
++
++	ADD_PROPERTY(PropertyInfo(Variant::STRING, "text", PROPERTY_HINT_MULTILINE_TEXT, ""), "set_text", "get_text");
++	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "font", PROPERTY_HINT_RESOURCE_TYPE, "SlugFont"), "set_font", "get_font");
++	ADD_PROPERTY(PropertyInfo(Variant::REAL, "size", PROPERTY_HINT_RANGE, "0.001,1000,0.001"), "set_size", "get_size");
++	ADD_PROPERTY(PropertyInfo(Variant::COLOR, "modulate"), "set_modulate", "get_modulate");
++	ADD_PROPERTY(PropertyInfo(Variant::INT, "align", PROPERTY_HINT_ENUM, "Left,Center,Right"), "set_align", "get_align");
++	ADD_PROPERTY(PropertyInfo(Variant::REAL, "line_spacing"), "set_line_spacing", "get_line_spacing");
++	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "billboard"), "set_billboard", "get_billboard");
++
++	BIND_ENUM_CONSTANT(ALIGN_LEFT);
++	BIND_ENUM_CONSTANT(ALIGN_CENTER);
++	BIND_ENUM_CONSTANT(ALIGN_RIGHT);
++}
++
++void SlugLabel3D::_queue_update() {
++	if (pending_update) {
++		return;
++	}
++	pending_update = true;
++	call_deferred("_update_mesh");
++}
++
++void SlugLabel3D::_font_changed() {
++	_queue_update();
++}
++
++void SlugLabel3D::set_text(const String &p_text) {
++	if (text != p_text) {
++		text = p_text;
++		_queue_update();
++	}
++}
++
++String SlugLabel3D::get_text() const {
++	return text;
++}
++
++void SlugLabel3D::set_font(const Ref<SlugFont> &p_font) {
++	if (font == p_font) {
++		return;
++	}
++	if (font.is_valid()) {
++		font->disconnect(CoreStringNames::get_singleton()->changed, this, "_font_changed");
++	}
++	font = p_font;
++	if (font.is_valid()) {
++		font->connect(CoreStringNames::get_singleton()->changed, this, "_font_changed");
++	}
++	_queue_update();
++}
++
++Ref<SlugFont> SlugLabel3D::get_font() const {
++	return font;
++}
++
++void SlugLabel3D::set_size(float p_size) {
++	ERR_FAIL_COND(p_size <= 0.0f);
++	if (size != p_size) {
++		size = p_size;
++		_queue_update();
++	}
++}
++
++float SlugLabel3D::get_size() const {
++	return size;
++}
++
++void SlugLabel3D::set_modulate(const Color &p_color) {
++	if (modulate != p_color) {
++		modulate = p_color;
++		_queue_update();
++	}
++}
++
++Color SlugLabel3D::get_modulate() const {
++	return modulate;
++}
++
++void SlugLabel3D::set_align(Align p_align) {
++	ERR_FAIL_INDEX(p_align, 3);
++	if (align != p_align) {
++		align = p_align;
++		_queue_update();
++	}
++}
++
++SlugLabel3D::Align SlugLabel3D::get_align() const {
++	return align;
++}
++
++void SlugLabel3D::set_line_spacing(float p_spacing) {
++	if (line_spacing != p_spacing) {
++		line_spacing = p_spacing;
++		_queue_update();
++	}
++}
++
++float SlugLabel3D::get_line_spacing() const {
++	return line_spacing;
++}
++
++void SlugLabel3D::set_billboard(bool p_billboard) {
++	if (billboard != p_billboard) {
++		billboard = p_billboard;
++		_queue_update();
++	}
++}
++
++bool SlugLabel3D::get_billboard() const {
++	return billboard;
++}
++
++AABB SlugLabel3D::get_aabb() const {
++	return aabb;
++}
++
++PoolVector<Face3> SlugLabel3D::get_faces(uint32_t p_usage_flags) const {
++	return PoolVector<Face3>();
++}
++
++void SlugLabel3D::_update_mesh() {
++	pending_update = false;
++
++	VS::get_singleton()->mesh_clear(mesh);
++	aabb = AABB();
++
++	if (OS::get_singleton()->get_current_video_driver() == OS::VIDEO_DRIVER_GLES2) {
++		WARN_PRINT_ONCE("SlugLabel3D requires GLES3; nothing will be drawn.");
++		VS::get_singleton()->mesh_set_custom_aabb(mesh, aabb);
++		update_gizmo();
++		return;
++	}
++	if (font.is_null() || !font->is_valid() || text.empty()) {
++		VS::get_singleton()->mesh_set_custom_aabb(mesh, aabb);
++		update_gizmo();
++		return;
++	}
++
++	Vector<String> lines = text.split("\n");
++
++	// First pass: resolve glyphs and lay out each line's pen advance, so the
++	// alignment offset for the second pass is already known.
++	Vector<Vector<const SlugFont::Glyph *> > line_glyphs;
++	Vector<float> line_widths;
++	line_glyphs.resize(lines.size());
++	line_widths.resize(lines.size());
++
++	for (int li = 0; li < lines.size(); li++) {
++		const String &line = lines[li];
++		Vector<const SlugFont::Glyph *> &glyphs = line_glyphs.write[li];
++		float x = 0.0f;
++		CharType prev = 0;
++		for (int i = 0; i < line.length(); i++) {
++			CharType c = line[i];
++			const SlugFont::Glyph *g = font->get_glyph(c);
++			if (!g) {
++				g = font->get_glyph(0xFFFD);
++				if (!g) {
++					g = font->get_glyph('?');
++				}
++				WARN_PRINT_ONCE("SlugLabel3D: text has a codepoint missing from the font; using a fallback glyph.");
++			}
++			if (i > 0 && g) {
++				x += font->get_kerning(prev, c);
++			}
++			if (g) {
++				x += g->advance;
++			}
++			glyphs.push_back(g);
++			prev = c;
++		}
++		line_widths.write[li] = x;
++	}
++
++	float ascent = font->get_ascent();
++	float line_height = font->get_line_height();
++	float block_height = lines.size() * line_height + MAX(0, lines.size() - 1) * line_spacing;
++	float y = block_height / 2.0f - ascent;
++
++	PoolVector3Array vertices;
++	PoolVector3Array normals;
++	PoolVector2Array uvs;
++	PoolVector2Array uv2s;
++	PoolColorArray colors;
++	PoolIntArray indices;
++
++	Color linear_modulate = modulate.to_linear();
++	float billboard_flag = billboard ? 1.0f : 0.0f;
++	bool has_point = false;
++
++	for (int li = 0; li < lines.size(); li++) {
++		float x = 0.0f;
++		switch (align) {
++			case ALIGN_LEFT:
++				break;
++			case ALIGN_CENTER:
++				x = -line_widths[li] / 2.0f;
++				break;
++			case ALIGN_RIGHT:
++				x = -line_widths[li];
++				break;
++		}
++
++		const String &line = lines[li];
++		const Vector<const SlugFont::Glyph *> &glyphs = line_glyphs[li];
++		CharType prev = 0;
++		for (int i = 0; i < line.length(); i++) {
++			CharType c = line[i];
++			const SlugFont::Glyph *g = glyphs[i];
++			if (g && i > 0) {
++				x += font->get_kerning(prev, c);
++			}
++			prev = c;
++			if (!g) {
++				continue;
++			}
++			if (g->has_outline) {
++				Vector2 corners[4] = {
++					Vector2(g->bounds.position.x, g->bounds.position.y),
++					Vector2(g->bounds.position.x + g->bounds.size.x, g->bounds.position.y),
++					Vector2(g->bounds.position.x + g->bounds.size.x, g->bounds.position.y + g->bounds.size.y),
++					Vector2(g->bounds.position.x, g->bounds.position.y + g->bounds.size.y),
++				};
++				Vector2 normal_dirs[4] = {
++					Vector2(-1, -1),
++					Vector2(1, -1),
++					Vector2(1, 1),
++					Vector2(-1, 1),
++				};
++
++				int base = vertices.size();
++				for (int ci = 0; ci < 4; ci++) {
++					Vector3 v((x + corners[ci].x) * size, (y + corners[ci].y) * size, 0.0f);
++					vertices.push_back(v);
++					normals.push_back(Vector3(normal_dirs[ci].x, normal_dirs[ci].y, billboard_flag));
++					uvs.push_back(corners[ci]);
++					uv2s.push_back(Vector2((float)g->index, 1.0f / size));
++					colors.push_back(linear_modulate);
++
++					if (!has_point) {
++						aabb.position = v;
++						has_point = true;
++					} else {
++						aabb.expand_to(v);
++					}
++				}
++				indices.push_back(base + 0);
++				indices.push_back(base + 1);
++				indices.push_back(base + 2);
++				indices.push_back(base + 0);
++				indices.push_back(base + 2);
++				indices.push_back(base + 3);
++			}
++			x += g->advance;
++		}
++
++		y -= line_height + line_spacing;
++	}
++
++	if (vertices.size() == 0) {
++		VS::get_singleton()->mesh_set_custom_aabb(mesh, aabb);
++		update_gizmo();
++		return;
++	}
++
++	aabb = aabb.grow(size * 0.05f);
++
++	if (billboard) {
++		float r = 0.0f;
++		PoolVector3Array::Read vr = vertices.read();
++		for (int i = 0; i < vertices.size(); i++) {
++			r = MAX(r, vr[i].length());
++		}
++		aabb = AABB(Vector3(-r, -r, -r), Vector3(2.0f * r, 2.0f * r, 2.0f * r));
++	}
++
++	Array arrays;
++	arrays.resize(VS::ARRAY_MAX);
++	arrays[VS::ARRAY_VERTEX] = vertices;
++	arrays[VS::ARRAY_NORMAL] = normals;
++	arrays[VS::ARRAY_COLOR] = colors;
++	arrays[VS::ARRAY_TEX_UV] = uvs;
++	arrays[VS::ARRAY_TEX_UV2] = uv2s;
++	arrays[VS::ARRAY_INDEX] = indices;
++
++	VS::get_singleton()->mesh_add_surface_from_arrays(mesh, VS::PRIMITIVE_TRIANGLES, arrays, Array(), 0);
++	VS::get_singleton()->mesh_surface_set_material(mesh, 0, font->get_material_rid());
++	VS::get_singleton()->mesh_set_custom_aabb(mesh, aabb);
++
++	update_gizmo();
++}
++
++SlugLabel3D::SlugLabel3D() {
++	mesh = VisualServer::get_singleton()->mesh_create();
++	set_base(mesh);
++}
++
++SlugLabel3D::~SlugLabel3D() {
++	if (font.is_valid()) {
++		font->disconnect(CoreStringNames::get_singleton()->changed, this, "_font_changed");
++	}
++	VS::get_singleton()->free(mesh);
++}
+diff --git a/modules/slug/slug_label_3d.h b/modules/slug/slug_label_3d.h
+new file mode 100644
+index 0000000000..4f267f814c
+--- /dev/null
++++ b/modules/slug/slug_label_3d.h
+@@ -0,0 +1,74 @@
++/*************************************************************************/
++/*  slug_label_3d.h                                                     */
++/*************************************************************************/
++/* Godot 3.6 module: modules/slug                                       */
++/*************************************************************************/
++
++#ifndef SLUG_LABEL_3D_H
++#define SLUG_LABEL_3D_H
++
++#include "scene/3d/visual_instance.h"
++#include "slug_font.h"
++
++class SlugLabel3D : public GeometryInstance {
++	GDCLASS(SlugLabel3D, GeometryInstance);
++
++public:
++	enum Align {
++		ALIGN_LEFT,
++		ALIGN_CENTER,
++		ALIGN_RIGHT,
++	};
++
++private:
++	String text;
++	Ref<SlugFont> font;
++	float size = 1.0f;
++	Color modulate = Color(1, 1, 1, 1);
++	Align align = ALIGN_CENTER;
++	float line_spacing = 0.0f;
++	bool billboard = false;
++
++	RID mesh;
++	AABB aabb;
++	bool pending_update = false;
++
++	void _queue_update();
++	void _update_mesh();
++	void _font_changed();
++
++protected:
++	static void _bind_methods();
++
++public:
++	void set_text(const String &p_text);
++	String get_text() const;
++
++	void set_font(const Ref<SlugFont> &p_font);
++	Ref<SlugFont> get_font() const;
++
++	void set_size(float p_size);
++	float get_size() const;
++
++	void set_modulate(const Color &p_color);
++	Color get_modulate() const;
++
++	void set_align(Align p_align);
++	Align get_align() const;
++
++	void set_line_spacing(float p_spacing);
++	float get_line_spacing() const;
++
++	void set_billboard(bool p_billboard);
++	bool get_billboard() const;
++
++	virtual AABB get_aabb() const;
++	virtual PoolVector<Face3> get_faces(uint32_t p_usage_flags) const;
++
++	SlugLabel3D();
++	~SlugLabel3D();
++};
++
++VARIANT_ENUM_CAST(SlugLabel3D::Align);
++
++#endif // SLUG_LABEL_3D_H
+diff --git a/modules/slug/slug_shader.h b/modules/slug/slug_shader.h
+new file mode 100644
+index 0000000000..2b8431b81e
+--- /dev/null
++++ b/modules/slug/slug_shader.h
+@@ -0,0 +1,178 @@
++/*************************************************************************/
++/*  slug_shader.h                                                        */
++/*************************************************************************/
++/* Port to Godot 3 shading language of the Slug reference shaders       */
++/* (github.com/EricLengyel/Slug, SlugPixelShader.hlsl and               */
++/* SlugVertexShader.hlsl). Slug shader code Copyright 2017 by Eric      */
++/* Lengyel, MIT OR Apache-2.0; see SLUG_LICENSE.txt.                    */
++/*************************************************************************/
++
++#ifndef SLUG_SHADER_H
++#define SLUG_SHADER_H
++
++// Vertex attributes (surface built with compress_flags = 0):
++//   VERTEX.xy  corner in the label's local z = 0 plane
++//   NORMAL.xy  corner dilation direction, (+-1, +-1); NORMAL.z = 1 billboard
++//   UV         em-space coordinates of the corner, in the glyph's frame
++//   UV2        (glyph index, em per local unit)
++//   COLOR      linear color
++// glyph_tex, one row per glyph: texel 0 = band scale.xy, band offset.zw;
++// texel 1 = glyph data location in band_tex .xy, band max .zw.
++// curve_tex, band_tex: see slug_font.cpp. Both 4096 texels wide; a glyph's
++// band headers and curve lists never cross a row.
++static const char *SLUG_SHADER_CODE = R"(
++shader_type spatial;
++render_mode unshaded, blend_mix, cull_disabled, depth_draw_opaque;
++
++uniform sampler2D curve_tex;
++uniform sampler2D band_tex;
++uniform sampler2D glyph_tex;
++
++varying flat vec4 v_band;
++varying flat vec4 v_glyph;
++
++void vertex() {
++	if (NORMAL.z > 0.5) {
++		MODELVIEW_MATRIX = INV_CAMERA_MATRIX * mat4(CAMERA_MATRIX[0], CAMERA_MATRIX[1], CAMERA_MATRIX[2], WORLD_MATRIX[3]);
++		MODELVIEW_MATRIX = MODELVIEW_MATRIX * mat4(vec4(length(WORLD_MATRIX[0].xyz), 0.0, 0.0, 0.0), vec4(0.0, length(WORLD_MATRIX[1].xyz), 0.0, 0.0), vec4(0.0, 0.0, length(WORLD_MATRIX[2].xyz), 0.0), vec4(0.0, 0.0, 0.0, 1.0));
++	}
++
++	int gi = int(UV2.x + 0.5);
++	v_band = texelFetch(glyph_tex, ivec2(0, gi), 0);
++	v_glyph = texelFetch(glyph_tex, ivec2(1, gi), 0);
++
++	// SlugDilate: push the corner out along its normal so the quad covers
++	// half a pixel more on screen, and move the em coordinate with it.
++	mat4 mvp = PROJECTION_MATRIX * MODELVIEW_MATRIX;
++	vec4 m0 = vec4(mvp[0][0], mvp[1][0], mvp[2][0], mvp[3][0]);
++	vec4 m1 = vec4(mvp[0][1], mvp[1][1], mvp[2][1], mvp[3][1]);
++	vec4 m3 = vec4(mvp[0][3], mvp[1][3], mvp[2][3], mvp[3][3]);
++	vec2 p = VERTEX.xy;
++	vec2 n = normalize(NORMAL.xy);
++	float s = dot(m3.xy, p) + m3.w;
++	float t = dot(m3.xy, n);
++	float u = (s * dot(m0.xy, n) - t * (dot(m0.xy, p) + m0.w)) * VIEWPORT_SIZE.x;
++	float v = (s * dot(m1.xy, n) - t * (dot(m1.xy, p) + m1.w)) * VIEWPORT_SIZE.y;
++	float s2 = s * s;
++	float st = s * t;
++	float uv = u * u + v * v;
++	float den = uv - st * st;
++	// Edge-on or behind the camera the dilation diverges; skip it there.
++	vec2 d = vec2(0.0);
++	if (s > 0.0 && den > 1e-12) {
++		d = NORMAL.xy * (s2 * (st + sqrt(uv)) / den);
++	}
++	VERTEX.xy += d;
++	UV += d * UV2.y;
++}
++
++uint calc_root_code(float y1, float y2, float y3) {
++	// Root eligibility from the signs of the three y coordinates; bits 0 and 8.
++	uint i1 = floatBitsToUint(y1) >> 31u;
++	uint i2 = floatBitsToUint(y2) >> 30u;
++	uint i3 = floatBitsToUint(y3) >> 29u;
++	uint shift = i1 | (i2 & 2u) | (i3 & 4u);
++	// 0x2E74, 0x0101: the 3.6 tokenizer rejects a u suffix on hex literals.
++	return (11892u >> shift) & 257u;
++}
++
++vec2 solve_horiz_poly(vec4 p12, vec2 p3) {
++	vec2 a = p12.xy - p12.zw * 2.0 + p3;
++	vec2 b = p12.xy - p12.zw;
++	float ra = 1.0 / a.y;
++	float rb = 0.5 / b.y;
++	float d = sqrt(max(b.y * b.y - a.y * p12.y, 0.0));
++	float t1 = (b.y - d) * ra;
++	float t2 = (b.y + d) * ra;
++	if (abs(a.y) < 1.0 / 65536.0) {
++		t1 = p12.y * rb;
++		t2 = t1;
++	}
++	return vec2((a.x * t1 - b.x * 2.0) * t1 + p12.x, (a.x * t2 - b.x * 2.0) * t2 + p12.x);
++}
++
++vec2 solve_vert_poly(vec4 p12, vec2 p3) {
++	vec2 a = p12.xy - p12.zw * 2.0 + p3;
++	vec2 b = p12.xy - p12.zw;
++	float ra = 1.0 / a.x;
++	float rb = 0.5 / b.x;
++	float d = sqrt(max(b.x * b.x - a.x * p12.x, 0.0));
++	float t1 = (b.x - d) * ra;
++	float t2 = (b.x + d) * ra;
++	if (abs(a.x) < 1.0 / 65536.0) {
++		t1 = p12.x * rb;
++		t2 = t1;
++	}
++	return vec2((a.y * t1 - b.y * 2.0) * t1 + p12.y, (a.y * t2 - b.y * 2.0) * t2 + p12.y);
++}
++
++void fragment() {
++	vec2 rc = UV;
++	vec2 pixels_per_em = 1.0 / fwidth(rc);
++	ivec2 band_max = ivec2(v_glyph.zw);
++	ivec2 band_index = clamp(ivec2(rc * v_band.xy + v_band.zw), ivec2(0), band_max);
++	ivec2 gloc = ivec2(v_glyph.xy);
++
++	float xcov = 0.0;
++	float xwgt = 0.0;
++	vec2 hband = texelFetch(band_tex, ivec2(gloc.x + band_index.y, gloc.y), 0).xy;
++	int hstart = gloc.x + int(hband.y);
++	int hcount = int(hband.x);
++	for (int i = 0; i < hcount; i++) {
++		ivec2 cl = ivec2(texelFetch(band_tex, ivec2(hstart + i, gloc.y), 0).xy);
++		vec4 p12 = texelFetch(curve_tex, cl, 0) - vec4(rc, rc);
++		vec2 p3 = texelFetch(curve_tex, ivec2(cl.x + 1, cl.y), 0).xy - rc;
++		// Curves are sorted by descending max x: nothing further can reach this pixel.
++		if (max(max(p12.x, p12.z), p3.x) * pixels_per_em.x < -0.5) {
++			break;
++		}
++		uint code = calc_root_code(p12.y, p12.w, p3.y);
++		if (code != 0u) {
++			vec2 r = solve_horiz_poly(p12, p3) * pixels_per_em.x;
++			if ((code & 1u) != 0u) {
++				xcov += clamp(r.x + 0.5, 0.0, 1.0);
++				xwgt = max(xwgt, clamp(1.0 - abs(r.x) * 2.0, 0.0, 1.0));
++			}
++			if (code > 1u) {
++				xcov -= clamp(r.y + 0.5, 0.0, 1.0);
++				xwgt = max(xwgt, clamp(1.0 - abs(r.y) * 2.0, 0.0, 1.0));
++			}
++		}
++	}
++
++	float ycov = 0.0;
++	float ywgt = 0.0;
++	vec2 vband = texelFetch(band_tex, ivec2(gloc.x + band_max.y + 1 + band_index.x, gloc.y), 0).xy;
++	int vstart = gloc.x + int(vband.y);
++	int vcount = int(vband.x);
++	for (int i = 0; i < vcount; i++) {
++		ivec2 cl = ivec2(texelFetch(band_tex, ivec2(vstart + i, gloc.y), 0).xy);
++		vec4 p12 = texelFetch(curve_tex, cl, 0) - vec4(rc, rc);
++		vec2 p3 = texelFetch(curve_tex, ivec2(cl.x + 1, cl.y), 0).xy - rc;
++		if (max(max(p12.y, p12.w), p3.y) * pixels_per_em.y < -0.5) {
++			break;
++		}
++		uint code = calc_root_code(p12.x, p12.z, p3.x);
++		if (code != 0u) {
++			vec2 r = solve_vert_poly(p12, p3) * pixels_per_em.y;
++			if ((code & 1u) != 0u) {
++				ycov -= clamp(r.x + 0.5, 0.0, 1.0);
++				ywgt = max(ywgt, clamp(1.0 - abs(r.x) * 2.0, 0.0, 1.0));
++			}
++			if (code > 1u) {
++				ycov += clamp(r.y + 0.5, 0.0, 1.0);
++				ywgt = max(ywgt, clamp(1.0 - abs(r.y) * 2.0, 0.0, 1.0));
++			}
++		}
++	}
++
++	// Nonzero fill rule; abs() accepts either winding direction.
++	float coverage = max(abs(xcov * xwgt + ycov * ywgt) / max(xwgt + ywgt, 1.0 / 65536.0), min(abs(xcov), abs(ycov)));
++	coverage = clamp(coverage, 0.0, 1.0);
++
++	ALBEDO = COLOR.rgb;
++	ALPHA = COLOR.a * coverage;
++}
++)";
++
++#endif // SLUG_SHADER_H
