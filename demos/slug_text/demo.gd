@@ -102,11 +102,15 @@ func _show_missing_fonts_label():
 
 
 func _build_labels(sans_font: SlugFont, serif_font: SlugFont):
-	# a) título, serif, blanco cálido.
-	_make_label("Slug en Godot 3.6", serif_font, 1.2, Vector3(0, 4.4, -3), Color(1, 0.96, 0.9))
+	# a) título, serif, blanco cálido, con contorno oscuro grueso.
+	var titulo = _make_label("Slug en Godot 3.6", serif_font, 1.2, Vector3(0, 4.4, -3), Color(1, 0.96, 0.9))
+	titulo.outline_size = 0.06
+	titulo.outline_modulate = Color(0.05, 0.02, 0.1, 1)
 
-	# b) test de winding: huecos de letras.
-	_make_label("O B 8 @ a e & g Q %", sans_font, 0.8, Vector3(0, 2.8, -3), Color(1, 1, 1))
+	# b) test de winding: huecos de letras, con contorno fino de color.
+	var winding = _make_label("O B 8 @ a e & g Q %", sans_font, 0.8, Vector3(0, 2.8, -3), Color(1, 1, 1))
+	winding.outline_size = 0.03
+	winding.outline_modulate = Color(0.1, 0.5, 1, 1)
 
 	# c) Latin-1.
 	_make_label("Ñandú, pingüino, çà, ¿qué? ¡Sí! 1234567890", sans_font, 0.5, Vector3(0, 1.6, -3), Color(1, 1, 1))
