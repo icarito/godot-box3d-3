@@ -1,0 +1,56 @@
+diff --git a/frt_godot.cc b/frt_godot.cc
+index e4abce1..72c2d9f 100644
+--- a/frt_godot.cc
++++ b/frt_godot.cc
+@@ -85,10 +85,11 @@ public: // SampleProducer
+ 
+ class Godot3_OS : public OS_Unix, public EventHandler {
+ private:
+-	enum {
+-		VIDEO_DRIVER_GLES2,
+-		VIDEO_DRIVER_GLES3
+-	};
++	// No definir un enum propio de drivers: el indice que main.cpp pasa a
++	// initialize() y el que espera get_current_video_driver() son los de
++	// OS::VideoDriver (GLES3 = 0, GLES2 = 1). Un enum local invertido hacia
++	// que get_current_video_driver() devolviera GLES2 con un contexto ES 3
++	// activo (FRT/arm64). Se usan siempre las constantes de OS.
+ 	MainLoop *main_loop_;
+ 	VideoMode video_mode_;
+ 	bool quit_;
+@@ -96,7 +97,7 @@ private:
+ 	int video_driver_;
+ 	VisualServer *visual_server_;
+ 	void init_video() {
+-		if (video_driver_ == VIDEO_DRIVER_GLES2) {
++		if (video_driver_ == OS::VIDEO_DRIVER_GLES2) {
+ #ifdef GLAD_ENABLED
+ 			Error err = RasterizerGLES2::is_viable();
+ 			if (err != OK)
+@@ -172,7 +173,7 @@ public: // OS
+ 		return video_driver_;
+ 	}
+ 	const char *get_video_driver_name(int driver) const override {
+-		if (driver == VIDEO_DRIVER_GLES2)
++		if (driver == OS::VIDEO_DRIVER_GLES2)
+ 			return "GLES2";
+ 		else
+ 			return "GLES3";
+@@ -180,7 +181,7 @@ public: // OS
+ 	bool _check_internal_feature_support(const String &feature) override {
+ 		if (feature == "X11" || feature == "FRT")
+ 			return true;
+-		if (video_driver_ == VIDEO_DRIVER_GLES3 && feature == "etc2")
++		if (video_driver_ == OS::VIDEO_DRIVER_GLES3 && feature == "etc2")
+ 			return true;
+ 		return feature == "mobile" || feature == "etc";
+ 	}
+@@ -219,7 +220,7 @@ public: // OS
+ 	Error initialize(const VideoMode &desired, int video_driver, int audio_driver) override {
+ 		video_mode_ = desired;
+ 		video_driver_ = video_driver;
+-		const GraphicsAPI api = video_driver == VIDEO_DRIVER_GLES3 ? API_OpenGL_ES3 : API_OpenGL_ES2;
++		const GraphicsAPI api = video_driver == OS::VIDEO_DRIVER_GLES3 ? API_OpenGL_ES3 : API_OpenGL_ES2;
+ 		os_.init_gl(api, video_mode_.width, video_mode_.height, video_mode_.resizable, video_mode_.borderless_window, video_mode_.always_on_top, OS::get_singleton()->is_no_window_mode_enabled());
+ 		_set_use_vsync(video_mode_.use_vsync);
+ 		init_video();

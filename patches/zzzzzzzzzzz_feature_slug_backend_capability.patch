@@ -1,0 +1,107 @@
+diff --git a/modules/slug/slug_backend.h b/modules/slug/slug_backend.h
+new file mode 100644
+index 0000000000..92de3938d9
+--- /dev/null
++++ b/modules/slug/slug_backend.h
+@@ -0,0 +1,28 @@
++/*************************************************************************/
++/*  slug_backend.h                                                      */
++/*************************************************************************/
++/* Godot 3.6 module: modules/slug                                       */
++/* Capacidad real del backend activo, no el enum que reporta OS.        */
++/*************************************************************************/
++
++#ifndef SLUG_BACKEND_H
++#define SLUG_BACKEND_H
++
++#include "servers/visual_server.h"
++
++// Slug necesita un backend de clase GLES3: texelFetch, floatBitsToUint y
++// texturas float (RGBAF/RGF) con filtro nearest. En este fork ese backend es
++// exactamente el rasterizador GLES3: `is_low_end()` devuelve false solo para
++// RasterizerGLES3, y true para GLES2 y el dummy (ver rasterizer_gles3.h,
++// rasterizer_gles2.h y rasterizer_dummy.h).
++//
++// Se consulta al VisualServer en vez de a OS::get_current_video_driver()
++// porque ese enum puede venir mal reportado por la plataforma (FRT/arm64
++// devolvia VIDEO_DRIVER_GLES2 con un contexto ES 3 activo) y apagaba Slug de
++// mas. La capacidad del backend no depende del reporte de OS.
++static inline bool slug_backend_supports_float_textures() {
++	VisualServer *vs = VisualServer::get_singleton();
++	return vs && !vs->is_low_end();
++}
++
++#endif // SLUG_BACKEND_H
+diff --git a/modules/slug/slug_font.cpp b/modules/slug/slug_font.cpp
+index c5a6679f6c..6f5dc62efa 100644
+--- a/modules/slug/slug_font.cpp
++++ b/modules/slug/slug_font.cpp
+@@ -9,6 +9,7 @@
+ #include "core/os/file_access.h"
+ #include "core/os/os.h"
+ #include "core/print_string.h"
++#include "slug_backend.h"
+ #include "slug_shader.h"
+ 
+ #include <ft2build.h>
+@@ -517,10 +518,12 @@ void SlugFont::_ensure_built() {
+ 	}
+ 	glyph_img->unlock();
+ 
+-	// The shader and its float textures need GLES3 (texelFetch,
+-	// floatBitsToUint, RG32F); under GLES2 the label falls back and creating
+-	// them would only log errors. Metrics stay valid for layout.
+-	if (OS::get_singleton()->get_current_video_driver() != OS::VIDEO_DRIVER_GLES2) {
++	// El shader y sus texturas float exigen un backend GLES3 (texelFetch,
++	// floatBitsToUint, RG32F); con GLES2 o el dummy el label cae al fallback
++	// y crear los recursos solo dejaria errores en el log. Las metricas
++	// siguen siendo validas para el layout. Se decide por capacidad real del
++	// backend, no por OS::get_current_video_driver().
++	if (slug_backend_supports_float_textures()) {
+ 		curve_tex.instance();
+ 		curve_tex->create_from_image(curve_img, 0);
+ 		band_tex.instance();
+diff --git a/modules/slug/slug_label_3d.cpp b/modules/slug/slug_label_3d.cpp
+index 4233d0e7a9..23878d6940 100644
+--- a/modules/slug/slug_label_3d.cpp
++++ b/modules/slug/slug_label_3d.cpp
+@@ -10,6 +10,7 @@
+ #include "core/os/os.h"
+ #include "scene/resources/dynamic_font.h"
+ #include "servers/visual_server.h"
++#include "slug_backend.h"
+ 
+ void SlugLabel3D::_bind_methods() {
+ 	ClassDB::bind_method(D_METHOD("set_text", "text"), &SlugLabel3D::set_text);
+@@ -242,25 +243,25 @@ void SlugLabel3D::_free_fallback_label() {
+ void SlugLabel3D::_update_mesh() {
+ 	pending_update = false;
+ 
+-	bool gles2 = OS::get_singleton()->get_current_video_driver() == OS::VIDEO_DRIVER_GLES2;
++	bool backend_ok = slug_backend_supports_float_textures();
+ 	bool font_ok = font.is_valid() && font->is_valid();
+ 
+-	if (gles2 || !font_ok) {
++	if (!backend_ok || !font_ok) {
+ 		VS::get_singleton()->mesh_clear(mesh);
+ 		aabb = AABB();
+ 		VS::get_singleton()->mesh_set_custom_aabb(mesh, aabb);
+ 
+ 		if (fallback_font.is_valid()) {
+-			WARN_PRINT_ONCE(gles2 ? "SlugLabel3D: GLES2 can't draw Slug text; using fallback_font (Label3D) instead."
+-								  : "SlugLabel3D: font is null or invalid; using fallback_font (Label3D) instead.");
++			WARN_PRINT_ONCE(!backend_ok ? "SlugLabel3D: the active renderer has no GLES3 features (texelFetch/float textures); using fallback_font (Label3D) instead."
++										: "SlugLabel3D: font is null or invalid; using fallback_font (Label3D) instead.");
+ 			_update_fallback_label();
+ 			update_gizmo();
+ 			return;
+ 		}
+ 
+ 		_free_fallback_label();
+-		WARN_PRINT_ONCE(gles2 ? "SlugLabel3D requires GLES3; nothing will be drawn."
+-							  : "SlugLabel3D: font is null or invalid; nothing will be drawn.");
++		WARN_PRINT_ONCE(!backend_ok ? "SlugLabel3D requires a GLES3 renderer; nothing will be drawn."
++									: "SlugLabel3D: font is null or invalid; nothing will be drawn.");
+ 		update_gizmo();
+ 		return;
+ 	}
