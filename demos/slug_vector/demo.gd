@@ -32,6 +32,7 @@ var ttf_font: SlugFont
 var cff_data: DynamicFontData
 var ttf_data: DynamicFontData
 var svg_vector: SlugVector
+var sugar_vector: SlugVector
 
 var big_label: SlugLabel3D
 var compare_root: Spatial
@@ -41,6 +42,18 @@ var spinning: SlugLabel3D
 var stress_root: Spatial
 var icon_big: SlugVector3D
 var icon_grazing: SlugVector3D
+var sugar_a: SlugVector3D
+var sugar_b: SlugVector3D
+
+# Paletas estilo Sugar (XO): [fill, stroke].
+const PALETTES := [
+	[Color(1.0, 0.56, 0.0), Color(0.0, 0.41, 0.36)],
+	[Color(0.85, 0.11, 0.38), Color(0.10, 0.14, 0.49)],
+	[Color(0.26, 0.63, 0.28), Color(0.20, 0.41, 0.12)],
+	[Color(0.12, 0.53, 0.90), Color(0.05, 0.28, 0.63)],
+	[Color(0.56, 0.14, 0.67), Color(0.29, 0.08, 0.55)],
+]
+var palette_index := 0
 
 var stats_label: Label
 var controls_label: Label
@@ -49,6 +62,7 @@ var stress_copies := 0
 
 var _time := 0.0
 var _stats_accum := 0.0
+var _palette_accum := 0.0
 
 
 func _ready():
@@ -71,12 +85,18 @@ func _ready():
 	svg_vector = SlugVector.new()
 	svg_vector.svg_path = "res://assets/hud.svg"
 
+	sugar_vector = SlugVector.new()
+	sugar_vector.svg_path = "res://assets/sugar_icon.svg"
+
 	if not cff_font.is_valid() or not ttf_font.is_valid():
 		push_error("SlugFont inválido: faltan las fuentes. Corré demos/slug_vector/fetch_fonts.sh")
 		_show_missing_fonts()
 	else:
 		if not svg_vector.is_valid():
 			push_error("SlugVector inválido: falta demos/slug_vector/assets/hud.svg")
+		if not sugar_vector.is_valid():
+			push_error("SlugVector inválido: falta demos/slug_vector/assets/sugar_icon.svg")
+		_apply_palette()
 		_build_showcase()
 
 	_setup_hud()
@@ -185,8 +205,30 @@ func _build_showcase():
 	icon_grazing = _make_icon(1.4, Vector3(4.2, 0.35, -1))
 	icon_grazing.rotation_degrees = Vector3(-78, 20, 0)
 
+	# h) SVG estilo Sugar: relleno y contorno como roles dinámicos que se recolorean
+	sugar_a = _make_sugar_icon(1.9, Vector3(-2.9, 2.2, 0.6), Vector3(0, 18, 0))
+	sugar_b = _make_sugar_icon(1.2, Vector3(-2.9, 0.4, 1.2), Vector3(0, -22, 0))
+
 	stress_root = Spatial.new()
 	add_child(stress_root)
+
+
+func _make_sugar_icon(size: float, pos: Vector3, rot_deg: Vector3) -> SlugVector3D:
+	var icon := SlugVector3D.new()
+	icon.vector = sugar_vector
+	icon.size = size
+	icon.translation = pos
+	icon.rotation_degrees = rot_deg
+	add_child(icon)
+	return icon
+
+
+func _apply_palette():
+	if sugar_vector == null:
+		return
+	var palette = PALETTES[palette_index]
+	sugar_vector.fill_color = palette[0]
+	sugar_vector.stroke_color = palette[1]
 
 
 func _make_icon(size: float, pos: Vector3) -> SlugVector3D:
@@ -230,7 +272,7 @@ func _setup_hud():
 	canvas.add_child(stats_label)
 	controls_label = Label.new()
 	controls_label.rect_position = Vector2(12, 560)
-	controls_label.text = "Espacio: órbita  |  1/2/3: radio  |  Z: microscopio  |  F: CFF/TTF  |  +/-: estrés  |  Esc: salir"
+	controls_label.text = "Espacio: órbita  |  1/2/3: radio  |  Z: microscopio  |  F: CFF/TTF  |  C: paleta  |  +/-: estrés  |  Esc: salir"
 	canvas.add_child(controls_label)
 	_refresh_stats()
 
@@ -260,6 +302,15 @@ func _refresh_stats():
 			]
 		else:
 			text += "SVG: inválido\n"
+	if sugar_vector:
+		if sugar_vector.is_valid():
+			text += "SVG Sugar: %d formas, %d curvas/banda máx, paleta %d/%d\n" % [
+				sugar_vector.get_shape_count(),
+				sugar_vector.get_max_curves_per_band(),
+				palette_index + 1, PALETTES.size()
+			]
+		else:
+			text += "SVG Sugar: inválido\n"
 	if microscope:
 		text += "MICROSCOPIO: Slug (arriba) vs Label3D rasterizado (abajo)\n"
 	stats_label.text = text
@@ -284,6 +335,13 @@ func _process(delta):
 		spinning.modulate = Color(m.r, m.g, m.b, 0.65 + 0.35 * sin(_time * 2.5))
 	if icon_big:
 		icon_big.rotation_degrees.y += delta * 30.0
+	if sugar_a:
+		sugar_a.rotation_degrees.y += delta * 10.0
+	_palette_accum += delta
+	if _palette_accum >= 1.8:
+		_palette_accum = 0.0
+		palette_index = (palette_index + 1) % PALETTES.size()
+		_apply_palette()
 	_stats_accum += delta
 	if _stats_accum >= 1.0:
 		_stats_accum = 0.0
@@ -306,6 +364,10 @@ func _input(event):
 		KEY_F:
 			if big_label:
 				big_label.font = ttf_font if big_label.font == cff_font else cff_font
+		KEY_C:
+			palette_index = (palette_index + 1) % PALETTES.size()
+			_apply_palette()
+			_refresh_stats()
 		KEY_EQUAL, KEY_KP_ADD:
 			stress_copies = min(stress_copies + 5, 60)
 			_rebuild_stress()

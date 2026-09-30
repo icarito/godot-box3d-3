@@ -38,6 +38,28 @@ func _init():
 	icon.size = 2.0
 	get_root().add_child(icon)
 
+	# Icono estilo Sugar: entidades fill_color/stroke_color + strokes reales.
+	var sugar := SlugVector.new()
+	sugar.svg_path = "res://assets/sugar_icon.svg"
+	if not sugar.is_valid():
+		print("SLUG_FAIL: SlugVector inválido para sugar_icon.svg")
+		quit(1)
+		return
+	if sugar.get_shape_count() < 6:
+		print("SLUG_FAIL: sugar_icon %d formas (se esperaban >= 6: fill+stroke)" % sugar.get_shape_count())
+		quit(1)
+		return
+	# Recolorear en runtime no debe reconstruir ni fallar.
+	sugar.fill_color = Color(1, 0, 0)
+	sugar.stroke_color = Color(0, 1, 0)
+	var sicon := SlugVector3D.new()
+	sicon.vector = sugar
+	sicon.size = 2.0
+	sicon.translation = Vector3(3, 0, 0)
+	get_root().add_child(sicon)
+	print("Sugar SVG: %d formas, %.2f ms build, %d curvas/banda máx" % [
+		sugar.get_shape_count(), sugar.get_build_time_usec() / 1000.0, sugar.get_max_curves_per_band()])
+
 	yield(self, "idle_frame")
 	yield(self, "idle_frame")
 	print("SLUG_OK")

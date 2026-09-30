@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd" [
+  <!ENTITY fill_color "#ff8f00">
+  <!ENTITY stroke_color "#00695c">
+]>
+<svg xmlns="http://www.w3.org/2000/svg" width="55" height="55" viewBox="0 0 55 55">
+  <!-- Marco: relleno y contorno dinamicos (roles de Sugar). -->
+  <rect x="5" y="5" width="45" height="45" rx="9" ry="9"
+        fill="&fill_color;" stroke="&stroke_color;" stroke-width="3.5" stroke-linejoin="round"/>
+  <!-- Circulo: relleno + contorno. -->
+  <circle cx="27.5" cy="27.5" r="11"
+          fill="&fill_color;" stroke="&stroke_color;" stroke-width="3"/>
+  <!-- Trazo sin relleno, con cap y join redondos. -->
+  <path d="M13 45 L27.5 34 L42 45" fill="none"
+        stroke="&stroke_color;" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Corazon cubico: relleno + contorno fino. -->
+  <path d="M27.5 19 C 21.5 23, 21.5 31, 27.5 34 C 33.5 31, 33.5 23, 27.5 19 Z"
+        fill="&fill_color;" stroke="&stroke_color;" stroke-width="2"/>
+</svg>

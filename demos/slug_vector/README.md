@@ -10,6 +10,10 @@ Qué muestra:
 - Un SVG (`assets/hud.svg`, autoría propia) dibujado por `SlugVector3D`, con
   **agujeros reales** (marco y anillo con subpaths de winding opuesto),
   triángulo, curva cúbica y una cola lineal, cada forma con su color.
+- Un icono **estilo Sugar** (`assets/sugar_icon.svg`): usa las entidades
+  `&fill_color;` / `&stroke_color;` (también se soportan los `var(--fill-color)`
+  de Sugarizer v2) y **strokes reales**. El demo cicla paletas XO y recolorea
+  fill y stroke en runtime (`C`), sin reconstruir la geometría.
 - Texto `SlugLabel3D` con una fuente **CFF/OTF** (cúbica) y una TrueType.
 - Comparación 1:1 contra un `Label3D` rasterizado (DynamicFont) al mismo tamaño
   de mundo: en el microscopio (`Z`) se ve el escalón/blur del rasterizado.
@@ -52,6 +56,7 @@ godot.x11.opt.tools.64 --no-window --path demos/slug_vector -s bench.gd
 | `1` / `2` / `3` | radio de órbita 4 / 9 / 20 |
 | `Z` | microscopio: primer plano de Slug vs Label3D rasterizado |
 | `F` | cambia la fuente de la línea grande (CFF ↔ TTF) |
+| `C` | cambia la paleta fill/stroke del icono Sugar (también cicla sola) |
 | `+` / `-` | agrega/quita copias de estrés (costo por cantidad) |
 | `Esc` | salir |
 
@@ -68,6 +73,7 @@ Preprocesado (una vez, lazy, la primera vez que se usa):
 | CFF/OTF (Source Sans 3) | 191 | 20.2 ms | 140 |
 | TTF (Noto Sans) | 192 | 3.5 ms | 16 |
 | SVG (`hud.svg`, 4 formas) | — | 0.33 ms | 56 |
+| SVG Sugar (`sugar_icon.svg`, 7 formas con strokes) | — | 0.8 ms | 68 |
 
 Frame:
 
@@ -83,6 +89,8 @@ Frame:
 | Slug SVG 1 icono 2u | 9.1 | 110 |
 | Slug SVG 16 iconos 2u | 18.3 | 55 |
 | Slug SVG 16 iconos 6u | 45.2 | 22 |
+| Slug Sugar 1 icono 2u | 8.7 | 115 |
+| Slug Sugar 16 iconos 2u | 24.3 | 41 |
 
 Lectura:
 

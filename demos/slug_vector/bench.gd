@@ -29,13 +29,15 @@ func _init():
 
 	var svg := SlugVector.new()
 	svg.svg_path = "res://assets/hud.svg"
+	var sugar := SlugVector.new()
+	sugar.svg_path = "res://assets/sugar_icon.svg"
 
 	if not cff.is_valid() or not ttf.is_valid():
 		print("BENCH_FAIL faltan fuentes (corré demos/slug_vector/fetch_fonts.sh)")
 		quit(1)
 		return
-	if not svg.is_valid():
-		print("BENCH_FAIL falta assets/hud.svg")
+	if not svg.is_valid() or not sugar.is_valid():
+		print("BENCH_FAIL faltan assets/*.svg")
 		quit(1)
 		return
 
@@ -45,6 +47,8 @@ func _init():
 		ttf.get_glyph_count(), ttf.get_build_time_usec() / 1000.0, ttf.get_max_curves_per_band()])
 	print("Slug SVG: %d formas, %.2f ms build, %d curvas/banda máx" % [
 		svg.get_shape_count(), svg.get_build_time_usec() / 1000.0, svg.get_max_curves_per_band()])
+	print("Slug Sugar: %d formas, %.2f ms build, %d curvas/banda máx" % [
+		sugar.get_shape_count(), sugar.get_build_time_usec() / 1000.0, sugar.get_max_curves_per_band()])
 	print("")
 	print("%-34s %10s %12s" % ["carga", "ms/frame", "equivalente"])
 
@@ -72,6 +76,8 @@ func _init():
 	yield(_bench("Slug SVG 1 icono 2u", 1, 2.0, null, null, svg), "completed")
 	yield(_bench("Slug SVG 16 iconos 2u", 16, 2.0, null, null, svg), "completed")
 	yield(_bench("Slug SVG 16 iconos 6u", 16, 6.0, null, null, svg), "completed")
+	yield(_bench("Slug Sugar 1 icono 2u", 1, 2.0, null, null, sugar), "completed")
+	yield(_bench("Slug Sugar 16 iconos 2u", 16, 2.0, null, null, sugar), "completed")
 
 	print("")
 	print("BENCH_OK")

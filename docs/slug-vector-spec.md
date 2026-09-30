@@ -61,9 +61,41 @@ comparar): build SVG 0.33 ms; frame de 16 iconos chicos ~18 ms, 16 grandes
 ~45 ms, 1 grande ~9 ms. El costo es por píxel cubierto × curvas/banda. Detalle en
 `demos/slug_vector/README.md`.
 
-**Límites de esta fase:** sin strokes (stroke-to-fill), sin gradientes (se
-saltean), `fill-rule:evenodd` no soportado (el shader es nonzero), sin nodo 2D
-(`SlugVector3D` sólo), y sin import a `.res` (el SVG se lee crudo en runtime).
+**Límites de esta fase:** sin gradientes (se saltean), `fill-rule:evenodd` no
+soportado (el shader es nonzero), sin nodo 2D (`SlugVector3D` sólo), y sin
+import a `.res` (el SVG se lee crudo en runtime).
+
+## 2c. Fill/stroke dinámicos estilo Sugar (hecha)
+
+Objetivo: usar los SVG como los usa Sugar / Sugarizer — iconos con **relleno y
+contorno** que la plataforma recolorea en runtime—, no sólo siluetas de relleno.
+
+**Roles de color.** Sugar declara los colores con entidades XML
+(`<!ENTITY fill_color "#...">` / `stroke_color`) o, en Sugarizer v2, con
+variables CSS (`var(--fill-color)` / `var(--stroke-color)`). El parser:
+- extrae los valores por defecto de las entidades y de los fallbacks de `var()`;
+- sustituye `&fill_color;`/`&stroke_color;` y los `var(...)` por colores
+  centinela antes de NanoSVG, y quita el `<!DOCTYPE>`;
+- al recorrer las formas, un paint que quedó en el centinela se marca como rol
+  `FILL` o `STROKE`; cualquier otro color es literal.
+
+`SlugVector` expone `fill_color` y `stroke_color` (Color) que resuelven esos
+roles. Cambiarlos **no reconstruye nada**: emite `changed`, el nodo rearma el
+mesh y re-resuelve el color por forma. Los colores por defecto salen de las
+entidades/fallbacks del SVG.
+
+**Strokes.** `slug_stroke.{h,cpp}` implementa stroke-to-fill: la polilínea
+aplanada se emite como unión de contornos del mismo winding (un quad por arista,
+una cuña de join por vértice, caps en los extremos), así el relleno nonzero los
+une sin un clipper de polígonos y las aristas siguen siendo exactas y con AA de
+Slug. Soporta joins `miter`/`round`/`bevel` (con límite de miter) y caps
+`butt`/`round`/`square`, tomados de las propiedades del SVG. Para cada elemento
+con stroke se emite una forma extra (fill primero, stroke encima, como pinta
+SVG). El aplanado es adaptativo y su tolerancia depende del ancho del trazo.
+
+Verificación: `demos/slug_vector/assets/sugar_icon.svg` (marco redondeado +
+círculo + trazo sin relleno + curva, con entidades) da 7 formas y 68
+curvas/banda; el demo lo recolorea ciclando paletas XO (`C`).
 
 ## 3. Verificación
 
@@ -102,9 +134,9 @@ así que no son 140 evaluaciones por píxel.
 
 ## 5. Fases siguientes
 
-- **Fase 2 (resto).** Strokes (stroke-to-fill), gradientes, `fill-rule:evenodd`
-  (variante de shader) y un nodo 2D (`SlugVector2D`/`TextureRect`-like) para UI
-  plana.
+- **Fase 2 (resto).** Gradientes (lineal/radial), `fill-rule:evenodd` (variante
+  de shader) y un nodo 2D (`SlugVector2D`/`TextureRect`-like) para UI plana.
+  Strokes y fill/stroke dinámicos ya están (sección 2c).
 - **Fase 3 — asset importable.** `EditorImportPlugin` `.svg` → recurso
   `SlugAtlas` con los buffers ya empaquetados (bytes crudos de
   `curve`/`band`/`glyph`, porque las texturas son float y no van a PNG), para no
