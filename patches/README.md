@@ -134,8 +134,9 @@ que el camino `--script` también escribe PNG + `.import` (no sólo `--bake-ligh
 Pendiente para publicar: el commit del motor que produce estos patches existe solo en el clon local (`fd3c9dd4`); hay que pushearlo a `icarito/godot` y subir `ENGINE_REF` en `scripts/build.sh` antes de un release.
 
 
-### Slug: modelo de forma genérico + decomposer cúbico (fase 1 del renderer SVG)
+### Slug: modelo de forma genérico + decomposer cúbico + SVG nativo (fases 1-2)
 
 | Patch | Qué agrega |
 |---|---|
 | `zzzzzzzzzzzz_feature_slug_shape_builder.patch` | Extrae el empaquetado de curvas/bandas de `SlugFont` a `SlugShapeBuilder` y define `SlugShape` como contrato común de todo productor de curvas. Porta `CurveDecomposer` de SlugHorn (MIT) para partir cúbicas en cuadráticas adaptativamente (De Casteljau, tolerancia `1/4096`, profundidad 8), lo que **habilita CFF/OTF**: antes `slug_font` rechazaba cualquier contorno cúbico. `SlugFont` queda como productor FreeType → `SlugShape`. Sin cambios en la API pública ni en el contrato del shader; la salida TrueType es idéntica (192 glifos, 16/19 curvas por banda). Detalle y mediciones en `docs/slug-vector-spec.md`. |
+| `zzzzzzzzzzzzz_feature_slug_svg.patch` | **Renderer SVG nativo**: `SlugVector` (Resource; parsea SVG con el NanoSVG del motor y lo empaqueta con `SlugShapeBuilder`) y `SlugVector3D` (nodo; un quad por forma con el shader de Slug, `size` en unidades de mundo, color por forma). Cada elemento con relleno sólido es un `SlugShape` y sus subpaths quedan como contornos, así el winding nonzero cancela agujeros. Normaliza el viewBox a ~1 unidad (la tolerancia del decomposer está en em). Sin strokes/gradientes/evenodd todavía. Demo y bench en `demos/slug_vector/`. |

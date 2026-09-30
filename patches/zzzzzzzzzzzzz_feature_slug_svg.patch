@@ -1,0 +1,826 @@
+diff --git a/modules/slug/config.py b/modules/slug/config.py
+index 012b920276..1361b2ad77 100644
+--- a/modules/slug/config.py
++++ b/modules/slug/config.py
+@@ -1,4 +1,10 @@
+ def can_build(env, platform):
++    # slug_svg.cpp parses SVG through the NanoSVG the engine bundles for
++    # modules/svg (thirdparty/nanosvg/nanosvg.cc); without that module the
++    # nsvgParse symbol is missing and the link fails. Fail loudly here.
++    if not env["module_svg_enabled"]:
++        print("Slug module requires the 'svg' module (bundled NanoSVG); disabling slug.")
++        return False
+     return True
+ 
+ 
+@@ -10,6 +16,8 @@ def get_doc_classes():
+     return [
+         "SlugFont",
+         "SlugLabel3D",
++        "SlugVector",
++        "SlugVector3D",
+     ]
+ 
+ 
+diff --git a/modules/slug/doc_classes/SlugFont.xml b/modules/slug/doc_classes/SlugFont.xml
+index e83e0f7608..eb70ae3ed9 100644
+--- a/modules/slug/doc_classes/SlugFont.xml
++++ b/modules/slug/doc_classes/SlugFont.xml
+@@ -5,7 +5,7 @@
+ 	</brief_description>
+ 	<description>
+ 		SlugFont holds the data [SlugLabel3D] needs to draw text directly from Bézier glyph outlines on the GPU, following Eric Lengyel's Slug algorithm. Unlike a rasterized [DynamicFont], a Slug glyph has no fixed resolution: the same font data stays sharp at any distance or angle, which makes it a good fit for large or close-up world-space text such as signs.
+-		SlugFont is built from a [member font_data] [DynamicFontData] pointing at a TrueType file. Only quadratic outlines are supported; CFF/OTF fonts with cubic outlines are rejected and [method is_valid] returns [code]false[/code]. The charset covers ASCII, Latin-1, and the replacement character U+FFFD.
++		SlugFont is built from a [member font_data] [DynamicFontData]. Both quadratic (TrueType) and cubic (CFF/OTF) outlines are supported: cubic curves are split into quadratics adaptively when the font is built. The charset covers ASCII, Latin-1, and the replacement character U+FFFD.
+ 		The font is not built eagerly: the curve, band, and glyph textures are generated lazily, in a few milliseconds, the first time a [SlugLabel3D] needs them. SlugFont only works with the GLES3 rendering backend.
+ 	</description>
+ 	<tutorials>
+diff --git a/modules/slug/doc_classes/SlugVector.xml b/modules/slug/doc_classes/SlugVector.xml
+new file mode 100644
+index 0000000000..881e4162f5
+--- /dev/null
++++ b/modules/slug/doc_classes/SlugVector.xml
+@@ -0,0 +1,52 @@
++<?xml version="1.0" encoding="UTF-8" ?>
++<class name="SlugVector" inherits="Resource" version="3.6" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../../../doc/class.xsd">
++	<brief_description>
++		GPU vector data parsed from an SVG file, for use with [SlugVector3D].
++	</brief_description>
++	<description>
++		SlugVector parses an SVG document into filled regions and packs their Bézier outlines into the same GPU atlas used for text, so [SlugVector3D] can draw them resolution-independently with the Slug algorithm. Each shape element with a solid fill becomes one region; its subpaths (including holes) stay together, so non-zero winding cancels them as authored.
++		Parsing is done with NanoSVG, which bakes element and group transforms into the points. Y is flipped so the result is y-up, matching the rest of the pipeline. Gradients, strokes and the even-odd fill rule are not supported yet: such elements are skipped (or would render as if non-zero).
++		The data is not built eagerly: parsing and atlas packing happen lazily, the first time a [SlugVector3D] needs them.
++	</description>
++	<tutorials>
++	</tutorials>
++	<methods>
++		<method name="get_bounds">
++			<return type="Rect2" />
++			<description>
++				Returns the bounding box of all parsed shapes, in SVG user units (y-up). Triggers the build if it hasn't happened yet.
++			</description>
++		</method>
++		<method name="get_build_time_usec">
++			<return type="int" />
++			<description>
++				Returns how long the last parse and build of this vector's GPU data took, in microseconds. Triggers the build if it hasn't happened yet.
++			</description>
++		</method>
++		<method name="get_max_curves_per_band">
++			<return type="int" />
++			<description>
++				Returns the largest number of curves found in any single band of any shape, a measure of the worst-case per-pixel cost when rasterizing this vector. Triggers the build if it hasn't happened yet.
++			</description>
++		</method>
++		<method name="get_shape_count">
++			<return type="int" />
++			<description>
++				Returns the number of filled regions parsed from the SVG. Triggers the build if it hasn't happened yet.
++			</description>
++		</method>
++		<method name="is_valid">
++			<return type="bool" />
++			<description>
++				Returns [code]true[/code] if the SVG was read and parsed into at least one visible solid-filled region. Triggers the build if it hasn't happened yet.
++			</description>
++		</method>
++	</methods>
++	<members>
++		<member name="svg_path" type="String" setter="set_svg_path" getter="get_svg_path" default="&quot;&quot;">
++			Path to the SVG file to parse, for example [code]res://icon.svg[/code].
++		</member>
++	</members>
++	<constants>
++	</constants>
++</class>
+diff --git a/modules/slug/doc_classes/SlugVector3D.xml b/modules/slug/doc_classes/SlugVector3D.xml
+new file mode 100644
+index 0000000000..f9469a743a
+--- /dev/null
++++ b/modules/slug/doc_classes/SlugVector3D.xml
+@@ -0,0 +1,31 @@
++<?xml version="1.0" encoding="UTF-8" ?>
++<class name="SlugVector3D" inherits="GeometryInstance" version="3.6" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../../../doc/class.xsd">
++	<brief_description>
++		Draws a [SlugVector] (an SVG) in a 3D world with the Slug algorithm.
++	</brief_description>
++	<description>
++		SlugVector3D draws the filled regions of a [SlugVector] directly from their Bézier outlines, so the image stays crisp at any distance, scale or angle. This makes it a good fit for diegetic HUDs, icons and signage. Each region keeps the fill color authored in the SVG, multiplied by [member modulate].
++		[member size] is the world-space height of the vector's bounding box, so the drawing scales to fit that height and its width follows the aspect ratio.
++		SlugVector3D only works with the GLES3 rendering backend; under GLES2 or with a null/invalid [member vector], nothing is drawn.
++	</description>
++	<tutorials>
++	</tutorials>
++	<methods>
++	</methods>
++	<members>
++		<member name="billboard" type="bool" setter="set_billboard" getter="get_billboard" default="false">
++			If [code]true[/code], the vector always faces the camera, matching the camera's rotation instead of the node's.
++		</member>
++		<member name="modulate" type="Color" setter="set_modulate" getter="get_modulate" default="Color( 1, 1, 1, 1 )">
++			The color multiplied onto every region's authored fill color.
++		</member>
++		<member name="size" type="float" setter="set_size" getter="get_size" default="1.0">
++			The world-space height of the vector's bounding box. The width is derived from the SVG's aspect ratio.
++		</member>
++		<member name="vector" type="SlugVector" setter="set_vector" getter="get_vector">
++			The [SlugVector] to draw.
++		</member>
++	</members>
++	<constants>
++	</constants>
++</class>
+diff --git a/modules/slug/register_types.cpp b/modules/slug/register_types.cpp
+index a11ffcfc60..7cbac22ca0 100644
+--- a/modules/slug/register_types.cpp
++++ b/modules/slug/register_types.cpp
+@@ -9,10 +9,14 @@
+ #include "core/class_db.h"
+ #include "slug_font.h"
+ #include "slug_label_3d.h"
++#include "slug_vector.h"
++#include "slug_vector_3d.h"
+ 
+ void register_slug_types() {
+ 	ClassDB::register_class<SlugFont>();
+ 	ClassDB::register_class<SlugLabel3D>();
++	ClassDB::register_class<SlugVector>();
++	ClassDB::register_class<SlugVector3D>();
+ }
+ 
+ void unregister_slug_types() {
+diff --git a/modules/slug/slug_svg.cpp b/modules/slug/slug_svg.cpp
+new file mode 100644
+index 0000000000..b1314dbe03
+--- /dev/null
++++ b/modules/slug/slug_svg.cpp
+@@ -0,0 +1,139 @@
++/*************************************************************************/
++/*  slug_svg.cpp                                                        */
++/*************************************************************************/
++/* Godot 3.6 module: modules/slug                                       */
++/* NanoSVG output (cubic Beziers, transforms already baked) ->          */
++/* SlugShape contours via SlugCurveDecomposer.                          */
++/*************************************************************************/
++
++#include "slug_svg.h"
++
++#include <string.h>
++
++#include "core/print_string.h"
++#include "slug_decomposer.h"
++
++// The engine already bundles NanoSVG (zlib) for modules/svg; its
++// implementation lives in thirdparty/nanosvg/nanosvg.cc, so include the
++// declarations only and link against that object.
++#include "thirdparty/nanosvg/nanosvg.h"
++
++// NanoSVG packs solid fills as 0xAABBGGRR (little-endian ABGR).
++static Color _slug_svg_color(unsigned int p_abgr, float p_opacity) {
++	float r = (p_abgr & 0xff) / 255.0f;
++	float g = ((p_abgr >> 8) & 0xff) / 255.0f;
++	float b = ((p_abgr >> 16) & 0xff) / 255.0f;
++	float a = (((p_abgr >> 24) & 0xff) / 255.0f) * p_opacity;
++	return Color(r, g, b, a);
++}
++
++// A cubic whose control points sit on the p0->p3 chord traces that straight
++// segment (NanoSVG encodes lines this way), so a single quadratic suffices.
++static bool _slug_svg_segment_is_line(const Vector2 &p0, const Vector2 &c1, const Vector2 &c2, const Vector2 &p3) {
++	Vector2 d = p3 - p0;
++	float len = d.length();
++	if (len < 1e-6f) {
++		return false;
++	}
++	Vector2 n(d.y / len, -d.x / len);
++	return ABS((c1 - p0).dot(n)) < 1e-4f && ABS((c2 - p0).dot(n)) < 1e-4f;
++}
++
++bool slug_parse_svg(const Vector<uint8_t> &p_bytes, Vector<SlugShape> &r_shapes, Vector<Color> &r_colors, Rect2 &r_bounds, String &r_error) {
++	r_shapes.clear();
++	r_colors.clear();
++	r_bounds = Rect2();
++	r_error = String();
++
++	if (p_bytes.size() == 0) {
++		r_error = "empty SVG";
++		return false;
++	}
++
++	// nsvgParse wants a mutable, NUL-terminated buffer.
++	Vector<uint8_t> buffer;
++	buffer.resize(p_bytes.size() + 1);
++	memcpy(buffer.ptrw(), p_bytes.ptr(), p_bytes.size());
++	buffer.ptrw()[p_bytes.size()] = 0;
++
++	NSVGimage *image = nsvgParse((char *)buffer.ptr(), "px", 96.0f);
++	if (image == nullptr) {
++		r_error = "NanoSVG could not parse the document";
++		return false;
++	}
++
++	// Normalize to ~1 unit so SlugCurveDecomposer::FLATNESS (calibrated in em)
++	// subdivides at a sane rate: SVG user units can be in the hundreds, and a
++	// fixed absolute tolerance would explode the curve count. SlugVector3D
++	// rescales to [member size] anyway, so this is invisible to the user.
++	float extent = MAX(image->width, image->height);
++	float norm = extent > 0.0f ? 1.0f / extent : 1.0f;
++
++	bool first = true;
++	for (NSVGshape *ns = image->shapes; ns != nullptr; ns = ns->next) {
++		if (!(ns->flags & NSVG_FLAGS_VISIBLE)) {
++			continue;
++		}
++		// Gradients and strokes are not rendered yet; only solid fills.
++		if (ns->fill.type != NSVG_PAINT_COLOR || ns->paths == nullptr) {
++			continue;
++		}
++
++		SlugCurveDecomposer dec;
++		bool any = false;
++		for (NSVGpath *np = ns->paths; np != nullptr; np = np->next) {
++			if (np->npts < 4) {
++				continue;
++			}
++			const float *pts = np->pts;
++			// One SlugShape per element: each subpath is its own contour, so a
++			// hole with opposite winding cancels under the non-zero fill rule.
++			dec.move_to(Vector2(pts[0] * norm, -pts[1] * norm));
++			for (int i = 0; i + 3 < np->npts; i += 3) {
++				const float *q = pts + (i + 1) * 2;
++				Vector2 p0(pts[i * 2] * norm, -pts[i * 2 + 1] * norm);
++				Vector2 c1(q[0] * norm, -q[1] * norm);
++				Vector2 c2(q[2] * norm, -q[3] * norm);
++				Vector2 p3(q[4] * norm, -q[5] * norm);
++				if (_slug_svg_segment_is_line(p0, c1, c2, p3)) {
++					dec.line_to(p3);
++				} else {
++					dec.cubic_to(c1, c2, p3);
++				}
++				any = true;
++			}
++			if (np->closed) {
++				dec.close();
++			}
++		}
++
++		SlugShape shape = dec.get_shape();
++		if (!any || !shape.has_curves()) {
++			continue;
++		}
++
++		r_shapes.push_back(shape);
++		r_colors.push_back(_slug_svg_color(ns->fill.color, ns->opacity));
++
++		Rect2 b = shape.compute_bounds();
++		if (first) {
++			r_bounds = b;
++			first = false;
++		} else {
++			r_bounds = r_bounds.merge(b);
++		}
++	}
++	nsvgDelete(image);
++
++	if (r_shapes.size() == 0) {
++		r_error = "no visible solid-filled paths";
++		return false;
++	}
++	if (r_bounds.size.x <= 0.0f) {
++		r_bounds.size.x = 1.0f;
++	}
++	if (r_bounds.size.y <= 0.0f) {
++		r_bounds.size.y = 1.0f;
++	}
++	return true;
++}
+diff --git a/modules/slug/slug_svg.h b/modules/slug/slug_svg.h
+new file mode 100644
+index 0000000000..055071ccd4
+--- /dev/null
++++ b/modules/slug/slug_svg.h
+@@ -0,0 +1,26 @@
++/*************************************************************************/
++/*  slug_svg.h                                                          */
++/*************************************************************************/
++/* Godot 3.6 module: modules/slug                                       */
++/* SVG -> SlugShape. Vendors NanoSVG (zlib, Mikko Mononen) for parsing  */
++/* and bakes every element/group transform into the points.             */
++/*************************************************************************/
++
++#ifndef SLUG_SVG_H
++#define SLUG_SVG_H
++
++#include "core/color.h"
++#include "core/math/rect2.h"
++#include "core/ustring.h"
++#include "core/vector.h"
++#include "slug_shape.h"
++
++// Parses an SVG document into filled regions. Every shape element with a solid
++// fill becomes one SlugShape: all of its subpaths (including holes) end up as
++// contours of the same shape, so non-zero winding cancels them as authored.
++// Y is flipped so the result is y-up, matching the font/text pipeline.
++//
++// Returns false and sets p_error when nothing renderable is found.
++bool slug_parse_svg(const Vector<uint8_t> &p_bytes, Vector<SlugShape> &r_shapes, Vector<Color> &r_colors, Rect2 &r_bounds, String &r_error);
++
++#endif // SLUG_SVG_H
+diff --git a/modules/slug/slug_vector.cpp b/modules/slug/slug_vector.cpp
+new file mode 100644
+index 0000000000..6d1076b3b7
+--- /dev/null
++++ b/modules/slug/slug_vector.cpp
+@@ -0,0 +1,132 @@
++/*************************************************************************/
++/*  slug_vector.cpp                                                     */
++/*************************************************************************/
++/* Godot 3.6 module: modules/slug                                       */
++/*************************************************************************/
++
++#include "slug_vector.h"
++
++#include "core/class_db.h"
++#include "core/os/file_access.h"
++#include "core/os/os.h"
++#include "core/print_string.h"
++#include "slug_svg.h"
++
++void SlugVector::_bind_methods() {
++	ClassDB::bind_method(D_METHOD("set_svg_path", "path"), &SlugVector::set_svg_path);
++	ClassDB::bind_method(D_METHOD("get_svg_path"), &SlugVector::get_svg_path);
++
++	ClassDB::bind_method(D_METHOD("is_valid"), &SlugVector::is_valid);
++	ClassDB::bind_method(D_METHOD("get_shape_count"), &SlugVector::get_shape_count);
++	ClassDB::bind_method(D_METHOD("get_build_time_usec"), &SlugVector::get_build_time_usec);
++	ClassDB::bind_method(D_METHOD("get_max_curves_per_band"), &SlugVector::get_max_curves_per_band);
++	ClassDB::bind_method(D_METHOD("get_bounds"), &SlugVector::get_bounds);
++
++	ADD_PROPERTY(PropertyInfo(Variant::STRING, "svg_path", PROPERTY_HINT_FILE, "*.svg"), "set_svg_path", "get_svg_path");
++}
++
++void SlugVector::set_svg_path(const String &p_path) {
++	if (svg_path == p_path) {
++		return;
++	}
++	svg_path = p_path;
++	_clear_built();
++	emit_changed();
++}
++
++String SlugVector::get_svg_path() const {
++	return svg_path;
++}
++
++void SlugVector::_clear_built() {
++	built = false;
++	valid = false;
++	build_time_usec = 0;
++	bounds = Rect2();
++	shapes.clear();
++	colors.clear();
++	atlas = SlugAtlasData();
++}
++
++void SlugVector::_ensure_built() {
++	if (built) {
++		return;
++	}
++	built = true;
++
++	if (svg_path.empty()) {
++		return;
++	}
++
++	Vector<uint8_t> file_data = FileAccess::get_file_as_array(svg_path);
++	if (file_data.empty()) {
++		ERR_PRINT("SlugVector: could not read SVG file '" + svg_path + "'.");
++		return;
++	}
++
++	uint64_t start_usec = OS::get_singleton()->get_ticks_usec();
++
++	String error;
++	if (!slug_parse_svg(file_data, shapes, colors, bounds, error)) {
++		ERR_PRINT("SlugVector: '" + svg_path + "': " + error + ".");
++		shapes.clear();
++		colors.clear();
++		return;
++	}
++
++	atlas = SlugShapeBuilder::build(shapes);
++	valid = true;
++	build_time_usec = (int)(OS::get_singleton()->get_ticks_usec() - start_usec);
++
++	print_verbose("SlugVector: " + itos(shapes.size()) + " shapes, " + itos(atlas.curve_rows) + " curve rows, " +
++			itos(atlas.band_rows) + " band rows, max " + itos(atlas.max_curves_per_band) + " curves/band, " +
++			itos(build_time_usec) + " usec (" + svg_path + ")");
++}
++
++bool SlugVector::is_valid() {
++	_ensure_built();
++	return valid;
++}
++
++int SlugVector::get_shape_count() {
++	_ensure_built();
++	return shapes.size();
++}
++
++int SlugVector::get_build_time_usec() {
++	_ensure_built();
++	return build_time_usec;
++}
++
++int SlugVector::get_max_curves_per_band() {
++	_ensure_built();
++	return atlas.max_curves_per_band;
++}
++
++Rect2 SlugVector::get_bounds() {
++	_ensure_built();
++	return bounds;
++}
++
++RID SlugVector::get_material_rid() {
++	_ensure_built();
++	return atlas.material.is_valid() ? atlas.material->get_rid() : RID();
++}
++
++const Vector<SlugShape> &SlugVector::get_shapes() {
++	_ensure_built();
++	return shapes;
++}
++
++Color SlugVector::get_shape_color(int p_index) const {
++	if (p_index < 0 || p_index >= colors.size()) {
++		return Color(1, 1, 1, 1);
++	}
++	return colors[p_index];
++}
++
++SlugVector::SlugVector() {
++}
++
++SlugVector::~SlugVector() {
++}
+diff --git a/modules/slug/slug_vector.h b/modules/slug/slug_vector.h
+new file mode 100644
+index 0000000000..a4023cc2f2
+--- /dev/null
++++ b/modules/slug/slug_vector.h
+@@ -0,0 +1,56 @@
++/*************************************************************************/
++/*  slug_vector.h                                                       */
++/*************************************************************************/
++/* Godot 3.6 module: modules/slug                                       */
++/* A set of filled regions parsed from an SVG, packed into the Slug     */
++/* atlas textures by SlugShapeBuilder. Consumed by SlugVector3D.        */
++/*************************************************************************/
++
++#ifndef SLUG_VECTOR_H
++#define SLUG_VECTOR_H
++
++#include "core/color.h"
++#include "core/math/rect2.h"
++#include "core/resource.h"
++#include "slug_shape_builder.h"
++
++class SlugVector : public Resource {
++	GDCLASS(SlugVector, Resource);
++
++	String svg_path;
++
++	bool built = false;
++	bool valid = false;
++	int build_time_usec = 0;
++	Rect2 bounds;
++
++	Vector<SlugShape> shapes;
++	Vector<Color> colors;
++	SlugAtlasData atlas;
++
++	void _ensure_built();
++	void _clear_built();
++
++protected:
++	static void _bind_methods();
++
++public:
++	void set_svg_path(const String &p_path);
++	String get_svg_path() const;
++
++	bool is_valid();
++	int get_shape_count();
++	int get_build_time_usec();
++	int get_max_curves_per_band();
++	Rect2 get_bounds();
++	RID get_material_rid();
++
++	// Internal API used by SlugVector3D; not bound to script.
++	const Vector<SlugShape> &get_shapes();
++	Color get_shape_color(int p_index) const;
++
++	SlugVector();
++	~SlugVector();
++};
++
++#endif // SLUG_VECTOR_H
+diff --git a/modules/slug/slug_vector_3d.cpp b/modules/slug/slug_vector_3d.cpp
+new file mode 100644
+index 0000000000..fff6f17eaa
+--- /dev/null
++++ b/modules/slug/slug_vector_3d.cpp
+@@ -0,0 +1,230 @@
++/*************************************************************************/
++/*  slug_vector_3d.cpp                                                  */
++/*************************************************************************/
++/* Godot 3.6 module: modules/slug                                       */
++/*************************************************************************/
++
++#include "slug_vector_3d.h"
++
++#include "core/class_db.h"
++#include "core/core_string_names.h"
++#include "servers/visual_server.h"
++#include "slug_backend.h"
++
++void SlugVector3D::_bind_methods() {
++	ClassDB::bind_method(D_METHOD("set_vector", "vector"), &SlugVector3D::set_vector);
++	ClassDB::bind_method(D_METHOD("get_vector"), &SlugVector3D::get_vector);
++
++	ClassDB::bind_method(D_METHOD("set_size", "size"), &SlugVector3D::set_size);
++	ClassDB::bind_method(D_METHOD("get_size"), &SlugVector3D::get_size);
++
++	ClassDB::bind_method(D_METHOD("set_modulate", "modulate"), &SlugVector3D::set_modulate);
++	ClassDB::bind_method(D_METHOD("get_modulate"), &SlugVector3D::get_modulate);
++
++	ClassDB::bind_method(D_METHOD("set_billboard", "billboard"), &SlugVector3D::set_billboard);
++	ClassDB::bind_method(D_METHOD("get_billboard"), &SlugVector3D::get_billboard);
++
++	ClassDB::bind_method(D_METHOD("_update_mesh"), &SlugVector3D::_update_mesh);
++	ClassDB::bind_method(D_METHOD("_vector_changed"), &SlugVector3D::_vector_changed);
++
++	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "vector", PROPERTY_HINT_RESOURCE_TYPE, "SlugVector"), "set_vector", "get_vector");
++	ADD_PROPERTY(PropertyInfo(Variant::REAL, "size", PROPERTY_HINT_RANGE, "0.001,1000,0.001"), "set_size", "get_size");
++	ADD_PROPERTY(PropertyInfo(Variant::COLOR, "modulate"), "set_modulate", "get_modulate");
++	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "billboard"), "set_billboard", "get_billboard");
++}
++
++void SlugVector3D::_queue_update() {
++	if (pending_update) {
++		return;
++	}
++	pending_update = true;
++	call_deferred("_update_mesh");
++}
++
++void SlugVector3D::_vector_changed() {
++	_queue_update();
++}
++
++void SlugVector3D::set_vector(const Ref<SlugVector> &p_vector) {
++	if (vector == p_vector) {
++		return;
++	}
++	if (vector.is_valid()) {
++		vector->disconnect(CoreStringNames::get_singleton()->changed, this, "_vector_changed");
++	}
++	vector = p_vector;
++	if (vector.is_valid()) {
++		vector->connect(CoreStringNames::get_singleton()->changed, this, "_vector_changed");
++	}
++	_queue_update();
++}
++
++Ref<SlugVector> SlugVector3D::get_vector() const {
++	return vector;
++}
++
++void SlugVector3D::set_size(float p_size) {
++	ERR_FAIL_COND(p_size <= 0.0f);
++	if (size != p_size) {
++		size = p_size;
++		_queue_update();
++	}
++}
++
++float SlugVector3D::get_size() const {
++	return size;
++}
++
++void SlugVector3D::set_modulate(const Color &p_color) {
++	if (modulate != p_color) {
++		modulate = p_color;
++		_queue_update();
++	}
++}
++
++Color SlugVector3D::get_modulate() const {
++	return modulate;
++}
++
++void SlugVector3D::set_billboard(bool p_billboard) {
++	if (billboard != p_billboard) {
++		billboard = p_billboard;
++		_queue_update();
++	}
++}
++
++bool SlugVector3D::get_billboard() const {
++	return billboard;
++}
++
++AABB SlugVector3D::get_aabb() const {
++	return aabb;
++}
++
++PoolVector<Face3> SlugVector3D::get_faces(uint32_t p_usage_flags) const {
++	return PoolVector<Face3>();
++}
++
++void SlugVector3D::_update_mesh() {
++	pending_update = false;
++
++	VS::get_singleton()->mesh_clear(mesh);
++	aabb = AABB();
++
++	if (!slug_backend_supports_float_textures() || !vector.is_valid() || !vector->is_valid()) {
++		VS::get_singleton()->mesh_set_custom_aabb(mesh, aabb);
++		update_gizmo();
++		return;
++	}
++
++	const Vector<SlugShape> &shapes = vector->get_shapes();
++	Rect2 bounds = vector->get_bounds();
++	float height = bounds.size.y;
++	float scale = height > 0.0f ? size / height : size;
++	Vector2 center = bounds.position + bounds.size * 0.5f;
++
++	PoolVector3Array vertices;
++	PoolVector3Array normals;
++	PoolVector2Array uvs;
++	PoolVector2Array uv2s;
++	PoolColorArray colors;
++	PoolRealArray tangents;
++	PoolIntArray indices;
++
++	Color linear_modulate = modulate.to_linear();
++	float billboard_flag = billboard ? 1.0f : 0.0f;
++	bool has_point = false;
++
++	Vector2 normal_dirs[4] = {
++		Vector2(-1, -1),
++		Vector2(1, -1),
++		Vector2(1, 1),
++		Vector2(-1, 1),
++	};
++
++	for (int si = 0; si < shapes.size(); si++) {
++		Rect2 sb = shapes[si].compute_bounds();
++		if (sb.size.x <= 0.0f || sb.size.y <= 0.0f) {
++			continue;
++		}
++		Vector2 corners[4] = {
++			Vector2(sb.position.x, sb.position.y),
++			Vector2(sb.position.x + sb.size.x, sb.position.y),
++			Vector2(sb.position.x + sb.size.x, sb.position.y + sb.size.y),
++			Vector2(sb.position.x, sb.position.y + sb.size.y),
++		};
++		Color shape_color = vector->get_shape_color(si) * linear_modulate;
++
++		int base = vertices.size();
++		for (int ci = 0; ci < 4; ci++) {
++			Vector2 local = (corners[ci] - center) * scale;
++			Vector3 v(local.x, local.y, 0.0f);
++			vertices.push_back(v);
++			normals.push_back(Vector3(normal_dirs[ci].x, normal_dirs[ci].y, billboard_flag));
++			uvs.push_back(corners[ci]);
++			uv2s.push_back(Vector2((float)si, 1.0f / scale));
++			colors.push_back(shape_color);
++			tangents.push_back(0.0f);
++			tangents.push_back(0.0f);
++			tangents.push_back(0.0f);
++			tangents.push_back(1.0f);
++
++			if (!has_point) {
++				aabb.position = v;
++				has_point = true;
++			} else {
++				aabb.expand_to(v);
++			}
++		}
++		indices.push_back(base + 0);
++		indices.push_back(base + 1);
++		indices.push_back(base + 2);
++		indices.push_back(base + 0);
++		indices.push_back(base + 2);
++		indices.push_back(base + 3);
++	}
++
++	if (vertices.size() == 0) {
++		VS::get_singleton()->mesh_set_custom_aabb(mesh, aabb);
++		update_gizmo();
++		return;
++	}
++
++	aabb = aabb.grow(size * 0.05f);
++	if (billboard) {
++		float r = 0.0f;
++		PoolVector3Array::Read vr = vertices.read();
++		for (int i = 0; i < vertices.size(); i++) {
++			r = MAX(r, vr[i].length());
++		}
++		aabb = AABB(Vector3(-r, -r, -r), Vector3(2.0f * r, 2.0f * r, 2.0f * r));
++	}
++
++	Array arrays;
++	arrays.resize(VS::ARRAY_MAX);
++	arrays[VS::ARRAY_VERTEX] = vertices;
++	arrays[VS::ARRAY_NORMAL] = normals;
++	arrays[VS::ARRAY_COLOR] = colors;
++	arrays[VS::ARRAY_TEX_UV] = uvs;
++	arrays[VS::ARRAY_TEX_UV2] = uv2s;
++	arrays[VS::ARRAY_TANGENT] = tangents;
++	arrays[VS::ARRAY_INDEX] = indices;
++
++	VS::get_singleton()->mesh_add_surface_from_arrays(mesh, VS::PRIMITIVE_TRIANGLES, arrays, Array(), 0);
++	VS::get_singleton()->mesh_surface_set_material(mesh, 0, vector->get_material_rid());
++	VS::get_singleton()->mesh_set_custom_aabb(mesh, aabb);
++
++	update_gizmo();
++}
++
++SlugVector3D::SlugVector3D() {
++	mesh = VisualServer::get_singleton()->mesh_create();
++	set_base(mesh);
++}
++
++SlugVector3D::~SlugVector3D() {
++	if (vector.is_valid()) {
++		vector->disconnect(CoreStringNames::get_singleton()->changed, this, "_vector_changed");
++	}
++	VS::get_singleton()->free(mesh);
++}
+diff --git a/modules/slug/slug_vector_3d.h b/modules/slug/slug_vector_3d.h
+new file mode 100644
+index 0000000000..a76592fcc1
+--- /dev/null
++++ b/modules/slug/slug_vector_3d.h
+@@ -0,0 +1,56 @@
++/*************************************************************************/
++/*  slug_vector_3d.h                                                    */
++/*************************************************************************/
++/* Godot 3.6 module: modules/slug                                       */
++/* Draws a SlugVector (an SVG) as resolution-independent geometry with  */
++/* the Slug fragment shader. Analogous to SlugLabel3D, one quad per     */
++/* shape.                                                               */
++/*************************************************************************/
++
++#ifndef SLUG_VECTOR_3D_H
++#define SLUG_VECTOR_3D_H
++
++#include "scene/3d/visual_instance.h"
++#include "slug_vector.h"
++
++class SlugVector3D : public GeometryInstance {
++	GDCLASS(SlugVector3D, GeometryInstance);
++
++private:
++	Ref<SlugVector> vector;
++	float size = 1.0f;
++	Color modulate = Color(1, 1, 1, 1);
++	bool billboard = false;
++
++	RID mesh;
++	AABB aabb;
++	bool pending_update = false;
++
++	void _queue_update();
++	void _update_mesh();
++	void _vector_changed();
++
++protected:
++	static void _bind_methods();
++
++public:
++	void set_vector(const Ref<SlugVector> &p_vector);
++	Ref<SlugVector> get_vector() const;
++
++	void set_size(float p_size);
++	float get_size() const;
++
++	void set_modulate(const Color &p_color);
++	Color get_modulate() const;
++
++	void set_billboard(bool p_billboard);
++	bool get_billboard() const;
++
++	virtual AABB get_aabb() const;
++	virtual PoolVector<Face3> get_faces(uint32_t p_usage_flags) const;
++
++	SlugVector3D();
++	~SlugVector3D();
++};
++
++#endif // SLUG_VECTOR_3D_H

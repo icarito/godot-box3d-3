@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" width="96" height="96">
+  <!-- Marco con agujero: dos subpaths de winding opuesto, fill-rule nonzero. -->
+  <path fill="#39d353" fill-rule="nonzero"
+        d="M8 8 L88 8 L88 88 L8 88 Z M18 18 L18 78 L78 78 L78 18 Z"/>
+  <!-- Anillo: circulo con agujero real (dos subpaths de winding opuesto). -->
+  <path fill="#4aa3ff" fill-rule="nonzero"
+        d="M48 21 A27 27 0 1 1 47.9 21 Z M48 33 A15 15 0 1 0 48.1 33 Z"/>
+  <!-- Triangulo solido. -->
+  <path fill="#f0c040" d="M48 37 L60 58 L36 58 Z"/>
+  <!-- Onda cubica + cola lineal: ejercita curvas y lineas. -->
+  <path fill="#ff5c8a" d="M14 76 C 30 64, 50 88, 66 76 L82 76 L82 86 L14 86 Z"/>
+</svg>

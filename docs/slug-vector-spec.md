@@ -4,9 +4,11 @@ Objetivo: un renderer nativo de SVG/vectores eficiente en el fork de Godot 3.6,
 reusando el runtime Slug que ya existe (`modules/slug`, GLES3) y el algoritmo de
 Lengyel. Complementa `docs/slug-text-spec.md` (texto 3D), no lo reemplaza.
 
-**Estado: fase 1 hecha.** Patch `zzzzzzzzzzzz_feature_slug_shape_builder`
-en la rama `box3d-3.6` de `icarito/godot` (los `patches/*.patch` se exportan de
-esa rama).
+**Estado: fases 1 y 2 hechas.** Patches
+`zzzzzzzzzzzz_feature_slug_shape_builder` (modelo de forma, builder,
+decomposer cúbico) y `zzzzzzzzzzzzz_feature_slug_svg` (SVG nativo:
+`SlugVector` + `SlugVector3D`) en la rama `box3d-3.6` de `icarito/godot`. Los
+`patches/*.patch` se exportan de esa rama.
 
 ## 1. Por qué
 
@@ -33,6 +35,35 @@ La fase 1 es el refactor que abre ese camino y, de paso, habilita cúbicas.
 La API pública de `SlugFont` (glyphs, kerning, métricas, `get_material_rid`) y
 `SlugLabel3D` no cambian. El contrato del shader tampoco: una forma = una fila
 de `glyph_tex`, índice por `UV2.x`.
+
+## 2b. Fase 2 — SVG nativo (hecha en el patch `zzzzzzzzzzzzz_feature_slug_svg`)
+
+| Cambio | Dónde |
+|---|---|
+| `slug_parse_svg()`: SVG → `Vector<SlugShape>` + colores por forma, con **NanoSVG**. Reutiliza el `thirdparty/nanosvg/nanosvg.cc` que el motor ya compila para `modules/svg` (no se vendoriza una copia): se incluye solo la declaración y se enlaza ese objeto | `slug_svg.{h,cpp}` |
+| Cada elemento con relleno sólido = **un** `SlugShape`; sus subpaths (agujeros) son contornos del mismo shape, así el winding nonzero los cancela como los escribió el autor. Y se invierte para quedar y-up | `slug_svg.cpp` |
+| `SlugVector : Resource`: `svg_path`, parseo + `SlugShapeBuilder` lazy, `get_bounds/get_shape_count/is_valid/...` | `slug_vector.{h,cpp}` |
+| `SlugVector3D : GeometryInstance`: un quad por forma, con el shader de Slug; `size` = alto en unidades de mundo, color por forma × `modulate`, `billboard` | `slug_vector_3d.{h,cpp}` |
+| Registro de las dos clases, `config.py`, doc_classes, y `can_build` que falla si se desactiva el módulo `svg` (de él sale el símbolo `nsvgParse`) | `register_types.cpp`, `config.py` |
+| Demo y chequeo: `demos/slug_vector/` (icono SVG, comparación CFF/TTF vs rasterizado, bench) | repo |
+
+**Hallazgo:** `SlugCurveDecomposer::FLATNESS` (1/4096) está calibrado en unidades
+de em (~1). Los SVG vienen en unidades de usuario (decenas o cientos), y con esa
+tolerancia absoluta las cúbicas se subdividían sin control: un icono de 26
+cúbicas generaba ~8300 quads y el bloque de bandas superaba el ancho de textura
+(4096). El parser **normaliza el documento a ~1 unidad** (`1 / max(width,height)`
+del viewBox) antes de descomponer; `SlugVector3D.size` reescala igual, así que es
+invisible para el usuario. El icono del demo quedó en 56 curvas/banda y 0.33 ms
+de build.
+
+**Rendimiento** (llvmpipe software, 1280×720; no es GPU real, sirve para
+comparar): build SVG 0.33 ms; frame de 16 iconos chicos ~18 ms, 16 grandes
+~45 ms, 1 grande ~9 ms. El costo es por píxel cubierto × curvas/banda. Detalle en
+`demos/slug_vector/README.md`.
+
+**Límites de esta fase:** sin strokes (stroke-to-fill), sin gradientes (se
+saltean), `fill-rule:evenodd` no soportado (el shader es nonzero), sin nodo 2D
+(`SlugVector3D` sólo), y sin import a `.res` (el SVG se lee crudo en runtime).
 
 ## 3. Verificación
 
@@ -71,15 +102,13 @@ así que no son 140 evaluaciones por píxel.
 
 ## 5. Fases siguientes
 
-- **Fase 2 — frontend SVG nativo.** Vendorizar NanoSVG (C, zlib) en
-  `modules/slug/thirdparty/nanosvg`, parsear path `d`/transform/gradientes a
-  `SlugShape` con `SlugCurveDecomposer`, y un nodo `SlugShape2D`/`SlugSprite`
-  (mismo shader; un quad por forma, índice por `UV2.x`). Faltan strokes
-  (stroke-to-fill) y `fill-rule:evenodd` (el shader es nonzero).
+- **Fase 2 (resto).** Strokes (stroke-to-fill), gradientes, `fill-rule:evenodd`
+  (variante de shader) y un nodo 2D (`SlugVector2D`/`TextureRect`-like) para UI
+  plana.
 - **Fase 3 — asset importable.** `EditorImportPlugin` `.svg` → recurso
-  `SlugAtlas` (bytes crudos de `curve`/`band`/`glyph`, porque las texturas son
-  float y no van a PNG). Alternativa: importar `.slugb` de SlugHorn, que exige
-  portar su tabla de indirección (su band texture es `RG16UI`).
+  `SlugAtlas` con los buffers ya empaquetados (bytes crudos de
+  `curve`/`band`/`glyph`, porque las texturas son float y no van a PNG), para no
+  parsear en runtime ni depender de que el `.svg` crudo se exporte.
 - **Fase 4 — empaquetado.** Splits por densidad + indirección (SlugHorn), o
   tope de bandas adaptativo, con la métrica de curvas/banda y ms de GPU.
 

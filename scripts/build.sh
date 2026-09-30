@@ -34,7 +34,7 @@ GODOT_URL="${GODOT_URL:-https://github.com/godotengine/godot.git}"
 # mueve `engine_branch.sh export`; patches/*.patch es el export de esa rama, para
 # llevar los cambios a otro fork o upstream. GODOT_PATCHES=yes compila como antes:
 # GODOT_REF upstream con patches/*.patch aplicados encima.
-ENGINE_REF="${ENGINE_REF:-fd3c9dd416b029a0302a7c955a33d6e9e3f44e76}"
+ENGINE_REF="${ENGINE_REF:-a212d8b019ae6fe5a395011307878627b497f843}"
 ENGINE_URL="${ENGINE_URL:-https://github.com/icarito/godot.git}"
 GODOT_PATCHES="${GODOT_PATCHES:-no}"
 # FRT es un "platform" out-of-tree (efornara/frt) que se clona en platform/frt.
