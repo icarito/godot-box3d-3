@@ -137,18 +137,18 @@ func _show_missing_fonts():
 
 func _build_showcase():
 	# a) título grande, serif CFF
-	big_label = _make_slug("Slug vectorial", cff_font, 1.1, Vector3(0, 3.4, -3), Color(1, 0.95, 0.85))
+	big_label = _make_slug("Slug vectorial", cff_font, 1.1, Vector3(0, 3.6, -4.5), Color(1, 0.95, 0.85))
 	big_label.rotation_degrees.y = -14
 
 	# b) comparación 1:1 Slug vs Label3D rasterizado, mismo tamaño de mundo
 	compare_root = Spatial.new()
-	compare_root.translation = Vector3(0, 2.4, -3)
+	compare_root.translation = Vector3(-1.7, 2.0, -2.5)
 	add_child(compare_root)
 
 	compare_slug = SlugLabel3D.new()
 	compare_slug.text = COMPARE_TEXT
 	compare_slug.font = cff_font
-	compare_slug.size = 0.6
+	compare_slug.size = 0.55
 	compare_slug.align = SlugLabel3D.ALIGN_LEFT
 	compare_slug.modulate = Color(1, 1, 1)
 	compare_root.add_child(compare_slug)
@@ -159,14 +159,14 @@ func _build_showcase():
 	dyn.font_data = cff_data
 	dyn.size = 96
 	compare_dyn.font = dyn
-	compare_dyn.pixel_size = 0.6 / 96.0 # mismo alto de em que el Slug de arriba
-	compare_dyn.align = Label3D.ALIGN_LEFT
-	compare_dyn.translation = Vector3(0, -0.85, 0)
+	compare_dyn.pixel_size = 0.55 / 96.0 # mismo alto de em que el Slug de arriba
+	compare_dyn.horizontal_alignment = Label3D.ALIGN_LEFT
+	compare_dyn.translation = Vector3(0, -0.7, 0)
 	compare_dyn.modulate = Color(1, 0.55, 0.55)
 	compare_root.add_child(compare_dyn)
 
 	# c) prueba de winding (huecos) con la TTF
-	_make_slug(SHOWCASE_TEXT, ttf_font, 0.42, Vector3(0, 0.9, -3), Color(1, 1, 1))
+	_make_slug(SHOWCASE_TEXT, ttf_font, 0.42, Vector3(0, 0.5, -3), Color(1, 1, 1))
 
 	# d) HUD diegético en perspectiva rasante: multilínea, alineado, rotado
 	var hud_panel := _make_slug("> ship status: NOMINAL\n> hull: 100%\n> slug: GPU", cff_font, 0.28, Vector3(-4.2, 1.4, -1), Color(0.25, 1, 0.35))
@@ -181,7 +181,7 @@ func _build_showcase():
 	spinning = _make_slug("girando", cff_font, 1.0, Vector3(3.6, 1.0, -1), Color(0.6, 0.8, 1, 1))
 
 	# g) SVG: un icono vectorial grande girando, y uno en perspectiva rasante
-	icon_big = _make_icon(2.4, Vector3(0, 2.5, 1.5))
+	icon_big = _make_icon(2.2, Vector3(1.8, 2.5, 1.2))
 	icon_grazing = _make_icon(1.4, Vector3(4.2, 0.35, -1))
 	icon_grazing.rotation_degrees = Vector3(-78, 20, 0)
 
