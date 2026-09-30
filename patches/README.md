@@ -131,4 +131,11 @@ que el camino `--script` también escribe PNG + `.import` (no sólo `--bake-ligh
 | `frt/zzzzzz_sdl_video_driver_enum.patch` | FRT definía un enum local `{VIDEO_DRIVER_GLES2 = 0, VIDEO_DRIVER_GLES3 = 1}`, invertido respecto de `OS::VideoDriver` (`GLES3 = 0`, `GLES2 = 1`). Internamente era consistente (elegía el contexto ES 3 y el rasterizador GLES3), pero `get_current_video_driver()` le devolvía al motor el índice local: el resto de Godot veía GLES2 con un contexto ES 3 activo (Anbernic RG351V, Mali-G31). Se usan las constantes de `OS` en todo FRT. |
 | `zzzzzzzzzzz_feature_slug_backend_capability.patch` | `SlugLabel3D` decidía si dibujar mirando `OS::get_current_video_driver()`; con el reporte erróneo de FRT caía siempre al fallback `Label3D`. Ahora consulta la capacidad real: `VisualServer::is_low_end()` (falso solo con el rasterizador GLES3), que no depende del reporte de la plataforma. |
 
-Pendiente para publicar: el commit del motor que produce estos patches existe solo en el clon local (`29369d29`); hay que pushearlo a `icarito/godot` y subir `ENGINE_REF` en `scripts/build.sh` antes de un release.
+Pendiente para publicar: el commit del motor que produce estos patches existe solo en el clon local (`fd3c9dd4`); hay que pushearlo a `icarito/godot` y subir `ENGINE_REF` en `scripts/build.sh` antes de un release.
+
+
+### Slug: modelo de forma genérico + decomposer cúbico (fase 1 del renderer SVG)
+
+| Patch | Qué agrega |
+|---|---|
+| `zzzzzzzzzzzz_feature_slug_shape_builder.patch` | Extrae el empaquetado de curvas/bandas de `SlugFont` a `SlugShapeBuilder` y define `SlugShape` como contrato común de todo productor de curvas. Porta `CurveDecomposer` de SlugHorn (MIT) para partir cúbicas en cuadráticas adaptativamente (De Casteljau, tolerancia `1/4096`, profundidad 8), lo que **habilita CFF/OTF**: antes `slug_font` rechazaba cualquier contorno cúbico. `SlugFont` queda como productor FreeType → `SlugShape`. Sin cambios en la API pública ni en el contrato del shader; la salida TrueType es idéntica (192 glifos, 16/19 curvas por banda). Detalle y mediciones en `docs/slug-vector-spec.md`. |

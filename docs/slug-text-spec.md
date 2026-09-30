@@ -2,7 +2,8 @@
 
 **ESTADO: POC de fase B funcionando.** Módulo `modules/slug` en la rama
 `box3d-3.6` de `icarito/godot` (export: `patches/zzzzzzzz_feature_slug_text.patch`).
-Demo: `demos/slug_text/`.
+Demo: `demos/slug_text/`. Ver `docs/slug-vector-spec.md` para el modelo de forma
+genérico, el decomposer cúbico y la ruta al renderer SVG nativo (fase 1 hecha).
 
 Medido 2026-09-28 (NotoSans Regular, TrueType):
 - Preprocesado en runtime: 192 glifos (ASCII + Latin-1 + U+FFFD) en **~5 ms**,

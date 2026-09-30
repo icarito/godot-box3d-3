@@ -27,5 +27,12 @@ fetch \
 fetch \
 	"https://raw.githubusercontent.com/notofonts/latin-greek-cyrillic/main/OFL.txt" \
 	"$FONT_DIR/OFL.txt"
+# CFF (OpenType/PostScript outlines): ejercita la subdivisión cúbica -> cuadrática.
+fetch \
+	"https://github.com/adobe-fonts/source-sans/raw/release/OTF/SourceSans3-Regular.otf" \
+	"$FONT_DIR/SourceSans3-Regular.otf"
+fetch \
+	"https://github.com/adobe-fonts/source-sans/raw/release/LICENSE.md" \
+	"$FONT_DIR/SourceSans3-LICENSE.md"
 
 echo "listo: fuentes en $FONT_DIR"
