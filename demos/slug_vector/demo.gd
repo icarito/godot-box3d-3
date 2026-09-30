@@ -33,6 +33,7 @@ var cff_data: DynamicFontData
 var ttf_data: DynamicFontData
 var svg_vector: SlugVector
 var sugar_vector: SlugVector
+var gradient_vector: SlugVector
 
 var big_label: SlugLabel3D
 var compare_root: Spatial
@@ -44,6 +45,7 @@ var icon_big: SlugVector3D
 var icon_grazing: SlugVector3D
 var sugar_a: SlugVector3D
 var sugar_b: SlugVector3D
+var gradient_a: SlugVector3D
 
 # Paletas estilo Sugar (XO): [fill, stroke].
 const PALETTES := [
@@ -88,6 +90,9 @@ func _ready():
 	sugar_vector = SlugVector.new()
 	sugar_vector.svg_path = "res://assets/sugar_icon.svg"
 
+	gradient_vector = SlugVector.new()
+	gradient_vector.svg_path = "res://assets/gradient_icon.svg"
+
 	if not cff_font.is_valid() or not ttf_font.is_valid():
 		push_error("SlugFont inválido: faltan las fuentes. Corré demos/slug_vector/fetch_fonts.sh")
 		_show_missing_fonts()
@@ -96,6 +101,8 @@ func _ready():
 			push_error("SlugVector inválido: falta demos/slug_vector/assets/hud.svg")
 		if not sugar_vector.is_valid():
 			push_error("SlugVector inválido: falta demos/slug_vector/assets/sugar_icon.svg")
+		if not gradient_vector.is_valid():
+			push_error("SlugVector inválido: falta demos/slug_vector/assets/gradient_icon.svg")
 		_apply_palette()
 		_build_showcase()
 
@@ -209,6 +216,15 @@ func _build_showcase():
 	sugar_a = _make_sugar_icon(1.9, Vector3(-2.9, 2.2, 0.6), Vector3(0, 18, 0))
 	sugar_b = _make_sugar_icon(1.2, Vector3(-2.9, 0.4, 1.2), Vector3(0, -22, 0))
 
+	# i) SVG con gradientes lineal (objectBoundingBox) y radial (userSpaceOnUse),
+	#    stops con rol fill_color y un path even-odd.
+	var grad := SlugVector3D.new()
+	grad.vector = gradient_vector
+	grad.size = 2.6
+	grad.translation = Vector3(3.4, 2.0, 1.0)
+	add_child(grad)
+	gradient_a = grad
+
 	stress_root = Spatial.new()
 	add_child(stress_root)
 
@@ -229,6 +245,9 @@ func _apply_palette():
 	var palette = PALETTES[palette_index]
 	sugar_vector.fill_color = palette[0]
 	sugar_vector.stroke_color = palette[1]
+	if gradient_vector:
+		gradient_vector.fill_color = palette[0]
+		gradient_vector.stroke_color = palette[1]
 
 
 func _make_icon(size: float, pos: Vector3) -> SlugVector3D:
@@ -311,6 +330,13 @@ func _refresh_stats():
 			]
 		else:
 			text += "SVG Sugar: inválido\n"
+	if gradient_vector:
+		if gradient_vector.is_valid():
+			text += "SVG gradiente: %d formas, %d curvas/banda máx\n" % [
+				gradient_vector.get_shape_count(), gradient_vector.get_max_curves_per_band()
+			]
+		else:
+			text += "SVG gradiente: inválido\n"
 	if microscope:
 		text += "MICROSCOPIO: Slug (arriba) vs Label3D rasterizado (abajo)\n"
 	stats_label.text = text
@@ -337,6 +363,8 @@ func _process(delta):
 		icon_big.rotation_degrees.y += delta * 30.0
 	if sugar_a:
 		sugar_a.rotation_degrees.y += delta * 10.0
+	if gradient_a:
+		gradient_a.rotation_degrees.y -= delta * 14.0
 	_palette_accum += delta
 	if _palette_accum >= 1.8:
 		_palette_accum = 0.0

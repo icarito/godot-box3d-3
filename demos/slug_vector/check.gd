@@ -60,6 +60,27 @@ func _init():
 	print("Sugar SVG: %d formas, %.2f ms build, %d curvas/banda máx" % [
 		sugar.get_shape_count(), sugar.get_build_time_usec() / 1000.0, sugar.get_max_curves_per_band()])
 
+	# Gradientes (lineal objectBoundingBox + radial userSpaceOnUse) y even-odd.
+	var grad := SlugVector.new()
+	grad.svg_path = "res://assets/gradient_icon.svg"
+	if not grad.is_valid():
+		print("SLUG_FAIL: SlugVector inválido para gradient_icon.svg")
+		quit(1)
+		return
+	if grad.get_shape_count() < 5:
+		print("SLUG_FAIL: gradient_icon %d formas (se esperaban >= 5)" % grad.get_shape_count())
+		quit(1)
+		return
+	grad.fill_color = Color(0.2, 0.6, 1.0)
+	grad.stroke_color = Color(0.05, 0.1, 0.2)
+	var gicon := SlugVector3D.new()
+	gicon.vector = grad
+	gicon.size = 2.5
+	gicon.translation = Vector3(-3, 0, 0)
+	get_root().add_child(gicon)
+	print("Gradiente SVG: %d formas, %.2f ms build, %d curvas/banda máx" % [
+		grad.get_shape_count(), grad.get_build_time_usec() / 1000.0, grad.get_max_curves_per_band()])
+
 	yield(self, "idle_frame")
 	yield(self, "idle_frame")
 	print("SLUG_OK")

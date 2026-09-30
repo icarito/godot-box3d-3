@@ -14,6 +14,9 @@ Qué muestra:
   `&fill_color;` / `&stroke_color;` (también se soportan los `var(--fill-color)`
   de Sugarizer v2) y **strokes reales**. El demo cicla paletas XO y recolorea
   fill y stroke en runtime (`C`), sin reconstruir la geometría.
+- Un icono con **gradientes** (`assets/gradient_icon.svg`): lineal
+  (`objectBoundingBox`) y radial (`userSpaceOnUse`), stops que usan el rol
+  `fill_color` (se recolorean en vivo), y un path `fill-rule:evenodd`.
 - Texto `SlugLabel3D` con una fuente **CFF/OTF** (cúbica) y una TrueType.
 - Comparación 1:1 contra un `Label3D` rasterizado (DynamicFont) al mismo tamaño
   de mundo: en el microscopio (`Z`) se ve el escalón/blur del rasterizado.
@@ -74,6 +77,7 @@ Preprocesado (una vez, lazy, la primera vez que se usa):
 | TTF (Noto Sans) | 192 | 3.5 ms | 16 |
 | SVG (`hud.svg`, 4 formas) | — | 0.33 ms | 56 |
 | SVG Sugar (`sugar_icon.svg`, 7 formas con strokes) | — | 0.8 ms | 68 |
+| SVG gradiente (`gradient_icon.svg`, 5 formas, lineal+radial+evenodd) | — | 0.5 ms | 42 |
 
 Frame:
 
@@ -91,6 +95,8 @@ Frame:
 | Slug SVG 16 iconos 6u | 45.2 | 22 |
 | Slug Sugar 1 icono 2u | 8.7 | 115 |
 | Slug Sugar 16 iconos 2u | 24.3 | 41 |
+| Slug gradiente 1 icono 2u | 7.4 | 136 |
+| Slug gradiente 16 iconos 2u | 16.0 | 62 |
 
 Lectura:
 

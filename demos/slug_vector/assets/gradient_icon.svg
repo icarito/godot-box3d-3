@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd" [
+  <!ENTITY fill_color "#ff8f00">
+  <!ENTITY stroke_color "#00695c">
+]>
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="100" viewBox="0 0 120 100">
+  <defs>
+    <!-- Lineal con unidades objectBoundingBox (por defecto). -->
+    <linearGradient id="lg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0" stop-color="&fill_color;"/>
+      <stop offset="0.5" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#d81b60"/>
+    </linearGradient>
+    <!-- Radial en userSpaceOnUse, con un stop en rol de color dinamico. -->
+    <radialGradient id="rg" gradientUnits="userSpaceOnUse" cx="88" cy="30" r="24">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.55" stop-color="&fill_color;"/>
+      <stop offset="1" stop-color="&stroke_color;"/>
+    </radialGradient>
+  </defs>
+
+  <rect x="4" y="4" width="52" height="52" rx="8"
+        fill="url(#lg)" stroke="&stroke_color;" stroke-width="2"/>
+  <circle cx="88" cy="30" r="24"
+          fill="url(#rg)" stroke="&stroke_color;" stroke-width="2"/>
+
+  <!-- Even-odd: dos subpaths con el MISMO winding; nonzero rellenaria, evenodd agujerea. -->
+  <path fill="#4aa3ff" fill-rule="evenodd"
+        d="M6 64 L54 64 L54 94 L6 94 Z M16 72 L44 72 L44 86 L16 86 Z"/>
+</svg>

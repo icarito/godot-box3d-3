@@ -97,6 +97,43 @@ Verificación: `demos/slug_vector/assets/sugar_icon.svg` (marco redondeado +
 círculo + trazo sin relleno + curva, con entidades) da 7 formas y 68
 curvas/banda; el demo lo recolorea ciclando paletas XO (`C`).
 
+## 2d. Gradientes y even-odd (hechos)
+
+**Gradientes lineales y radiales.** El shader deja de ser uno solo: la matemática
+de cobertura (`SLUG_SHADER_MATH`) se comparte y se componen dos shaders, uno
+para `SlugLabel3D` (sin cambios de comportamiento) y otro para el vector, que
+suma `paint_tex` (una fila por forma) y `gradient_tex` (una rampa pre-muestreada
+de 256 texels por gradiente). Por forma, `paint_tex` guarda el tipo de relleno
+(sólido/lineal/radial), la fila de gradiente, el `spread` (pad/reflect/repeat) y
+la regla de relleno, más el afín que lleva la coordenada de la forma al espacio
+del gradiente.
+
+NanoSVG ya entrega ese afín (el **inverso** del basis del gradiente, en las
+coordenadas del documento), así que el parser lo compone con nuestra
+normalización y el flip de Y y lo guarda tal cual; el shader calcula
+`local = M·p + t` y usa `local.y` para el lineal y `length(local)` para el
+radial (es la convención del rasterizador de NanoSVG). Soporta
+`gradientUnits` `objectBoundingBox` (con porcentajes) y `userSpaceOnUse`, y
+`gradientTransform`.
+
+Los stops pueden ser literales o usar los **roles** de Sugar
+(`stop-color="&fill_color;"` / `var(--fill-color)`): la rampa se re-muestrea
+cuando cambia `fill_color`/`stroke_color`, sin reconstruir geometría. Un solo
+gradiente se comparte entre formas (dedup por puntero).
+
+**Even-odd.** `slug_coverage` recibe la regla de relleno. Para even-odd usa
+`min(|xcov|,|ycov|)` (el conteo de cruces, entero lejos de los bordes) y una
+onda triangular de período 2 que mapea la paridad a 0/1, con cobertura
+fraccionaria en los bordes. El shader non-zero queda idéntico.
+
+Verificación: `demos/slug_vector/assets/gradient_icon.svg` (rect con lineal
+`objectBoundingBox`, círculo con radial `userSpaceOnUse`, stops en rol
+`fill_color`, y un path `fill-rule:evenodd` con dos subpaths del mismo winding)
+da 5 formas y 42 curvas/banda; el demo lo recolorea con las paletas XO.
+
+**Límites:** gradientes con foco radial (`fx`/`fy`) no soportados (se usa el
+centro); `stop-opacity` aplicado al color del stop sí.
+
 ## 3. Verificación
 
 Binario: `platform=x11 target=release_debug tools=yes production=yes`, renderer
@@ -134,9 +171,10 @@ así que no son 140 evaluaciones por píxel.
 
 ## 5. Fases siguientes
 
-- **Fase 2 (resto).** Gradientes (lineal/radial), `fill-rule:evenodd` (variante
-  de shader) y un nodo 2D (`SlugVector2D`/`TextureRect`-like) para UI plana.
-  Strokes y fill/stroke dinámicos ya están (sección 2c).
+- **Fase 2 (resto).** Un nodo 2D (`SlugVector2D`) para UI plana: necesita una
+  variante `canvas_item` del shader (el nuestro es `spatial`) y armar el mesh en
+  el canvas, que no expone `UV2` a los shaders 2D. Strokes, fill/stroke
+  dinámicos, gradientes y even-odd ya están (secciones 2c y 2d).
 - **Fase 3 — asset importable.** `EditorImportPlugin` `.svg` → recurso
   `SlugAtlas` con los buffers ya empaquetados (bytes crudos de
   `curve`/`band`/`glyph`, porque las texturas son float y no van a PNG), para no
