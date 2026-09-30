@@ -1,0 +1,39 @@
+--- a/sdl2_adapter.h
++++ b/sdl2_adapter.h
+@@ -154,7 +154,9 @@
+ 	ButtonRight = 2,
+ 	ButtonMiddle = 3,
+ 	WheelUp = 4,
+-	WheelDown = 5
++	WheelDown = 5,
++	ButtonX1 = 6,
++	ButtonX2 = 7
+ };
+ 
+ enum MouseMode {
+@@ -352,6 +354,12 @@
+ 			case SDL_BUTTON_RIGHT:
+ 				os_button = ButtonRight;
+ 				break;
++			case SDL_BUTTON_X1:
++				os_button = ButtonX1;
++				break;
++			case SDL_BUTTON_X2:
++				os_button = ButtonX2;
++				break;
+ 			default:
+ 				return;
+ 			}
+--- a/sdl2_godot_map.h
++++ b/sdl2_godot_map.h
+@@ -28,6 +28,10 @@
+ 		return BUTTON_WHEEL_UP;
+ 	case WheelDown:
+ 		return BUTTON_WHEEL_DOWN;
++	case ButtonX1:
++		return BUTTON_XBUTTON1;
++	case ButtonX2:
++		return BUTTON_XBUTTON2;
+ 	default:
+ 		fatal("unexpected mouse button: %d", os_button);
+ 	}
