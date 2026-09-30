@@ -81,6 +81,14 @@ func _init():
 	print("Gradiente SVG: %d formas, %.2f ms build, %d curvas/banda máx" % [
 		grad.get_shape_count(), grad.get_build_time_usec() / 1000.0, grad.get_max_curves_per_band()])
 
+	# Nodo 2D para UI plana: mismo SlugVector, material canvas_item.
+	var ui := SlugVector2D.new()
+	ui.vector = sugar
+	ui.size = 128
+	ui.centered = true
+	get_root().add_child(ui)
+	print("SlugVector2D: ok")
+
 	yield(self, "idle_frame")
 	yield(self, "idle_frame")
 	print("SLUG_OK")

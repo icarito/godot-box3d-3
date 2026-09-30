@@ -46,6 +46,8 @@ var icon_grazing: SlugVector3D
 var sugar_a: SlugVector3D
 var sugar_b: SlugVector3D
 var gradient_a: SlugVector3D
+var ui_sugar: SlugVector2D
+var ui_gradient: SlugVector2D
 
 # Paletas estilo Sugar (XO): [fill, stroke].
 const PALETTES := [
@@ -105,6 +107,7 @@ func _ready():
 			push_error("SlugVector inválido: falta demos/slug_vector/assets/gradient_icon.svg")
 		_apply_palette()
 		_build_showcase()
+		_setup_ui2d()
 
 	_setup_hud()
 
@@ -248,6 +251,35 @@ func _apply_palette():
 	if gradient_vector:
 		gradient_vector.fill_color = palette[0]
 		gradient_vector.stroke_color = palette[1]
+
+
+func _setup_ui2d():
+	# UI plana: los mismos SlugVector dibujados en 2D con SlugVector2D.
+	var layer := CanvasLayer.new()
+	layer.layer = 2
+	add_child(layer)
+
+	var caption := Label.new()
+	caption.text = "SlugVector2D — UI plana (mismos SVG, sin atlas rasterizado)"
+	caption.rect_position = Vector2(790, 706)
+	layer.add_child(caption)
+
+	var holder := Node2D.new()
+	holder.position = Vector2(790, 610)
+	layer.add_child(holder)
+
+	ui_sugar = SlugVector2D.new()
+	ui_sugar.vector = sugar_vector
+	ui_sugar.size = 88
+	ui_sugar.centered = false
+	holder.add_child(ui_sugar)
+
+	ui_gradient = SlugVector2D.new()
+	ui_gradient.vector = gradient_vector
+	ui_gradient.size = 88
+	ui_gradient.centered = false
+	ui_gradient.position = Vector2(130, 0)
+	holder.add_child(ui_gradient)
 
 
 func _make_icon(size: float, pos: Vector3) -> SlugVector3D:

@@ -17,6 +17,9 @@ Qué muestra:
 - Un icono con **gradientes** (`assets/gradient_icon.svg`): lineal
   (`objectBoundingBox`) y radial (`userSpaceOnUse`), stops que usan el rol
   `fill_color` (se recolorean en vivo), y un path `fill-rule:evenodd`.
+- **UI plana**: abajo a la derecha, una fila de `SlugVector2D` dibuja los mismos
+  SVG en 2D (sugar, gradiente y even-odd) sin atlas rasterizado. Mismo estado
+  de paleta que los 3D.
 - Texto `SlugLabel3D` con una fuente **CFF/OTF** (cúbica) y una TrueType.
 - Comparación 1:1 contra un `Label3D` rasterizado (DynamicFont) al mismo tamaño
   de mundo: en el microscopio (`Z`) se ve el escalón/blur del rasterizado.

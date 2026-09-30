@@ -61,9 +61,9 @@ comparar): build SVG 0.33 ms; frame de 16 iconos chicos ~18 ms, 16 grandes
 ~45 ms, 1 grande ~9 ms. El costo es por píxel cubierto × curvas/banda. Detalle en
 `demos/slug_vector/README.md`.
 
-**Límites de esta fase:** sin gradientes (se saltean), `fill-rule:evenodd` no
-soportado (el shader es nonzero), sin nodo 2D (`SlugVector3D` sólo), y sin
-import a `.res` (el SVG se lee crudo en runtime).
+**Límites de esta fase:** en ese momento faltaban gradientes, `evenodd`, el
+nodo 2D y el import a `.res` (se lee el SVG crudo en runtime); las secciones
+2c-2e cubren los tres primeros, el import queda para la fase 3.
 
 ## 2c. Fill/stroke dinámicos estilo Sugar (hecha)
 
@@ -134,6 +134,30 @@ da 5 formas y 42 curvas/banda; el demo lo recolorea con las paletas XO.
 **Límites:** gradientes con foco radial (`fx`/`fy`) no soportados (se usa el
 centro); `stop-opacity` aplicado al color del stop sí.
 
+## 2e. Nodo 2D para UI plana (hecho)
+
+`SlugVector2D : Node2D` dibuja un `SlugVector` en 2D (iconos/HUD planos) sin
+atlas rasterizado. Detalles que difieren del 3D:
+
+- **Shader `canvas_item`.** Se compone otro shader (`slug_canvas_shader_code`)
+  con la misma `SLUG_SHADER_MATH`. Los shaders 2D no exponen `UV2` ni
+  `PROJECTION_MATRIX`, así que:
+  - el índice de forma viaja en el **color de vértice** (canal rojo,
+    `índice/255`) y el fragment lee `band`/`glyph`/`paint` con `texelFetch`;
+  - el quad se **agranda 1 px** (en unidades de forma) en la CPU, lo que
+    reemplaza el dilation de perspectiva del shader 3D;
+  - el color sólido por forma se guarda en el texel 3 de `paint_tex` (el shader
+    canvas no puede gastar `COLOR` en color);
+  - el tinte por nodo es una propiedad `tint` (no `modulate`, que `CanvasItem`
+    ya define y no fuerza redraw); el gradiente y la regla even-odd funcionan
+    igual que en 3D.
+- **Mesh 2D** (`ArrayMesh`) con `ARRAY_VERTEX`/`ARRAY_TEX_UV`/`ARRAY_COLOR` y
+  drawn con `draw_mesh`; hasta 255 formas por vector (límite del canal).
+
+Verificación: `demos/slug_vector` dibuja una fila de `SlugVector2D`
+(sugar/gradiente/evenodd) como overlay de UI; `check.gd` instancia uno y da
+`SLUG_OK`.
+
 ## 3. Verificación
 
 Binario: `platform=x11 target=release_debug tools=yes production=yes`, renderer
@@ -171,10 +195,9 @@ así que no son 140 evaluaciones por píxel.
 
 ## 5. Fases siguientes
 
-- **Fase 2 (resto).** Un nodo 2D (`SlugVector2D`) para UI plana: necesita una
-  variante `canvas_item` del shader (el nuestro es `spatial`) y armar el mesh en
-  el canvas, que no expone `UV2` a los shaders 2D. Strokes, fill/stroke
-  dinámicos, gradientes y even-odd ya están (secciones 2c y 2d).
+- **Fase 2 (resto).** Import de SVG a `.res` en tiempo de edición para no
+  parsear en runtime (fase 3). Strokes, fill/stroke dinámicos, gradientes,
+  even-odd y el nodo 2D (`SlugVector2D`) ya están (secciones 2c-2e).
 - **Fase 3 — asset importable.** `EditorImportPlugin` `.svg` → recurso
   `SlugAtlas` con los buffers ya empaquetados (bytes crudos de
   `curve`/`band`/`glyph`, porque las texturas son float y no van a PNG), para no
