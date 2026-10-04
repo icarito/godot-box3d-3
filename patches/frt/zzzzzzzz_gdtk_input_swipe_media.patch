@@ -21,10 +21,129 @@ index 79478b9..5311114 100644
  version_sources = ['frt_godot.cc', 'dl/gles2.gen.cc', 'dl/gles3.gen.cc']
  
 diff --git a/frt_godot.cc b/frt_godot.cc
-index 72c2d9f..039758d 100644
+index 72c2d9f..10a2b59 100644
 --- a/frt_godot.cc
 +++ b/frt_godot.cc
-@@ -418,6 +418,24 @@ public: // EventHandler
+@@ -22,6 +22,7 @@
+ #include "servers/visual/rasterizer.h"
+ #include "servers/visual/visual_server_raster.h"
+ #include "main/main.h"
++#include "scene/resources/texture.h"
+ 
+ #include <unistd.h>
+ #include <fcntl.h>
+@@ -242,6 +243,7 @@ public: // OS
+ 		cleanup_input();
+ 		cleanup_audio();
+ 		cleanup_video();
++		cleanup_cursors();
+ 		os_.cleanup();
+ 	}
+ 	Point2 get_mouse_position() const override {
+@@ -325,9 +327,102 @@ public: // OS
+ 	bool can_draw() const override {
+ 		return os_.can_draw();
+ 	}
++	// Cursor de Godot -> SDL_Cursor (ver platform/x11/os_x11.cpp): uno de sistema por
++	// forma, cacheado, y uno custom opcional por forma. La visibilidad la maneja
++	// set_mouse_mode (SDL_ShowCursor); acá sólo se elige cuál se dibuja.
++	SDL_Cursor *sys_cursors_[CURSOR_MAX] = {};
++	SDL_Cursor *custom_cursors_[CURSOR_MAX] = {};
++	RES custom_res_[CURSOR_MAX];
++	Vector2 custom_hotspot_[CURSOR_MAX];
++	CursorShape cursor_shape_ = CURSOR_ARROW;
++	void apply_cursor(CursorShape shape) {
++		SDL_Cursor *c = custom_cursors_[shape];
++		if (!c) {
++			static const SDL_SystemCursor map[CURSOR_MAX] = {
++				SDL_SYSTEM_CURSOR_ARROW, SDL_SYSTEM_CURSOR_IBEAM, SDL_SYSTEM_CURSOR_HAND,
++				SDL_SYSTEM_CURSOR_CROSSHAIR, SDL_SYSTEM_CURSOR_WAIT, SDL_SYSTEM_CURSOR_WAITARROW,
++				SDL_SYSTEM_CURSOR_SIZEALL, SDL_SYSTEM_CURSOR_HAND, SDL_SYSTEM_CURSOR_NO,
++				SDL_SYSTEM_CURSOR_SIZENS, SDL_SYSTEM_CURSOR_SIZEWE, SDL_SYSTEM_CURSOR_SIZENESW,
++				SDL_SYSTEM_CURSOR_SIZENWSE, SDL_SYSTEM_CURSOR_SIZEALL, SDL_SYSTEM_CURSOR_SIZENS,
++				SDL_SYSTEM_CURSOR_SIZEWE, SDL_SYSTEM_CURSOR_ARROW,
++			};
++			if (!sys_cursors_[shape])
++				sys_cursors_[shape] = SDL_CreateSystemCursor(map[shape]);
++			c = sys_cursors_[shape];
++		}
++		if (c)
++			SDL_SetCursor(c);
++	}
++	void cleanup_cursors() {
++		SDL_SetCursor(SDL_GetDefaultCursor());
++		for (int i = 0; i < CURSOR_MAX; i++) {
++			if (sys_cursors_[i])
++				SDL_FreeCursor(sys_cursors_[i]);
++			if (custom_cursors_[i])
++				SDL_FreeCursor(custom_cursors_[i]);
++			sys_cursors_[i] = custom_cursors_[i] = 0;
++			custom_res_[i] = RES();
++		}
++	}
+ 	void set_cursor_shape(CursorShape shape) override {
++		ERR_FAIL_INDEX(shape, CURSOR_MAX);
++		if (OS::get_singleton()->is_no_window_mode_enabled())
++			return;
++		cursor_shape_ = shape;
++		apply_cursor(shape);
+ 	}
+ 	void set_custom_mouse_cursor(const RES &cursor, CursorShape shape, const Vector2 &hotspot) override {
++		ERR_FAIL_INDEX(shape, CURSOR_MAX);
++		if (OS::get_singleton()->is_no_window_mode_enabled())
++			return;
++		if (cursor.is_null()) { // vuelve al de sistema
++			if (custom_cursors_[shape])
++				SDL_FreeCursor(custom_cursors_[shape]);
++			custom_cursors_[shape] = 0;
++			custom_res_[shape] = RES();
++			if (shape == cursor_shape_)
++				apply_cursor(shape);
++			return;
++		}
++		if (custom_cursors_[shape] && custom_res_[shape] == cursor && custom_hotspot_[shape] == hotspot) {
++			set_cursor_shape(shape);
++			return;
++		}
++		Ref<Texture> texture = cursor;
++		Ref<AtlasTexture> atlas = cursor;
++		ERR_FAIL_COND(texture.is_null());
++		Ref<Image> image = texture->get_data();
++		Rect2 region(0, 0, texture->get_width(), texture->get_height());
++		if (atlas.is_valid()) {
++			if (image.is_null()) {
++				texture = atlas->get_atlas();
++				ERR_FAIL_COND(texture.is_null());
++				image = texture->get_data();
++			}
++			region = atlas->get_region();
++		}
++		ERR_FAIL_COND(image.is_null());
++		ERR_FAIL_COND(hotspot.x < 0 || hotspot.y < 0);
++		ERR_FAIL_COND(region.size.width > 256 || region.size.height > 256);
++		ERR_FAIL_COND(hotspot.x > region.size.width || hotspot.y > region.size.height);
++		image = image->get_rect(region);
++		ERR_FAIL_COND(image.is_null() || image->empty());
++		image->convert(Image::FORMAT_RGBA8);
++		PoolByteArray data = image->get_data();
++		PoolByteArray::Read r = data.read();
++		SDL_Surface *surf = SDL_CreateRGBSurfaceFrom((void *)r.ptr(), image->get_width(), image->get_height(),
++			32, image->get_width() * 4, 0x000000ff, 0x0000ff00, 0x00ff0000, 0xff000000);
++		ERR_FAIL_COND(!surf);
++		SDL_Cursor *c = SDL_CreateColorCursor(surf, (int)hotspot.x, (int)hotspot.y); // copia los píxeles
++		SDL_FreeSurface(surf);
++		ERR_FAIL_COND(!c);
++		if (custom_cursors_[shape])
++			SDL_FreeCursor(custom_cursors_[shape]);
++		custom_cursors_[shape] = c;
++		custom_res_[shape] = cursor;
++		custom_hotspot_[shape] = hotspot;
++		if (shape == cursor_shape_)
++			apply_cursor(shape);
+ 	}
+ 	void make_rendering_thread() override {
+ 		os_.make_current_gl();
+@@ -418,6 +513,24 @@ public: // EventHandler
  		mouse_button->set_pressed(pressed);
  		input_->parse_input_event(mouse_button);
  	}
