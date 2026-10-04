@@ -46,11 +46,12 @@ index 72c2d9f..255ccb4 100644
  	}
 diff --git a/frt_wl_gestures.cc b/frt_wl_gestures.cc
 new file mode 100644
-index 0000000..af68d81
+index 0000000..f25a9af
 --- /dev/null
 +++ b/frt_wl_gestures.cc
-@@ -0,0 +1,110 @@
+@@ -0,0 +1,117 @@
 +
++#include <poll.h>
 +#include <SDL.h>
 +#include "frt_wl_gestures.h"
 +
@@ -140,7 +141,13 @@ index 0000000..af68d81
 +		while (wl_display_prepare_read_queue(display, queue) != 0)
 +			wl_display_dispatch_queue_pending(display, queue);
 +		wl_display_flush(display);
-+		wl_display_read_events(display);
++		// Sin bloquear: read_events espera datos en el socket si no los hay, y eso
++		// frenaba el loop del motor hasta el próximo evento de sway (mover el mouse).
++		struct pollfd pfd = { wl_display_get_fd(display), POLLIN, 0 };
++		if (poll(&pfd, 1, 0) > 0 && (pfd.revents & POLLIN))
++			wl_display_read_events(display);
++		else
++			wl_display_cancel_read(display);
 +		wl_display_dispatch_queue_pending(display, queue);
 +	}
 +};
