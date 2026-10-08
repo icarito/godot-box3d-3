@@ -11,6 +11,11 @@ Import("env_modules")
 
 env_xmpp = env_modules.Clone()
 
+# libstrophe's SRV lookup calls res_query on Apple platforms. The symbol is
+# provided by libresolv, which is not part of the default macOS/iOS link set.
+if env["platform"] in ("osx", "iphone"):
+    env.Append(LIBS=["resolv"])
+
 # ---------------------------------------------------------------------------
 # Includes del módulo y de terceros (relativos al dir del módulo).
 # ---------------------------------------------------------------------------
