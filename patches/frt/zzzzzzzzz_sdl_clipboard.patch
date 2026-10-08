@@ -1,0 +1,24 @@
+--- a/frt_godot.cc
++++ b/frt_godot.cc
+@@ -338,6 +338,21 @@
+ 	bool can_draw() const override {
+ 		return os_.can_draw();
+ 	}
++	// Portapapeles del sistema vía SDL (Wayland/X11). Sin esto rige el de OS
++	// base: un String interno que nunca sale del proceso.
++	void set_clipboard(const String &p_text) override {
++		OS::set_clipboard(p_text);
++		os_.set_clipboard_text(p_text.utf8().get_data());
++	}
++	String get_clipboard() const override {
++		if (!os_.has_clipboard_text())
++			return OS::get_clipboard();
++		char *text = os_.get_clipboard_text();
++		String ret;
++		ret.parse_utf8(text);
++		os_.free_clipboard_text(text);
++		return ret;
++	}
+ 	// Cursor de Godot -> SDL_Cursor (ver platform/x11/os_x11.cpp): uno de sistema por
+ 	// forma, cacheado, y uno custom opcional por forma. La visibilidad la maneja
+ 	// set_mouse_mode (SDL_ShowCursor); acá sólo se elige cuál se dibuja.

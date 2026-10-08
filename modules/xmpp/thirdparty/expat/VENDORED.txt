@@ -1,0 +1,3 @@
+expat R_2_6_4
+https://github.com/libexpat/libexpat
+MIT (see COPYING)

@@ -16,6 +16,10 @@ on:
       os:
         required: true
         type: string
+      module_xmpp:
+        required: false
+        type: boolean
+        default: false
 
 env:
   # Keep in step with GODOT_REF in scripts/build.sh.
@@ -137,6 +141,7 @@ jobs:
           # cache budget absorbs this comfortably.
           SCONS_CACHE_LIMIT: 8192
           GODOT_DIR: ${{ github.workspace }}/../${{ env.GODOT_DIR_REL }}
+          MODULE_XMPP: ${{ inputs.module_xmpp && 'yes' || 'no' }}
         run: scripts/build.sh ${{ inputs.target }}
 
       # Templates are renamed to the slots Godot looks for; the editor and
@@ -227,6 +232,14 @@ jobs:
               cp "$BIN/iphone.zip" out/iphone.zip
               ;;
           esac
+          if [ "${{ inputs.module_xmpp }}" = true ]; then
+            for f in out/*; do
+              case "$f" in
+                *.apk|*.zip) mv "$f" "${f%.*}_xmpp.${f##*.}" ;;
+                *) mv "$f" "${f}_xmpp" ;;
+              esac
+            done
+          fi
           # Belt and braces: production=yes already omits them, but a stray
           # symbol table costs hundreds of megabytes on every CI download.
           case "${{ inputs.target }}" in

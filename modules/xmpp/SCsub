@@ -1,0 +1,117 @@
+#!/usr/bin/env python
+# Compila el módulo xmpp: código propio (C++ y tls_mbedtls.c) + terceros
+# vendorizados (libstrophe, expat, sqlite3).
+#
+# Las rutas son relativas al directorio de este SConscript (el módulo). El
+# módulo vive en el overlay del fork (custom_modules), no en el árbol del motor:
+# por eso NO se usa el prefijo "#".
+
+Import("env")
+Import("env_modules")
+
+env_xmpp = env_modules.Clone()
+
+# ---------------------------------------------------------------------------
+# Includes del módulo y de terceros (relativos al dir del módulo).
+# ---------------------------------------------------------------------------
+env_xmpp.Prepend(CPPPATH=[
+    Dir("."),
+    Dir("thirdparty/libstrophe"),
+    Dir("thirdparty/libstrophe/src"),
+    Dir("thirdparty/expat/lib"),
+    Dir("thirdparty/sqlite"),
+])
+
+# ---------------------------------------------------------------------------
+# libstrophe (parser expat; el backend TLS lo aporta tls_mbedtls.c propio).
+# ---------------------------------------------------------------------------
+ls_dir = "thirdparty/libstrophe/src/"
+
+libstrophe_sources = [
+    "auth.c",
+    "compression.c",
+    "compression_dummy.c",
+    "conn.c",
+    "crypto.c",
+    "ctx.c",
+    "deprecated.c",
+    "event.c",
+    "handler.c",
+    "hash.c",
+    "jid.c",
+    "md5.c",
+    "parser_expat.c",
+    "rand.c",
+    "resolver.c",
+    "sasl.c",
+    "scram.c",
+    "sha1.c",
+    "sha256.c",
+    "sha512.c",
+    "sock.c",
+    "stanza.c",
+    "tls.c",
+    "util.c",
+    "uuid.c",
+]
+
+thirdparty_obj = []
+
+env_ls = env_xmpp.Clone()
+env_ls.disable_warnings()
+# glibc tiene snprintf/vsnprintf/__va_copy: evitamos la copia portable de
+# libstrophe (snprintf.c queda fuera de la lista de fuentes).
+env_ls.Append(CPPDEFINES=["HAVE_SNPRINTF", "HAVE_VSNPRINTF", "HAVE___VA_COPY"])
+env_ls.add_source_files(thirdparty_obj, [ls_dir + f for f in libstrophe_sources])
+
+# ---------------------------------------------------------------------------
+# expat (XML parser de libstrophe).
+# ---------------------------------------------------------------------------
+exp_dir = "thirdparty/expat/lib/"
+expat_sources = [
+    exp_dir + "xmlparse.c",
+    exp_dir + "xmlrole.c",
+    exp_dir + "xmltok.c",
+]
+env_expat = env_xmpp.Clone()
+env_expat.disable_warnings()
+env_expat.add_source_files(thirdparty_obj, expat_sources)
+
+# ---------------------------------------------------------------------------
+# SQLite (amalgama). Serialized: una conexión puede usarse desde varios hilos;
+# igualmente la política de xat es no tocar SQLite desde el hilo de libstrophe.
+# ---------------------------------------------------------------------------
+sqlite_sources = ["thirdparty/sqlite/sqlite3.c"]
+env_sqlite = env_xmpp.Clone()
+env_sqlite.disable_warnings()
+env_sqlite.Append(CPPDEFINES=[
+    "SQLITE_THREADSAFE=1",
+    "SQLITE_DEFAULT_MEMSTATUS=0",
+    "SQLITE_OMIT_DEPRECATED",
+    "SQLITE_OMIT_LOAD_EXTENSION",
+    "SQLITE_LIKE_DOESNT_MATCH_BLOBS",
+    "SQLITE_USE_URI=1",
+])
+env_sqlite.add_source_files(thirdparty_obj, sqlite_sources)
+
+# ---------------------------------------------------------------------------
+# Backend TLS de libstrophe sobre el mbedTLS del motor. Debe usar exactamente
+# el mismo config header que modules/mbedtls para que los structs coincidan.
+# (El include del motor sí es externo al módulo, de ahí el prefijo "#".)
+# ---------------------------------------------------------------------------
+env_tls = env_xmpp.Clone()
+env_tls.Prepend(CPPPATH=["#thirdparty/mbedtls/include"])
+config_path = '\\"thirdparty/mbedtls/include/godot_module_mbedtls_config.h\\"'
+env_tls.Append(CPPDEFINES=[("MBEDTLS_CONFIG_FILE", config_path)])
+tls_obj = []
+env_tls.add_source_files(tls_obj, "tls_mbedtls.c")
+
+# ---------------------------------------------------------------------------
+# Código del módulo.
+# ---------------------------------------------------------------------------
+module_obj = []
+env_xmpp.add_source_files(module_obj, "*.cpp")
+
+env.modules_sources += thirdparty_obj
+env.modules_sources += tls_obj
+env.modules_sources += module_obj
