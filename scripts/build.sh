@@ -164,6 +164,19 @@ pack_ios() {
 	local bin="$GODOT_DIR/bin"
 	rm -rf "$bin/ios_xcode"
 	cp -r "$GODOT_DIR/misc/dist/ios_xcode" "$bin/"
+	if [ "$MODULE_XMPP" = yes ]; then
+		python3 - "$bin/ios_xcode/godot_ios.xcodeproj/project.pbxproj" <<'PY'
+import pathlib
+import sys
+
+project = pathlib.Path(sys.argv[1])
+source = project.read_text()
+needle = "$linker_flags"
+if source.count(needle) != 2:
+    raise SystemExit("unexpected iOS Xcode linker flags in " + str(project))
+project.write_text(source.replace(needle, needle + " -lresolv"))
+PY
+	fi
 	cp "$bin/libgodot.iphone.opt.arm64.a" \
 		"$bin/ios_xcode/libgodot.iphone.release.xcframework/ios-arm64/libgodot.a"
 	cp "$bin/libgodot.iphone.opt.debug.arm64.a" \
