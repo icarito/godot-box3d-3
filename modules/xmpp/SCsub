@@ -11,9 +11,9 @@ Import("env_modules")
 
 env_xmpp = env_modules.Clone()
 
-# libstrophe's SRV lookup calls res_query on Apple platforms. The symbol is
-# provided by libresolv, which is not part of the default macOS/iOS link set.
-if env["platform"] in ("osx", "iphone"):
+# libstrophe's SRV lookup calls res_query on macOS. iOS produces a static
+# library here, so its final libresolv link belongs in the Xcode template.
+if env["platform"] == "osx":
     env.Append(LIBS=["resolv"])
 
 # ---------------------------------------------------------------------------
