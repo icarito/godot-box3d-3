@@ -111,6 +111,32 @@ jobs:
       name: ${{ matrix.name }}
       os: ${{ matrix.os }}
 
+  # XMPP is built only for xat. These artifacts stay out of the standard
+  # export-template bundle consumed by GDTK, Odisea, and other projects.
+  xmpp-templates:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: headless
+            name: headless-xmpp
+            os: ubuntu-22.04
+          - target: android-templates
+            name: android-xmpp
+            os: ubuntu-22.04
+          - target: macos-templates
+            name: macos-xmpp
+            os: macos-14
+          - target: ios-templates
+            name: ios-xmpp
+            os: macos-14
+    uses: ./.github/workflows/build-target.yml
+    with:
+      target: ${{ matrix.target }}
+      name: ${{ matrix.name }}
+      os: ${{ matrix.os }}
+      module_xmpp: true
+
   publish:
     needs: build
     # A platform that fails to build is simply absent from the .tpz: a partial
@@ -273,3 +299,32 @@ jobs:
             done
           done
           gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' | sort
+
+  publish-xmpp-templates:
+    needs: [publish, xmpp-templates]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          pattern: '*-xmpp'
+          merge-multiple: false
+
+      - name: Upload xat-only templates
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          shopt -s nullglob
+          ASSETS=(artifacts/*-xmpp/*)
+          if [ ${#ASSETS[@]} -eq 0 ]; then
+            echo "::error::no hay artifacts XMPP para xat"
+            exit 1
+          fi
+          for f in "${ASSETS[@]}"; do
+            gh release upload "$TAG" "$f" --repo "$GITHUB_REPOSITORY" --clobber
+          done

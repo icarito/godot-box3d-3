@@ -1,0 +1,41 @@
+--- a/sdl2_adapter.h
++++ b/sdl2_adapter.h
+@@ -285,11 +285,33 @@
+ 			return 0;
+ 	}
+ 	void text_event(const SDL_TextInputEvent &text) {
+-		if (key_unicode_ != REQUEST_UNICODE)
+-			return;
+-		key_unicode_ = utf8_to_unicode(text.text);
+-		int sdl2_code = key_ev_.keysym.sym;
+-		handler_->handle_key_event(sdl2_code, key_ev_.keysym.scancode, key_unicode_, true);
++		// Recorre todos los caracteres UTF-8: un commit puede traer varios
++		// (tecla muerta + letra sin composición, IME, compose).
++		const char *s = text.text;
++		bool first = true;
++		while (*s) {
++			int len = 1;
++			if ((s[0] & 0xe0) == 0xc0)
++				len = 2;
++			else if ((s[0] & 0xf0) == 0xe0)
++				len = 3;
++			else if ((s[0] & 0xf8) == 0xf0)
++				len = 4;
++			int c = utf8_to_unicode(s);
++			if (first && key_unicode_ == REQUEST_UNICODE) {
++				// Caso normal: completa el keydown retenido.
++				key_unicode_ = c;
++				handler_->handle_key_event(key_ev_.keysym.sym, key_ev_.keysym.scancode, c, true);
++			} else if (c != 0) {
++				// Texto sin keydown pendiente (acento compuesto con tecla muerta en
++				// Wayland, IME): antes se descartaba. Se emite como tecla sintética.
++				handler_->handle_key_event(0, 0, c, true);
++				handler_->handle_key_event(0, 0, c, false);
++			}
++			first = false;
++			for (int i = 0; i < len && *s; i++)
++				s++;
++		}
+ 	}
+ 	bool require_unicode(int c) {
+ 		// SDLK_DELETE es 0x7F (entra en el rango "imprimible" por error) pero no

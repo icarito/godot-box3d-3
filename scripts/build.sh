@@ -34,9 +34,15 @@ GODOT_URL="${GODOT_URL:-https://github.com/godotengine/godot.git}"
 # mueve `engine_branch.sh export`; patches/*.patch es el export de esa rama, para
 # llevar los cambios a otro fork o upstream. GODOT_PATCHES=yes compila como antes:
 # GODOT_REF upstream con patches/*.patch aplicados encima.
-ENGINE_REF="${ENGINE_REF:-aaf46b87727b1a486bd200fb515b6ab3ed86d5f3}"
+ENGINE_REF="${ENGINE_REF:-22957f59b4ede3c4aca7b4bc9c2cde7650af7a94}"
 ENGINE_URL="${ENGINE_URL:-https://github.com/icarito/godot.git}"
 GODOT_PATCHES="${GODOT_PATCHES:-no}"
+# XMPP is an opt-in custom module; regular GDTK/Odisea builds omit it.
+MODULE_XMPP="${MODULE_XMPP:-no}"
+if [ "$MODULE_XMPP" != yes ] && [ "$MODULE_XMPP" != no ]; then
+	echo "MODULE_XMPP must be yes or no (got: $MODULE_XMPP)" >&2
+	exit 2
+fi
 # FRT es un "platform" out-of-tree (efornara/frt) que se clona en platform/frt.
 # Pineado por la misma razon que el engine: un binario publicable tiene que ser
 # reproducible. Los hooks que el engine necesita para conocer la plataforma van
@@ -112,6 +118,14 @@ if [ "$GODOT_PATCHES" = yes ]; then
 	done
 fi
 
+# The emoji inline-image API is an xat presentation feature, not part of the
+# general-purpose engine builds. It travels with the optional XMPP runtime.
+if [ "$MODULE_XMPP" = yes ]; then
+	patch="$here/patches/xmpp/emoji_inline_source.patch"
+	echo "==> Patch   xmpp/$(basename "$patch")"
+	apply_patch "$patch" "$GODOT_DIR"
+fi
+
 if [ ! -e "$here/box3d/thirdparty/box3d/include/box3d/box3d.h" ]; then
 	echo "!!! box3d submodule missing: git submodule update --init --recursive" >&2
 	exit 1
@@ -180,9 +194,13 @@ LTO="${LTO:-none}"
 
 build() { # build <scons args...>
 	echo "==> scons $*"
+	local module_args=()
+	if [ "$MODULE_XMPP" = yes ]; then
+		module_args+=(module_xmpp_enabled=yes)
+	fi
 	(cd "$GODOT_DIR" && scons -j"$JOBS" \
 		custom_modules="${CUSTOM_MODULES:-$here}" progress=no \
-		production="$PRODUCTION" lto="$LTO" "$@")
+		production="$PRODUCTION" lto="$LTO" "${module_args[@]}" "$@")
 }
 
 frte_prep() { # prepara platform/frt: clone pineado + patches/frt/*.patch

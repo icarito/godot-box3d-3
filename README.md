@@ -243,6 +243,19 @@ scripts/build.sh macos-templates           # needs Xcode
 scripts/build.sh ios-templates             # needs Xcode
 ```
 
+The optional `modules/xmpp` module is disabled in ordinary fork builds, so the
+shared editor, headless binary, and standard export-template bundle do not link
+libstrophe or SQLite. Set `MODULE_XMPP=yes` only for the dedicated xat runtime
+templates, for example:
+
+```bash
+MODULE_XMPP=yes scripts/build.sh android-templates
+MODULE_XMPP=yes scripts/build.sh macos-templates ios-templates
+```
+
+The release workflow publishes these as separate `*_xmpp` assets; it does not
+put them in the standard `.tpz` bundle.
+
 Run it with no arguments for the list.
 
 `scripts/build.sh` caches objects in `~/.cache/scons-godot3` (`SCONS_CACHE`) and builds in
