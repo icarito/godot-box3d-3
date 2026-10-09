@@ -26,11 +26,12 @@ module_dir="$env_dir/modules"
 # Pin: moverlo cambia el binario y el protocolo que habla con los clientes gdtk.
 # Tiene que ser un commit que exista en el remote (main de icarito/gdtk); un
 # HEAD solo local da "upload-pack: not our ref".
-GDTK_REF="${GDTK_REF:-6a6f19fe17ca2130e23cd4f5178b79a92be47de1}"
+GDTK_REF="${GDTK_REF:-41f0cef71e3c9313933d583275bf802b4a865165}"
 GDTK_URL="${GDTK_URL:-https://github.com/icarito/gdtk.git}"
 
-# wayland es obligatorio; inotify es opcional: si no esta commiteado en el ref,
-# el shell de gdtk cae a su fallback por polling (shell/apps.gd comprueba
+# wayland es obligatorio. inotify (GdtkFileWatch) esta commiteado en gdtk desde
+# 41f0cef y el release lite lo exige; si un pin futuro no lo trajera, se omite
+# aca y el shell cae a su fallback por polling (shell/apps.gd comprueba
 # ClassDB.class_exists("GdtkFileWatch") antes de instanciarlo).
 if [ -f "$module_dir/wayland/SCsub" ]; then
 	exit 0

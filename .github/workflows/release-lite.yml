@@ -71,11 +71,14 @@ jobs:
           cp "$BIN/godot.frt.opt.x86_64" out/godot.box3d.frt.gdtk.x86_64.release
           cp "$BIN/godot.frt.opt.debug.x86_64" out/godot.box3d.frt.gdtk.x86_64.debug
           cp "$BIN/godot.frt.opt.tools.x86_64" out/godot.box3d.frt.gdtk.linux.x86_64.editor
-          # El module wayland se cae en silencio si falta wlroots en el host; el
-          # binario sin compositor (o sin imgui) no le sirve a gdtk.
+          # El module wayland se cae en silencio si falta wlroots en el host, e
+          # inotify se omitia cuando no estaba commiteado en gdtk. El binario
+          # necesita TODAS las nativas que usa el shell (AGENTS.md de gdtk:
+          # WaylandCompositor, RemoteInput, GdtkFileWatch) mas imgui y slug.
           for f in out/*; do
-            grep -q WaylandCompositor "$f" || { echo "::error::$f no trae WaylandCompositor"; exit 1; }
-            grep -q ImGuiCanvas "$f" || { echo "::error::$f no trae ImGuiCanvas"; exit 1; }
+            for sym in WaylandCompositor RemoteInput GdtkFileWatch ImGuiCanvas SlugVector2D; do
+              grep -q "$sym" "$f" || { echo "::error::$f no trae $sym"; exit 1; }
+            done
           done
           strip out/* || true
           # Portabilidad: el crt1 del contenedor puede marcar el binario con un
