@@ -41,9 +41,10 @@ MODULE_XMPP=yes scripts/build.sh ...          # alias legacy de PROFILE=xmpp
   raycast box3d decal imgui`). Conserva `stb_vorbis` + `minimp3` (audio adjunto) y
   `mbedtls` (TLS del stack XMPP).
 - **lite** — gdtk: FRT + imgui (`implot3d=yes`) + slug, sin box3d/decal/xmpp;
-  apaga además `stb_vorbis minimp3` (audio Dummy). `scripts/gdtk_env.sh` trae sus
-  módulos `wayland` e `inotify` desde `github.com/icarito/gdtk` (pineados), igual
-  que `scripts/thegates_env.sh` trae `the_gates`.
+  apaga además `stb_vorbis minimp3` (audio Dummy). `scripts/gdtk_env.sh` trae su
+  módulo `wayland` desde `github.com/icarito/gdtk` (pineado); `modules/inotify`
+  se incluye solo si está commiteado en el ref (es opcional: el shell cae a
+  fallback por polling, `shell/apps.gd`).
 
 ### La dieta es conservadora
 

@@ -29,7 +29,10 @@ module_dir="$env_dir/modules"
 GDTK_REF="${GDTK_REF:-6a6f19fe17ca2130e23cd4f5178b79a92be47de1}"
 GDTK_URL="${GDTK_URL:-https://github.com/icarito/gdtk.git}"
 
-if [ -f "$module_dir/wayland/SCsub" ] && [ -f "$module_dir/inotify/SCsub" ]; then
+# wayland es obligatorio; inotify es opcional: si no esta commiteado en el ref,
+# el shell de gdtk cae a su fallback por polling (shell/apps.gd comprueba
+# ClassDB.class_exists("GdtkFileWatch") antes de instanciarlo).
+if [ -f "$module_dir/wayland/SCsub" ]; then
 	exit 0
 fi
 
@@ -37,18 +40,27 @@ echo "==> gdtk modules $GDTK_REF" >&2
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
-# Trae solo esos dos directorios del commit pineado: clone sin checkout +
-# checkout selectivo con filtro blobless baja los blobs de esos caminos y nada
-# mas (mismo truco que scripts/thegates_env.sh).
+# Trae esos directorios del commit pineado: clone sin checkout + checkout
+# selectivo con filtro blobless baja los blobs de esos caminos y nada mas
+# (mismo truco que scripts/thegates_env.sh).
 git clone --quiet --no-checkout --filter=blob:none --depth 1 "$GDTK_URL" "$tmp/repo"
 if ! git -C "$tmp/repo" cat-file -e "$GDTK_REF^{commit}" 2>/dev/null; then
 	git -C "$tmp/repo" fetch --quiet --depth 1 --filter=blob:none origin "$GDTK_REF"
 fi
-git -C "$tmp/repo" checkout --quiet "$GDTK_REF" -- modules/wayland modules/inotify
+module_paths="modules/wayland"
+if git -C "$tmp/repo" cat-file -e "$GDTK_REF:modules/inotify/SCsub" 2>/dev/null; then
+	module_paths="$module_paths modules/inotify"
+else
+	echo "==> gdtk    modules/inotify no esta en $GDTK_REF; se omite (opcional)" >&2
+fi
+# shellcheck disable=SC2086
+git -C "$tmp/repo" checkout --quiet "$GDTK_REF" -- $module_paths
 
 rm -rf "$module_dir"
 mkdir -p "$module_dir"
-mv "$tmp/repo/modules/wayland" "$tmp/repo/modules/inotify" "$module_dir/"
+for p in $module_paths; do
+	mv "$tmp/repo/$p" "$module_dir/"
+done
 # Los .o que gdtk dejo en su arbol de desarrollo no viajan.
 find "$module_dir" -name '*.o' -delete
 
