@@ -8,6 +8,7 @@ name: Release XMPP templates
 #   godot.box3d.linux.x86_64.headless_xmpp
 #   android_release_xmpp.apk / android_debug_xmpp.apk / android_source_xmpp.zip
 #   osx_xmpp.zip / iphone_xmpp.zip
+#   linux_x11_64_release_xmpp / linux_x11_64_debug_xmpp (templates Linux X11)
 on:
   push:
     tags: ["v*-xmpp"]
@@ -36,6 +37,9 @@ jobs:
           - target: ios-templates
             name: ios-xmpp
             os: macos-14
+          - target: linux-templates
+            name: linux-xmpp
+            os: ubuntu-22.04
     uses: ./.github/workflows/build-target.yml
     with:
       target: ${{ matrix.target }}
@@ -67,6 +71,8 @@ jobs:
           test -s artifacts/android-xmpp/android_debug_xmpp.apk
           test -s artifacts/ios-xmpp/iphone_xmpp.zip
           test -s artifacts/macos-xmpp/osx_xmpp.zip
+          test -s artifacts/linux-xmpp/linux_x11_64_release_xmpp
+          test -s artifacts/linux-xmpp/linux_x11_64_debug_xmpp
           if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release create "$TAG" --repo "$GITHUB_REPOSITORY" \
               --target "$GITHUB_SHA" --title "$TAG" \
