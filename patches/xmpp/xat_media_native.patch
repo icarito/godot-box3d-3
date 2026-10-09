@@ -1,0 +1,624 @@
+diff --git a/platform/android/java/lib/src/org/godotengine/godot/XatMedia.java b/platform/android/java/lib/src/org/godotengine/godot/XatMedia.java
+new file mode 100644
+index 0000000000..3845123dd3
+--- /dev/null
++++ b/platform/android/java/lib/src/org/godotengine/godot/XatMedia.java
+@@ -0,0 +1,272 @@
++/**************************************************************************/
++/*  XatMedia.java                                                         */
++/*                                                                        */
++/*  Plugin Android integrado del fork xat: selector nativo de documentos  */
++/*  (Storage Access Framework) y cámara del sistema. Godot 3 no expone   */
++/*  ninguna de las dos APIs, así que viven en la capa Java del motor y   */
++/*  se registran como singleton Godot ("XatMedia").                      */
++/**************************************************************************/
++
++package org.godotengine.godot;
++
++import android.app.Activity;
++import android.content.ContentResolver;
++import android.content.Intent;
++import android.net.Uri;
++import android.provider.MediaStore;
++import android.util.Log;
++
++import androidx.annotation.NonNull;
++import androidx.core.content.FileProvider;
++
++import org.godotengine.godot.plugin.GodotPlugin;
++import org.godotengine.godot.plugin.SignalInfo;
++import org.godotengine.godot.plugin.UsedByGodot;
++
++import java.io.File;
++import java.io.FileOutputStream;
++import java.io.InputStream;
++import java.io.OutputStream;
++import java.util.Arrays;
++import java.util.HashSet;
++import java.util.Set;
++
++/**
++ * Selector nativo de archivos/cámara para xat.
++ *
++ * El resultado llega por señales en el hilo principal de Godot:
++ * <ul>
++ *   <li>{@code media_picked(path)}: ruta absoluta lista (dentro del
++ *       almacenamiento propio de la app, que Godot sí puede leer).</li>
++ *   <li>{@code media_cancelled()}: el usuario cerró el selector/cámara.</li>
++ *   <li>{@code media_error(reason)}: motivo del fallo ("sin-camara", ...).</li>
++ * </ul>
++ */
++public class XatMedia extends GodotPlugin {
++	public static final String PLUGIN_NAME = "XatMedia";
++
++	private static final String TAG = "XatMedia";
++
++	private static final int REQUEST_PICK = 0x58415401;
++	private static final int REQUEST_CAMERA = 0x58415402;
++
++	private boolean pending = false;
++	private File cameraFile;
++
++	public XatMedia(Godot godot) {
++		super(godot);
++	}
++
++	@NonNull
++	@Override
++	public String getPluginName() {
++		return PLUGIN_NAME;
++	}
++
++	@NonNull
++	@Override
++	public Set<SignalInfo> getPluginSignals() {
++		return new HashSet<>(Arrays.asList(
++				new SignalInfo("media_picked", String.class),
++				new SignalInfo("media_cancelled"),
++				new SignalInfo("media_error", String.class)));
++	}
++
++	@UsedByGodot
++	public boolean isAvailable() {
++		return true;
++	}
++
++	@UsedByGodot
++	public boolean isBusy() {
++		return pending;
++	}
++
++	@UsedByGodot
++	public boolean hasCamera() {
++		Activity activity = getActivity();
++		if (activity == null) {
++			return false;
++		}
++		Intent intent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
++		return intent.resolveActivity(activity.getPackageManager()) != null;
++	}
++
++	/** Abre el selector nativo limitado a imágenes. */
++	@UsedByGodot
++	public void pickImage() {
++		launchPicker("image/*");
++	}
++
++	/** Abre el selector nativo para cualquier tipo de archivo. */
++	@UsedByGodot
++	public void pickFile() {
++		launchPicker("*/*");
++	}
++
++	/** Abre la app de cámara y guarda la foto en el almacenamiento de la app. */
++	@UsedByGodot
++	public void takePhoto() {
++		final Activity activity = getActivity();
++		if (activity == null || pending) {
++			return;
++		}
++		Intent intent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
++		if (intent.resolveActivity(activity.getPackageManager()) == null) {
++			emitSignal("media_error", "sin-camara");
++			return;
++		}
++		try {
++			File dir = mediaDir(activity);
++			if (dir == null) {
++				emitSignal("media_error", "sin-espacio");
++				return;
++			}
++			cameraFile = new File(dir, "foto_" + System.currentTimeMillis() + ".jpg");
++			Uri output = FileProvider.getUriForFile(activity,
++					activity.getPackageName() + ".fileprovider", cameraFile);
++			intent.putExtra(MediaStore.EXTRA_OUTPUT, output);
++			intent.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
++			pending = true;
++			activity.startActivityForResult(intent, REQUEST_CAMERA);
++		} catch (Exception e) {
++			Log.w(TAG, "No se pudo abrir la cámara", e);
++			pending = false;
++			emitSignal("media_error", "camara-fallida");
++		}
++	}
++
++	private void launchPicker(String mime) {
++		final Activity activity = getActivity();
++		if (activity == null || pending) {
++			return;
++		}
++		Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
++		intent.addCategory(Intent.CATEGORY_OPENABLE);
++		intent.setType(mime);
++		intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
++		try {
++			pending = true;
++			activity.startActivityForResult(intent, REQUEST_PICK);
++		} catch (Exception e) {
++			Log.w(TAG, "No se pudo abrir el selector de archivos", e);
++			pending = false;
++			emitSignal("media_error", "sin-selector");
++		}
++	}
++
++	@Override
++	public void onMainActivityResult(int requestCode, int resultCode, Intent data) {
++		if (requestCode != REQUEST_PICK && requestCode != REQUEST_CAMERA) {
++			return;
++		}
++		pending = false;
++		if (resultCode != Activity.RESULT_OK) {
++			emitSignal("media_cancelled");
++			return;
++		}
++		try {
++			if (requestCode == REQUEST_CAMERA) {
++				if (cameraFile != null && cameraFile.exists() && cameraFile.length() > 0) {
++					emitSignal("media_picked", cameraFile.getAbsolutePath());
++				} else {
++					emitSignal("media_error", "sin-imagen");
++				}
++			} else {
++				Uri uri = data != null ? data.getData() : null;
++				if (uri == null) {
++					emitSignal("media_error", "sin-archivo");
++					return;
++				}
++				String path = copyToAppStorage(uri);
++				if (path != null) {
++					emitSignal("media_picked", path);
++				} else {
++					emitSignal("media_error", "copia-fallida");
++				}
++			}
++		} catch (Exception e) {
++			Log.w(TAG, "Error procesando el resultado del selector", e);
++			emitSignal("media_error", "error");
++		}
++	}
++
++	private File mediaDir(Activity activity) {
++		File base = activity.getExternalFilesDir(null);
++		if (base == null) {
++			base = activity.getCacheDir();
++		}
++		if (base == null) {
++			return null;
++		}
++		File dir = new File(base, "media");
++		if (!dir.exists() && !dir.mkdirs()) {
++			return null;
++		}
++		return dir;
++	}
++
++	private String copyToAppStorage(Uri uri) throws Exception {
++		final Activity activity = getActivity();
++		if (activity == null) {
++			return null;
++		}
++		File dir = mediaDir(activity);
++		if (dir == null) {
++			return null;
++		}
++		ContentResolver resolver = activity.getContentResolver();
++		String mime = resolver.getType(uri);
++		File out = new File(dir, "adjunto_" + System.currentTimeMillis() + extensionFor(mime, uri));
++		InputStream in = resolver.openInputStream(uri);
++		if (in == null) {
++			return null;
++		}
++		OutputStream os = new FileOutputStream(out);
++		try {
++			byte[] buffer = new byte[16384];
++			int read;
++			while ((read = in.read(buffer)) > 0) {
++				os.write(buffer, 0, read);
++			}
++		} finally {
++			try {
++				in.close();
++			} catch (Exception ignored) {
++			}
++			try {
++				os.close();
++			} catch (Exception ignored) {
++			}
++		}
++		return out.length() > 0 ? out.getAbsolutePath() : null;
++	}
++
++	private String extensionFor(String mime, Uri uri) {
++		if (mime != null) {
++			if (mime.equals("image/png")) return ".png";
++			if (mime.equals("image/jpeg")) return ".jpg";
++			if (mime.equals("image/webp")) return ".webp";
++			if (mime.equals("image/gif")) return ".gif";
++			if (mime.equals("image/bmp")) return ".bmp";
++			if (mime.equals("image/heic") || mime.equals("image/heif")) return ".heic";
++			if (mime.startsWith("audio/ogg")) return ".ogg";
++			if (mime.equals("audio/mpeg")) return ".mp3";
++			if (mime.equals("audio/mp4") || mime.equals("audio/aac")) return ".m4a";
++			if (mime.equals("audio/wav")) return ".wav";
++			if (mime.equals("application/pdf")) return ".pdf";
++			if (mime.startsWith("text/")) return ".txt";
++		}
++		String last = uri.getLastPathSegment();
++		if (last != null) {
++			int dot = last.lastIndexOf('.');
++			if (dot >= 0 && dot < last.length() - 1) {
++				String ext = last.substring(dot);
++				if (ext.length() <= 6) {
++					return ext;
++				}
++			}
++		}
++		return ".bin";
++	}
++}
+diff --git a/platform/android/java/lib/src/org/godotengine/godot/plugin/GodotPluginRegistry.java b/platform/android/java/lib/src/org/godotengine/godot/plugin/GodotPluginRegistry.java
+index c2428de2e1..3145f428a9 100644
+--- a/platform/android/java/lib/src/org/godotengine/godot/plugin/GodotPluginRegistry.java
++++ b/platform/android/java/lib/src/org/godotengine/godot/plugin/GodotPluginRegistry.java
+@@ -31,6 +31,7 @@
+ package org.godotengine.godot.plugin;
+ 
+ import org.godotengine.godot.Godot;
++import org.godotengine.godot.XatMedia;
+ 
+ import android.app.Activity;
+ import android.content.pm.ApplicationInfo;
+@@ -112,6 +113,9 @@ public final class GodotPluginRegistry {
+ 	}
+ 
+ 	private void loadPlugins(Godot godot) {
++		// Plugin integrado del fork xat: selector nativo de archivos y cámara.
++		registry.put(XatMedia.PLUGIN_NAME, new XatMedia(godot));
++
+ 		try {
+ 			final Activity activity = godot.getActivity();
+ 			ApplicationInfo appInfo = activity
+diff --git a/platform/iphone/xat_media_ios.h b/platform/iphone/xat_media_ios.h
+new file mode 100644
+index 0000000000..fe7c375bf3
+--- /dev/null
++++ b/platform/iphone/xat_media_ios.h
+@@ -0,0 +1,41 @@
++/**************************************************************************/
++/*  xat_media_ios.h                                                       */
++/*                                                                        */
++/*  Contraparte iOS del plugin nativo XatMedia (ver XatMedia.java en      */
++/*  Android): selector nativo de documentos/fotos y cámara del sistema.   */
++/*  Se registra como singleton Godot "XatMedia" con la MISMA interfaz    */
++/*  GDScript que la versión Android, para que app/ sea multiplataforma.  */
++/**************************************************************************/
++
++#ifndef XAT_MEDIA_IOS_H
++#define XAT_MEDIA_IOS_H
++
++#include "core/object.h"
++#include "core/ustring.h"
++
++class XatMediaIOS : public Object {
++	GDCLASS(XatMediaIOS, Object);
++
++	static void _bind_methods();
++
++private:
++	bool pending = false;
++
++public:
++	bool is_available();
++	bool is_busy();
++	bool has_camera();
++	void pick_image();
++	void pick_file();
++	void take_photo();
++
++	// Invocados por el delegate Objective-C (mismo hilo principal).
++	void emit_media_picked(const String &p_path);
++	void emit_media_cancelled();
++	void emit_media_error(const String &p_reason);
++
++	XatMediaIOS();
++	~XatMediaIOS();
++};
++
++#endif // XAT_MEDIA_IOS_H
+diff --git a/platform/iphone/xat_media_ios.mm b/platform/iphone/xat_media_ios.mm
+new file mode 100644
+index 0000000000..b189436fc2
+--- /dev/null
++++ b/platform/iphone/xat_media_ios.mm
+@@ -0,0 +1,215 @@
++/**************************************************************************/
++/*  xat_media_ios.mm                                                      */
++/*                                                                        */
++/*  Implementación iOS del singleton XatMedia: UIImagePickerController    */
++/*  para cámara y fototeca, UIDocumentPickerViewController para archivos. */
++/*  Los resultados se copian al sandbox (Documents/media) y se devuelven  */
++/*  como rutas absolutas legibles por Godot.                              */
++/**************************************************************************/
++
++#include "xat_media_ios.h"
++
++#include "core/class_db.h"
++#include "core/method_bind.h"
++
++#import "app_delegate.h"
++
++#import <MobileCoreServices/MobileCoreServices.h>
++#import <UIKit/UIKit.h>
++
++// Directorio de trabajo: Documents/media del propio sandbox. Godot puede leer
++// rutas absolutas dentro del sandbox de la app.
++static NSString *xat_media_directory() {
++	NSArray *paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
++	NSString *base = paths.count > 0 ? paths[0] : NSTemporaryDirectory();
++	NSString *dir = [base stringByAppendingPathComponent:@"media"];
++	[[NSFileManager defaultManager] createDirectoryAtPath:dir
++							  withIntermediateDirectories:YES
++											   attributes:nil
++													error:nil];
++	return dir;
++}
++
++static NSString *xat_media_timestamp() {
++	long long ms = (long long)([[NSDate date] timeIntervalSince1970] * 1000.0);
++	return [NSString stringWithFormat:@"%lld", ms];
++}
++
++@class XatMediaIOS;
++
++@interface XatMediaIOSDelegate : NSObject <UIImagePickerControllerDelegate, UINavigationControllerDelegate, UIDocumentPickerDelegate>
++@property(nonatomic, assign) XatMediaIOS *owner;
++@end
++
++@implementation XatMediaIOSDelegate
++
++- (void)imagePickerController:(UIImagePickerController *)picker didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> *)info {
++	[picker dismissViewControllerAnimated:YES completion:nil];
++	XatMediaIOS *owner = self.owner;
++	if (owner == nullptr) {
++		return;
++	}
++	UIImage *image = info[UIImagePickerControllerOriginalImage];
++	if (image == nil) {
++		owner->emit_media_error("sin-imagen");
++		return;
++	}
++	NSData *data = UIImageJPEGRepresentation(image, 0.9);
++	if (data == nil) {
++		owner->emit_media_error("guardar");
++		return;
++	}
++	NSString *path = [xat_media_directory() stringByAppendingPathComponent:
++											 [NSString stringWithFormat:@"foto_%@.jpg", xat_media_timestamp()]];
++	if (![data writeToFile:path atomically:YES]) {
++		owner->emit_media_error("guardar");
++		return;
++	}
++	owner->emit_media_picked(String([path UTF8String]));
++}
++
++- (void)imagePickerControllerDidCancel:(UIImagePickerController *)picker {
++	[picker dismissViewControllerAnimated:YES completion:nil];
++	if (self.owner != nullptr) {
++		self.owner->emit_media_cancelled();
++	}
++}
++
++- (void)documentPicker:(UIDocumentPickerViewController *)controller didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
++	XatMediaIOS *owner = self.owner;
++	if (owner == nullptr) {
++		return;
++	}
++	if (urls.count == 0) {
++		owner->emit_media_error("sin-archivo");
++		return;
++	}
++	NSURL *src = urls[0];
++	BOOL scoped = [src startAccessingSecurityScopedResource];
++	NSString *name = src.lastPathComponent != nil ? src.lastPathComponent : @"adjunto";
++	NSString *dest = [xat_media_directory() stringByAppendingPathComponent:
++													   [NSString stringWithFormat:@"%@_%@", xat_media_timestamp(), name]];
++	[[NSFileManager defaultManager] removeItemAtPath:dest error:nil];
++	NSError *error = nil;
++	BOOL ok = [[NSFileManager defaultManager] copyItemAtURL:src
++													 toURL:[NSURL fileURLWithPath:dest]
++													 error:&error];
++	if (scoped) {
++		[src stopAccessingSecurityScopedResource];
++	}
++	if (!ok || error != nil) {
++		owner->emit_media_error("copia-fallida");
++		return;
++	}
++	owner->emit_media_picked(String([dest UTF8String]));
++}
++
++- (void)documentPickerWasCancelled:(UIDocumentPickerViewController *)controller {
++	if (self.owner != nullptr) {
++		self.owner->emit_media_cancelled();
++	}
++}
++
++@end
++
++// Delegate estático: la presentación es única y el controlador vive en el
++// stack de UIKit mientras está visible.
++static XatMediaIOSDelegate *xat_media_delegate() {
++	static XatMediaIOSDelegate *delegate = nil;
++	if (delegate == nil) {
++		delegate = [[XatMediaIOSDelegate alloc] init];
++	}
++	return delegate;
++}
++
++void XatMediaIOS::_bind_methods() {
++	ClassDB::bind_method(D_METHOD("isAvailable"), &XatMediaIOS::is_available);
++	ClassDB::bind_method(D_METHOD("isBusy"), &XatMediaIOS::is_busy);
++	ClassDB::bind_method(D_METHOD("hasCamera"), &XatMediaIOS::has_camera);
++	ClassDB::bind_method(D_METHOD("pickImage"), &XatMediaIOS::pick_image);
++	ClassDB::bind_method(D_METHOD("pickFile"), &XatMediaIOS::pick_file);
++	ClassDB::bind_method(D_METHOD("takePhoto"), &XatMediaIOS::take_photo);
++
++	ADD_SIGNAL(MethodInfo("media_picked", PropertyInfo(Variant::STRING, "path")));
++	ADD_SIGNAL(MethodInfo("media_cancelled"));
++	ADD_SIGNAL(MethodInfo("media_error", PropertyInfo(Variant::STRING, "reason")));
++}
++
++bool XatMediaIOS::is_available() {
++	return true;
++}
++
++bool XatMediaIOS::is_busy() {
++	return pending;
++}
++
++bool XatMediaIOS::has_camera() {
++	return [UIImagePickerController isSourceTypeAvailable:UIImagePickerControllerSourceTypeCamera];
++}
++
++void XatMediaIOS::pick_image() {
++	if (pending) {
++		return;
++	}
++	if (![UIImagePickerController isSourceTypeAvailable:UIImagePickerControllerSourceTypePhotoLibrary]) {
++		emit_media_error("sin-selector");
++		return;
++	}
++	UIImagePickerController *picker = [[UIImagePickerController alloc] init];
++	picker.sourceType = UIImagePickerControllerSourceTypePhotoLibrary;
++	picker.mediaTypes = @[ (NSString *)kUTTypeImage ];
++	XatMediaIOSDelegate *delegate = xat_media_delegate();
++	delegate.owner = this;
++	picker.delegate = delegate;
++	pending = true;
++	[AppDelegate.viewController presentViewController:picker animated:YES completion:nil];
++}
++
++void XatMediaIOS::pick_file() {
++	if (pending) {
++		return;
++	}
++	UIDocumentPickerViewController *picker = [[UIDocumentPickerViewController alloc] initWithDocumentTypes:@[ @"public.item" ]
++																									inMode:UIDocumentPickerModeImport];
++	XatMediaIOSDelegate *delegate = xat_media_delegate();
++	delegate.owner = this;
++	picker.delegate = delegate;
++	pending = true;
++	[AppDelegate.viewController presentViewController:picker animated:YES completion:nil];
++}
++
++void XatMediaIOS::take_photo() {
++	if (pending) {
++		return;
++	}
++	if (![UIImagePickerController isSourceTypeAvailable:UIImagePickerControllerSourceTypeCamera]) {
++		emit_media_error("sin-camara");
++		return;
++	}
++	UIImagePickerController *picker = [[UIImagePickerController alloc] init];
++	picker.sourceType = UIImagePickerControllerSourceTypeCamera;
++	XatMediaIOSDelegate *delegate = xat_media_delegate();
++	delegate.owner = this;
++	picker.delegate = delegate;
++	pending = true;
++	[AppDelegate.viewController presentViewController:picker animated:YES completion:nil];
++}
++
++void XatMediaIOS::emit_media_picked(const String &p_path) {
++	pending = false;
++	emit_signal("media_picked", p_path);
++}
++
++void XatMediaIOS::emit_media_cancelled() {
++	pending = false;
++	emit_signal("media_cancelled");
++}
++
++void XatMediaIOS::emit_media_error(const String &p_reason) {
++	pending = false;
++	emit_signal("media_error", p_reason);
++}
++
++XatMediaIOS::XatMediaIOS() {}
++
++XatMediaIOS::~XatMediaIOS() {}
+diff --git a/platform/iphone/SCsub b/platform/iphone/SCsub
+index 0c12f0f071..9169dc287a 100644
+--- a/platform/iphone/SCsub
++++ b/platform/iphone/SCsub
+@@ -9,6 +9,7 @@ iphone_lib = [
+     "app_delegate.mm",
+     "view_controller.mm",
+     "ios.mm",
++    "xat_media_ios.mm",
+     "joypad_iphone.mm",
+     "godot_view.mm",
+     "tts_ios.mm",
+diff --git a/platform/iphone/os_iphone.h b/platform/iphone/os_iphone.h
+index 26d17625bc..c93485da86 100644
+--- a/platform/iphone/os_iphone.h
++++ b/platform/iphone/os_iphone.h
+@@ -43,6 +43,7 @@
+ #include "servers/audio_server.h"
+ #include "servers/visual/rasterizer.h"
+ #include "servers/visual_server.h"
++#include "xat_media_ios.h"
+ 
+ class OSIPhone : public OS_Unix {
+ private:
+@@ -55,6 +56,8 @@ private:
+ 
+ 	iOS *ios;
+ 
++	XatMediaIOS *xat_media;
++
+ 	id tts = nullptr;
+ 
+ 	JoypadIPhone *joypad_iphone;
+diff --git a/platform/iphone/os_iphone.mm b/platform/iphone/os_iphone.mm
+index 5792e7cca8..1091a8250e 100644
+--- a/platform/iphone/os_iphone.mm
++++ b/platform/iphone/os_iphone.mm
+@@ -32,6 +32,7 @@
+ 
+ #include "os_iphone.h"
+ 
++#include "core/class_db.h"
+ #include "drivers/gles2/rasterizer_gles2.h"
+ #include "drivers/gles3/rasterizer_gles3.h"
+ #include "servers/visual/visual_server_raster.h"
+@@ -235,6 +236,10 @@ Error OSIPhone::initialize(const VideoMode &p_desired, int p_video_driver, int p
+ 	ios = memnew(iOS);
+ 	Engine::get_singleton()->add_singleton(Engine::Singleton("iOS", ios));
+ 
++	ClassDB::register_class<XatMediaIOS>();
++	xat_media = memnew(XatMediaIOS);
++	Engine::get_singleton()->add_singleton(Engine::Singleton("XatMedia", xat_media));
++
+ 	joypad_iphone = memnew(JoypadIPhone);
+ 
+ 	return OK;

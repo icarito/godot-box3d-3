@@ -143,12 +143,14 @@ if [ "$GODOT_PATCHES" = yes ]; then
 	done
 fi
 
-# The emoji inline-image API is an xat presentation feature, not part of the
-# general-purpose engine builds. It travels with the optional XMPP runtime.
+# The emoji inline-image API and the native media picker/camera
+# (XatMedia) are xat presentation features, not part of the general-purpose
+# engine builds. They travel with the optional XMPP runtime.
 if [ "$MODULE_XMPP" = yes ]; then
-	patch="$here/patches/xmpp/emoji_inline_source.patch"
-	echo "==> Patch   xmpp/$(basename "$patch")"
-	apply_patch "$patch" "$GODOT_DIR"
+	for patch in "$here"/patches/xmpp/*.patch; do
+		echo "==> Patch   xmpp/$(basename "$patch")"
+		apply_patch "$patch" "$GODOT_DIR"
+	done
 fi
 
 if [ ! -e "$here/box3d/thirdparty/box3d/include/box3d/box3d.h" ]; then
