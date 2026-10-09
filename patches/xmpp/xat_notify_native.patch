@@ -1,0 +1,784 @@
+diff --git a/platform/android/java/lib/AndroidManifest.xml b/platform/android/java/lib/AndroidManifest.xml
+index 5cba950059..5ac59c1141 100644
+--- a/platform/android/java/lib/AndroidManifest.xml
++++ b/platform/android/java/lib/AndroidManifest.xml
+@@ -3,6 +3,10 @@
+     android:versionCode="1"
+     android:versionName="1.0">
+ 
++    <!-- Android 13+ (API 33): permiso en tiempo de ejecución para publicar
++         notificaciones (XatNotify.requestPermission()/notify()). -->
++    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
++
+     <!-- Android 11+ (package visibility): sin esto resolveActivity() de
+          ACTION_IMAGE_CAPTURE devuelve null y XatMedia.hasCamera()/takePhoto()
+          no ven la app de cámara. Lo usa el plugin nativo del fork (xat). -->
+@@ -21,6 +25,21 @@
+ 
+         <service android:name=".GodotDownloaderService" />
+ 
++        <!-- Push FCM (xat). Descomentar SOLO tras agregar la dependencia
++             com.google.firebase:firebase-messaging y renombrar
++             XatMessagingService.java.example a XatMessagingService.java.
++             Sin Firebase el class no existe y el service crashearía al
++             instanciarse, por eso va comentado.
++
++        <service
++            android:name=".XatMessagingService"
++            android:exported="false">
++            <intent-filter>
++                <action android:name="com.google.firebase.MESSAGING_EVENT" />
++            </intent-filter>
++        </service>
++        -->
++
+         <activity
+             android:name=".utils.ProcessPhoenix"
+             android:theme="@android:style/Theme.Translucent.NoTitleBar"
+diff --git a/platform/android/java/lib/src/org/godotengine/godot/XatMessagingService.java.example b/platform/android/java/lib/src/org/godotengine/godot/XatMessagingService.java.example
+new file mode 100644
+index 0000000000..448e84af97
+--- /dev/null
++++ b/platform/android/java/lib/src/org/godotengine/godot/XatMessagingService.java.example
+@@ -0,0 +1,71 @@
++/**************************************************************************/
++/*  XatMessagingService.java.example                                     */
++/*                                                                        */
++/*  Servicio FCM que entrega el token (onNewToken) a XatNotify y postea    */
++/*  la notificación local cuando llega un mensaje de datos en primer       */
++/*  plano.                                                                */
++/*                                                                        */
++/*  Este archivo NO se compila: termina en .example para que Gradle lo     */
++/*  ignore. La plantilla Android de Godot no incluye Firebase y el import  */
++/*  de com.google.firebase.messaging obligaría a la dependencia;            */
++/*  dejarlo como .java rompería el build del template.                    */
++/*                                                                        */
++/*  Para habilitar el push FCM la app debe:                                */
++/*                                                                        */
++/*  1) app/build.gradle — dependencia y plugin google-services:            */
++/*                                                                        */
++/*       buildscript {                                                     */
++/*           dependencies {                                                */
++/*               classpath "com.google.gms:google-services:4.4.2"           */
++/*           }                                                             */
++/*       }                                                                 */
++/*       apply plugin: "com.google.gms.google-services"                     */
++/*       dependencies {                                                    */
++/*           implementation "com.google.firebase:firebase-messaging:24.0.0" */
++/*       }                                                                 */
++/*                                                                        */
++/*  2) colocar google-services.json en el módulo app/ (o inicializar         */
++/*     FirebaseOptions en código si se prefiere no usar el plugin).         */
++/*                                                                        */
++/*  3) renombrar este archivo a XatMessagingService.java (quitando el       */
++/*     sufijo .example).                                                    */
++/*                                                                        */
++/*  4) descomentar el <service> de XatMessagingService en                 */
++/*     platform/android/java/lib/AndroidManifest.xml (ya está como comentario).*/
++/*                                                                        */
++/*  Sin esos pasos, XatNotify.getDeviceToken() devuelve "" y no hay push,   */
++/*  pero el build del template sigue funcionando.                          */
++/**************************************************************************/
++
++package org.godotengine.godot;
++
++import androidx.annotation.NonNull;
++
++import com.google.firebase.messaging.FirebaseMessagingService;
++import com.google.firebase.messaging.RemoteMessage;
++
++import java.util.Map;
++
++public class XatMessagingService extends FirebaseMessagingService {
++	@Override
++	public void onNewToken(@NonNull String token) {
++		super.onNewToken(token);
++		// Persiste el token para que XatNotify.getDeviceToken() lo devuelva.
++		XatNotify.setFcmToken(token);
++	}
++
++	@Override
++	public void onMessageReceived(@NonNull RemoteMessage message) {
++		super.onMessageReceived(message);
++		Map<String, String> data = message.getData();
++		if (data.isEmpty()) {
++			return;
++		}
++		String title = data.containsKey("title") ? data.get("title") : "xat";
++		String body = data.containsKey("body") ? data.get("body") : "";
++		String jid = data.containsKey("jid") ? data.get("jid") : "";
++		String tag = data.containsKey("tag") ? data.get("tag") : "";
++		// Con el proceso vivo, XatNotify ya está cargado y postea el aviso local.
++		XatNotify.postLocal(getApplicationContext(), title, body, jid, tag);
++	}
++}
+diff --git a/platform/android/java/lib/src/org/godotengine/godot/XatNotify.java b/platform/android/java/lib/src/org/godotengine/godot/XatNotify.java
+new file mode 100644
+index 0000000000..ca58a5ade7
+--- /dev/null
++++ b/platform/android/java/lib/src/org/godotengine/godot/XatNotify.java
+@@ -0,0 +1,345 @@
++/**************************************************************************/
++/*  XatNotify.java                                                        */
++/*                                                                        */
++/*  Plugin Android integrado del fork xat: notificaciones locales del     */
++/*  sistema y puente al push FCM (XEP-0357). Godot 3 no trae API de       */
++/*  notificaciones ni de mensajería, así que viven en la capa Java del    */
++/*  motor y se registran como singleton Godot ("XatNotify").             */
++/*                                                                        */
++/*  FCM es OPCIONAL: la plantilla Android de Godot no incluye Firebase.   */
++/*  getDeviceToken() usa reflexión (Class.forName) y devuelve "" si la    */
++/*  dependencia no está presente, sin romper el build. Para habilitar el  */
++/*  push, la app debe agregar la dependencia y configurar google-services */
++/*  (ver XatMessagingService.java.example, del lado Java, y la cabecera   */
++/*  de ese archivo con el snippet de Gradle/manifest).                    */
++/**************************************************************************/
++
++package org.godotengine.godot;
++
++import android.Manifest;
++import android.app.Activity;
++import android.app.NotificationChannel;
++import android.app.NotificationManager;
++import android.app.PendingIntent;
++import android.content.Context;
++import android.content.Intent;
++import android.content.SharedPreferences;
++import android.content.pm.PackageManager;
++import android.media.AudioAttributes;
++import android.net.Uri;
++import android.os.Build;
++import android.provider.Settings;
++import android.util.Log;
++
++import androidx.annotation.NonNull;
++import androidx.core.app.ActivityCompat;
++import androidx.core.app.NotificationCompat;
++import androidx.core.app.NotificationManagerCompat;
++import androidx.core.content.ContextCompat;
++
++import org.godotengine.godot.plugin.GodotPlugin;
++import org.godotengine.godot.plugin.UsedByGodot;
++
++import java.util.ArrayList;
++import java.util.HashMap;
++import java.util.List;
++import java.util.Map;
++
++/**
++ * Notificaciones locales y token push para xat.
++ *
++ * <p>La interfaz GDScript es:</p>
++ * <ul>
++ *   <li>{@code isAvailable() -> bool}: true si el plugin está cargado.</li>
++ *   <li>{@code requestPermission() -> bool}: pide POST_NOTIFICATIONS (Android
++ *       13+) y devuelve si ya estaba concedido.</li>
++ *   <li>{@code getDeviceToken() -> String}: token FCM, o "" si Firebase no
++ *       está inicializado todavía (es asíncrono, se rellena después).</li>
++ *   <li>{@code notify(title, body, jid, tag)}: publica un aviso local.</li>
++ *   <li>{@code clear(jid)}: retira los avisos locales de esa conversación.</li>
++ * </ul>
++ *
++ * <p>Godot 3 expone los métodos Java con su nombre exacto (ver
++ * {@code godot_plugin_jni.cpp}); el resto de la API nativa del fork usa
++ * camelCase, así que además de los cinco métodos del contrato se ofrecen
++ * alias snake_case ({@code request_permission}, {@code get_device_token})
++ * porque {@code addon/xat_xmpp/ui/notifier.gd} los invoca así.</p>
++ */
++public class XatNotify extends GodotPlugin {
++	public static final String PLUGIN_NAME = "XatNotify";
++
++	private static final String TAG = "XatNotify";
++	private static final String CHANNEL_ID = "xmpp_messages";
++	private static final String PREFS = "xat_notify";
++	private static final String PREF_FCM_TOKEN = "fcm_token";
++	private static final int REQUEST_NOTIFICATIONS = 0x58415410;
++
++	// Token FCM compartido con XatMessagingService (subclase de
++	// FirebaseMessagingService). Se cachea en memoria y en SharedPreferences
++	// para sobrevivir reinicios y obtenerlo sin bloquear el hilo principal.
++	private static volatile String sToken = null;
++	private static volatile Context sAppContext = null;
++
++	// jid -> identificadores (tag) de los avisos locales vivos de esa
++	// conversación, para que clear(jid) pueda retirarlos.
++	private static final Map<String, List<String>> conversationTags = new HashMap<>();
++
++	public XatNotify(Godot godot) {
++		super(godot);
++		Activity activity = getActivity();
++		if (activity != null) {
++			sAppContext = activity.getApplicationContext();
++		}
++		loadPersistedToken();
++	}
++
++	@NonNull
++	@Override
++	public String getPluginName() {
++		return PLUGIN_NAME;
++	}
++
++	@UsedByGodot
++	public boolean isAvailable() {
++		return true;
++	}
++
++	/**
++	 * Pide el permiso de notificaciones. En Android 13 (API 33) es
++	 * POST_NOTIFICATIONS; antes no hace falta y se considera concedido.
++	 * Devuelve true si el permiso ya estaba concedido.
++	 */
++	@UsedByGodot
++	public boolean requestPermission() {
++		final Activity activity = getActivity();
++		if (activity == null) {
++			return false;
++		}
++		if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
++			return true;
++		}
++		boolean granted = ContextCompat.checkSelfPermission(activity, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED;
++		if (!granted) {
++			ActivityCompat.requestPermissions(activity, new String[] { Manifest.permission.POST_NOTIFICATIONS }, REQUEST_NOTIFICATIONS);
++		}
++		return granted;
++	}
++
++	/**
++	 * Token FCM del dispositivo para XEP-0357. Nunca rompe si Firebase no está
++	 * en el classpath: en ese caso devuelve "". La primera vez puede devolver ""
++	 * (la consulta a FCM es asíncrona); la app re-registra al reconectar.
++	 */
++	@UsedByGodot
++	public String getDeviceToken() {
++		if (sToken == null) {
++			loadPersistedToken();
++		}
++		if (sToken == null) {
++			fetchFcmTokenAsync();
++		}
++		return sToken == null ? "" : sToken;
++	}
++
++	/**
++	 * Publica una notificación local. {@code jid} es la conversación (se guarda
++	 * como extra "xat_jid" del launch intent) y {@code tag} el id del mensaje.
++	 */
++	@UsedByGodot
++	public void notify(String title, String body, String jid, String tag) {
++		final Activity activity = getActivity();
++		if (activity == null) {
++			return;
++		}
++		postLocal(activity, title, body, jid, tag);
++	}
++
++	/** Retira los avisos locales de la conversación {@code jid}. */
++	@UsedByGodot
++	public void clear(String jid) {
++		final Activity activity = getActivity();
++		if (activity == null) {
++			return;
++		}
++		clearLocal(activity, jid);
++	}
++
++	// --- Alias snake_case --------------------------------------------------
++	// ui/notifier.gd llama a estos dos métodos con la convención snake_case del
++	// resto de la API nativa de Godot; el contrato camelCase es el primario y
++	// ambos apuntan al mismo comportamiento.
++
++	@UsedByGodot
++	public boolean request_permission() {
++		return requestPermission();
++	}
++
++	@UsedByGodot
++	public String get_device_token() {
++		return getDeviceToken();
++	}
++
++	// --- Implementación compartida (static: la usa XatMessagingService) ----
++
++	/** Publica el aviso; accesible desde XatMessagingService. */
++	public static void postLocal(Context context, String title, String body, String jid, String tag) {
++		if (context == null) {
++			return;
++		}
++		ensureChannel(context);
++
++		String safeJid = jid != null ? jid : "";
++		String safeTag = (tag != null && !tag.isEmpty()) ? tag : safeJid;
++		if (safeTag.isEmpty()) {
++			safeTag = "xat-" + System.currentTimeMillis();
++		}
++		int id = safeTag.hashCode();
++
++		Intent launch = context.getPackageManager().getLaunchIntentForPackage(context.getPackageName());
++		if (launch == null) {
++			return;
++		}
++		launch.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
++		if (!safeJid.isEmpty()) {
++			launch.putExtra("xat_jid", safeJid);
++		}
++
++		int pendingFlags = PendingIntent.FLAG_UPDATE_CURRENT;
++		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
++			pendingFlags |= PendingIntent.FLAG_IMMUTABLE;
++		}
++		PendingIntent contentIntent = PendingIntent.getActivity(context, id, launch, pendingFlags);
++
++		int icon = context.getApplicationInfo().icon;
++		if (icon == 0) {
++			icon = android.R.drawable.ic_dialog_info;
++		}
++
++		NotificationCompat.Builder builder = new NotificationCompat.Builder(context, CHANNEL_ID)
++				.setSmallIcon(icon)
++				.setContentTitle(title != null ? title : "")
++				.setContentText(body != null ? body : "")
++				.setAutoCancel(true)
++				.setPriority(NotificationCompat.PRIORITY_HIGH)
++				.setCategory(NotificationCompat.CATEGORY_MESSAGE)
++				.setContentIntent(contentIntent);
++		builder.setTag(safeTag);
++
++		try {
++			NotificationManagerCompat.from(context).notify(safeTag, id, builder.build());
++		} catch (SecurityException e) {
++			// Sin POST_NOTIFICATIONS: se ignora, no es un error de la app.
++			Log.w(TAG, "Falta el permiso de notificaciones", e);
++			return;
++		}
++		trackTag(safeJid, safeTag);
++	}
++
++	/** Retira pendientes/entregadas de la conversación; accesible desde el service. */
++	public static void clearLocal(Context context, String jid) {
++		if (context == null) {
++			return;
++		}
++		String key = jid != null ? jid : "";
++		NotificationManagerCompat manager = NotificationManagerCompat.from(context);
++		List<String> tags;
++		synchronized (conversationTags) {
++			tags = conversationTags.remove(key);
++		}
++		if (tags != null) {
++			for (String t : tags) {
++				manager.cancel(t, t.hashCode());
++			}
++		}
++		// Avisos sin tag explícito se registraron con tag = jid.
++		if (!key.isEmpty()) {
++			manager.cancel(key, key.hashCode());
++		}
++	}
++
++	private static void trackTag(String jid, String tag) {
++		synchronized (conversationTags) {
++			List<String> tags = conversationTags.get(jid);
++			if (tags == null) {
++				tags = new ArrayList<>();
++				conversationTags.put(jid, tags);
++			}
++			if (!tags.contains(tag)) {
++				tags.add(tag);
++			}
++		}
++	}
++
++	private static void ensureChannel(Context context) {
++		if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
++			return;
++		}
++		NotificationManager manager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
++		if (manager == null || manager.getNotificationChannel(CHANNEL_ID) != null) {
++			return;
++		}
++		NotificationChannel channel = new NotificationChannel(CHANNEL_ID, "Mensajes", NotificationManager.IMPORTANCE_HIGH);
++		channel.setDescription("Mensajes de xat");
++		channel.enableLights(true);
++		channel.enableVibration(true);
++		AudioAttributes attrs = new AudioAttributes.Builder()
++				.setUsage(AudioAttributes.USAGE_NOTIFICATION)
++				.build();
++		Uri sound = Settings.System.DEFAULT_NOTIFICATION_URI;
++		channel.setSound(sound, attrs);
++		manager.createNotificationChannel(channel);
++	}
++
++	/** Guarda el token que entrega FCM (lo llama XatMessagingService.onNewToken). */
++	public static void setFcmToken(String token) {
++		if (token == null || token.isEmpty()) {
++			return;
++		}
++		sToken = token;
++		Context context = sAppContext;
++		if (context != null) {
++			context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
++					.edit()
++					.putString(PREF_FCM_TOKEN, token)
++					.apply();
++		}
++	}
++
++	private static void loadPersistedToken() {
++		if (sToken != null || sAppContext == null) {
++			return;
++		}
++		SharedPreferences prefs = sAppContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
++		String token = prefs.getString(PREF_FCM_TOKEN, null);
++		if (token != null && !token.isEmpty()) {
++			sToken = token;
++		}
++	}
++
++	/**
++	 * Obtiene el token FCM por reflexión en un hilo de trabajo: si Firebase no
++	 * está en el classpath, Class.forName lanza y se devuelve "" sin romper el
++	 * build. El bloqueo de Tasks.await ocurre fuera del hilo principal.
++	 */
++	private static void fetchFcmTokenAsync() {
++		new Thread(new Runnable() {
++			@Override
++			public void run() {
++				try {
++					Class<?> fmClass = Class.forName("com.google.firebase.messaging.FirebaseMessaging");
++					Object fm = fmClass.getMethod("getInstance").invoke(null);
++					Object task = fmClass.getMethod("getToken").invoke(fm);
++					Class<?> taskClass = Class.forName("com.google.android.gms.tasks.Task");
++					Class<?> tasksClass = Class.forName("com.google.android.gms.tasks.Tasks");
++					Object token = tasksClass.getMethod("await", taskClass).invoke(null, task);
++					if (token instanceof String && !((String) token).isEmpty()) {
++						setFcmToken((String) token);
++					}
++				} catch (Throwable t) {
++					// Firebase ausente o no inicializado: push deshabilitado.
++					Log.i(TAG, "FCM no disponible: " + t.getClass().getSimpleName());
++				}
++			}
++		}, "xat-fcm-token").start();
++	}
++}
+diff --git a/platform/android/java/lib/src/org/godotengine/godot/plugin/GodotPluginRegistry.java b/platform/android/java/lib/src/org/godotengine/godot/plugin/GodotPluginRegistry.java
+index 3145f428a9..937c979b0e 100644
+--- a/platform/android/java/lib/src/org/godotengine/godot/plugin/GodotPluginRegistry.java
++++ b/platform/android/java/lib/src/org/godotengine/godot/plugin/GodotPluginRegistry.java
+@@ -32,6 +32,7 @@ package org.godotengine.godot.plugin;
+ 
+ import org.godotengine.godot.Godot;
+ import org.godotengine.godot.XatMedia;
++import org.godotengine.godot.XatNotify;
+ 
+ import android.app.Activity;
+ import android.content.pm.ApplicationInfo;
+@@ -116,6 +117,9 @@ public final class GodotPluginRegistry {
+ 		// Plugin integrado del fork xat: selector nativo de archivos y cámara.
+ 		registry.put(XatMedia.PLUGIN_NAME, new XatMedia(godot));
+ 
++		// Plugin integrado del fork xat: notificaciones locales y token push.
++		registry.put(XatNotify.PLUGIN_NAME, new XatNotify(godot));
++
+ 		try {
+ 			final Activity activity = godot.getActivity();
+ 			ApplicationInfo appInfo = activity
+diff --git a/platform/iphone/SCsub b/platform/iphone/SCsub
+index 9169dc287a..fdcbaa71ed 100644
+--- a/platform/iphone/SCsub
++++ b/platform/iphone/SCsub
+@@ -10,6 +10,7 @@ iphone_lib = [
+     "view_controller.mm",
+     "ios.mm",
+     "xat_media_ios.mm",
++    "xat_notify_ios.mm",
+     "joypad_iphone.mm",
+     "godot_view.mm",
+     "tts_ios.mm",
+diff --git a/platform/iphone/godot_app_delegate.m b/platform/iphone/godot_app_delegate.m
+index 5ee9855f5a..2cc5681710 100644
+--- a/platform/iphone/godot_app_delegate.m
++++ b/platform/iphone/godot_app_delegate.m
+@@ -33,6 +33,10 @@
+ #import "app_delegate.h"
+ #import "godot_scene_delegate.h"
+ 
++// xat: guarda el token APNs en el singleton XatNotifyIOS. Función con enlazado
++// C definida en platform/iphone/xat_notify_ios.mm.
++extern void xat_notify_set_apns_token(const char *hex);
++
+ @interface GodotApplicalitionDelegate ()
+ 
+ @end
+@@ -305,6 +309,22 @@ static NSMutableArray<ApplicationDelegateService *> *services = nil;
+ 
+ // Moved to the iOS Plugin
+ 
++// xat: token APNs. GodotApplicalitionDelegate es el UIApplicationDelegate real
++// (main.m), así que el callback se implementa aquí y no en AppDelegate (que es
++// un servicio y no recibe estos selectores).
++- (void)application:(UIApplication *)application didRegisterForRemoteNotificationsWithDeviceToken:(NSData *)deviceToken {
++	const unsigned char *bytes = (const unsigned char *)deviceToken.bytes;
++	NSMutableString *hex = [NSMutableString stringWithCapacity:deviceToken.length * 2];
++	for (NSUInteger i = 0; i < deviceToken.length; i++) {
++		[hex appendFormat:@"%02x", bytes[i]];
++	}
++	xat_notify_set_apns_token([hex UTF8String]);
++}
++
++- (void)application:(UIApplication *)application didFailToRegisterForRemoteNotificationsWithError:(NSError *)error {
++	NSLog(@"xat: fallo al registrar APNs: %@", error);
++}
++
+ // MARK: User Activity and Handling Quick Actions
+ 
+ - (BOOL)application:(UIApplication *)application willContinueUserActivityWithType:(NSString *)userActivityType {
+diff --git a/platform/iphone/os_iphone.h b/platform/iphone/os_iphone.h
+index c93485da86..4e812df564 100644
+--- a/platform/iphone/os_iphone.h
++++ b/platform/iphone/os_iphone.h
+@@ -44,6 +44,7 @@
+ #include "servers/visual/rasterizer.h"
+ #include "servers/visual_server.h"
+ #include "xat_media_ios.h"
++#include "xat_notify_ios.h"
+ 
+ class OSIPhone : public OS_Unix {
+ private:
+@@ -58,6 +59,8 @@ private:
+ 
+ 	XatMediaIOS *xat_media;
+ 
++	XatNotifyIOS *xat_notify;
++
+ 	id tts = nullptr;
+ 
+ 	JoypadIPhone *joypad_iphone;
+diff --git a/platform/iphone/os_iphone.mm b/platform/iphone/os_iphone.mm
+index 1091a8250e..0a3cc4b64a 100644
+--- a/platform/iphone/os_iphone.mm
++++ b/platform/iphone/os_iphone.mm
+@@ -240,6 +240,10 @@ Error OSIPhone::initialize(const VideoMode &p_desired, int p_video_driver, int p
+ 	xat_media = memnew(XatMediaIOS);
+ 	Engine::get_singleton()->add_singleton(Engine::Singleton("XatMedia", xat_media));
+ 
++	ClassDB::register_class<XatNotifyIOS>();
++	xat_notify = memnew(XatNotifyIOS);
++	Engine::get_singleton()->add_singleton(Engine::Singleton("XatNotify", xat_notify));
++
+ 	joypad_iphone = memnew(JoypadIPhone);
+ 
+ 	return OK;
+diff --git a/platform/iphone/xat_notify_ios.h b/platform/iphone/xat_notify_ios.h
+new file mode 100644
+index 0000000000..04f4d2ad66
+--- /dev/null
++++ b/platform/iphone/xat_notify_ios.h
+@@ -0,0 +1,45 @@
++/**************************************************************************/
++/*  xat_notify_ios.h                                                      */
++/*                                                                        */
++/*  Contraparte iOS del plugin nativo XatNotify (ver XatNotify.java en     */
++/*  Android): notificaciones locales (UNUserNotificationCenter) y token    */
++/*  push APNs (hex). Se registra como singleton Godot "XatNotify" con la  */
++/*  MISMA interfaz GDScript que la versión Android, para que app/ sea     */
++/*  multiplataforma.                                                      */
++/**************************************************************************/
++
++#ifndef XAT_NOTIFY_IOS_H
++#define XAT_NOTIFY_IOS_H
++
++#include "core/object.h"
++#include "core/ustring.h"
++
++class XatNotifyIOS : public Object {
++	GDCLASS(XatNotifyIOS, Object);
++
++	static void _bind_methods();
++
++public:
++	bool is_available();
++	bool request_permission();
++	String get_device_token();
++	void notify(const String &p_title, const String &p_body, const String &p_jid, const String &p_tag);
++	void clear(const String &p_jid);
++
++	XatNotifyIOS();
++	~XatNotifyIOS();
++};
++
++// Token APNs capturado por el delegate (godot_app_delegate.m) vía
++// application:didRegisterForRemoteNotificationsWithDeviceToken:. Enlazado C
++// para poder llamarlo desde Objective-C (.m). Declarado también como extern en
++// godot_app_delegate.m.
++#ifdef __cplusplus
++extern "C" {
++#endif
++void xat_notify_set_apns_token(const char *p_hex);
++#ifdef __cplusplus
++}
++#endif
++
++#endif // XAT_NOTIFY_IOS_H
+diff --git a/platform/iphone/xat_notify_ios.mm b/platform/iphone/xat_notify_ios.mm
+new file mode 100644
+index 0000000000..a101a7b153
+--- /dev/null
++++ b/platform/iphone/xat_notify_ios.mm
+@@ -0,0 +1,154 @@
++/**************************************************************************/
++/*  xat_notify_ios.mm                                                     */
++/*                                                                        */
++/*  Implementación iOS del singleton XatNotify: notificaciones locales    */
++/*  inmediatas con UNUserNotificationCenter y token push APNs en hex. El  */
++/*  token lo captura el delegate (godot_app_delegate.m) y lo entrega por  */
++/*  xat_notify_set_apns_token(); get_device_token() lo devuelve.          */
++/**************************************************************************/
++
++#include "xat_notify_ios.h"
++
++#include "core/class_db.h"
++#include "core/method_bind.h"
++
++#import <UIKit/UIKit.h>
++#import <UserNotifications/UserNotifications.h>
++
++// El delegate es GodotApplicalitionDelegate (godot_app_delegate.m), el
++// UIApplicationDelegate real de main.m; ahí viven los callbacks APNs.
++
++// Token APNs en hex. static: vive mientras dura el proceso; get_device_token()
++// lo devuelve. Se rellena desde el delegate en el hilo principal.
++static String xat_apns_token_hex;
++
++// Último estado de autorización conocido. La petición de permiso en iOS es
++// asíncrona (diálogo del sistema): no se puede bloquear el hilo principal para
++// devolver el resultado, así que request_permission() devuelve este cache
++// (optimista) y el completion lo actualiza. El cliente ignora el valor.
++static bool xat_notifications_authorized = true;
++
++// Enlazado C: lo llama godot_app_delegate.m desde
++// application:didRegisterForRemoteNotificationsWithDeviceToken:.
++extern "C" void xat_notify_set_apns_token(const char *p_hex) {
++	xat_apns_token_hex = String::utf8(p_hex != nullptr ? p_hex : "");
++}
++
++static NSString *xat_nsstring(const String &p_str) {
++	const CharString utf8 = p_str.utf8();
++	NSString *result = [NSString stringWithUTF8String:utf8.get_data()];
++	return result != nil ? result : @"";
++}
++
++void XatNotifyIOS::_bind_methods() {
++	ClassDB::bind_method(D_METHOD("isAvailable"), &XatNotifyIOS::is_available);
++	ClassDB::bind_method(D_METHOD("requestPermission"), &XatNotifyIOS::request_permission);
++	ClassDB::bind_method(D_METHOD("getDeviceToken"), &XatNotifyIOS::get_device_token);
++	ClassDB::bind_method(D_METHOD("notify", "title", "body", "jid", "tag"), &XatNotifyIOS::notify);
++	ClassDB::bind_method(D_METHOD("clear", "jid"), &XatNotifyIOS::clear);
++
++	// Alias snake_case: ui/notifier.gd invoca request_permission() y
++	// get_device_token() (convención del resto de la API nativa de Godot).
++	// Mismo comportamiento que los camelCase del contrato primario.
++	ClassDB::bind_method(D_METHOD("request_permission"), &XatNotifyIOS::request_permission);
++	ClassDB::bind_method(D_METHOD("get_device_token"), &XatNotifyIOS::get_device_token);
++}
++
++bool XatNotifyIOS::is_available() {
++	return true;
++}
++
++bool XatNotifyIOS::request_permission() {
++	// Pide permiso (alertas + sonido + badge) y, al concederse, dispara el
++	// registro APNs en el hilo principal. El completion llega en una cola
++	// arbitraria; no se bloquea aquí (el diálogo del sistema necesita el run
++	// loop principal). Devuelve el último estado conocido (optimista).
++	UNUserNotificationCenter *center = [UNUserNotificationCenter currentNotificationCenter];
++	[center requestAuthorizationWithOptions:(UNAuthorizationOptionAlert | UNAuthorizationOptionSound | UNAuthorizationOptionBadge)
++					  completionHandler:^(BOOL p_granted, NSError *p_error) {
++						  xat_notifications_authorized = p_granted;
++						  dispatch_async(dispatch_get_main_queue(), ^{
++							  [[UIApplication sharedApplication] registerForRemoteNotifications];
++						  });
++					  }];
++	// Si ya estaba autorizado de antes, el completion no cambia nada: registrar
++	// también de inmediato para obtener el token sin esperar al diálogo.
++	dispatch_async(dispatch_get_main_queue(), ^{
++		[[UIApplication sharedApplication] registerForRemoteNotifications];
++	});
++	return xat_notifications_authorized;
++}
++
++String XatNotifyIOS::get_device_token() {
++	return xat_apns_token_hex;
++}
++
++void XatNotifyIOS::notify(const String &p_title, const String &p_body, const String &p_jid, const String &p_tag) {
++	NSString *title = xat_nsstring(p_title);
++	NSString *body = xat_nsstring(p_body);
++	NSString *jid = xat_nsstring(p_jid);
++	NSString *tag = xat_nsstring(p_tag);
++
++	UNMutableNotificationContent *content = [[UNMutableNotificationContent alloc] init];
++	content.title = title;
++	content.body = body;
++	content.sound = [UNNotificationSound defaultSound];
++
++	NSMutableDictionary *info = [NSMutableDictionary dictionary];
++	if (jid.length > 0) {
++		info[@"xat_jid"] = jid;
++		// Agrupa por conversación; clear() lo usa para filtrar.
++		content.threadIdentifier = jid;
++	}
++	if (tag.length > 0) {
++		info[@"xat_tag"] = tag;
++	}
++	content.userInfo = info;
++
++	// Una notificación por mensaje (identifier = tag); sin tag, por conversación.
++	NSString *identifier = tag.length > 0 ? tag : (jid.length > 0 ? jid : [[NSUUID UUID] UUIDString]);
++	// Disparo inmediato (el mínimo práctico de time-interval es 0).
++	UNTimeIntervalNotificationTrigger *trigger = [UNTimeIntervalNotificationTrigger triggerWithTimeInterval:0.1 repeats:NO];
++	UNNotificationRequest *request = [UNNotificationRequest requestWithIdentifier:identifier content:content trigger:trigger];
++	[[UNUserNotificationCenter currentNotificationCenter] addNotificationRequest:request withCompletionHandler:nil];
++}
++
++void XatNotifyIOS::clear(const String &p_jid) {
++	NSString *jid = xat_nsstring(p_jid);
++	if (jid.length == 0) {
++		return;
++	}
++	UNUserNotificationCenter *center = [UNUserNotificationCenter currentNotificationCenter];
++
++	// Como el identifier es el tag del mensaje, se retira por conversación
++	// filtrando por threadIdentifier/userInfo (ambos llevan el jid).
++	[center getPendingNotificationRequestsWithCompletionHandler:^(NSArray<UNNotificationRequest *> *requests) {
++		NSMutableArray<NSString *> *ids = [NSMutableArray array];
++		for (UNNotificationRequest *request in requests) {
++			if ([request.content.threadIdentifier isEqualToString:jid] ||
++					[request.content.userInfo[@"xat_jid"] isEqualToString:jid]) {
++				[ids addObject:request.identifier];
++			}
++		}
++		if (ids.count > 0) {
++			[center removePendingNotificationRequestsWithIdentifiers:ids];
++		}
++	}];
++
++	[center getDeliveredNotificationsWithCompletionHandler:^(NSArray<UNNotification *> *notifications) {
++		NSMutableArray<NSString *> *ids = [NSMutableArray array];
++		for (UNNotification *notification in notifications) {
++			if ([notification.request.content.threadIdentifier isEqualToString:jid] ||
++					[notification.request.content.userInfo[@"xat_jid"] isEqualToString:jid]) {
++				[ids addObject:notification.request.identifier];
++			}
++		}
++		if (ids.count > 0) {
++			[center removeDeliveredNotificationsWithIdentifiers:ids];
++		}
++	}];
++}
++
++XatNotifyIOS::XatNotifyIOS() {}
++
++XatNotifyIOS::~XatNotifyIOS() {}
