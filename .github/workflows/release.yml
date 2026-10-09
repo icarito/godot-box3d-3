@@ -28,7 +28,26 @@ env:
   GODOT_DIR_REL: godot-engine
 
 jobs:
+  # Per-profile tags (v*-xmpp, v*-lite) have their own workflows. This generic
+  # matrix (Odisea + TheGates) must not run for them, or pushing vX.Y.Z-xmpp
+  # would also launch a full build and publish a generic release.
+  guard:
+    runs-on: ubuntu-22.04
+    outputs:
+      generic: ${{ steps.check.outputs.generic }}
+    steps:
+      - id: check
+        env:
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          case "$TAG" in
+            *-xmpp|*-lite) echo "generic=false" >> "$GITHUB_OUTPUT" ;;
+            *) echo "generic=true" >> "$GITHUB_OUTPUT" ;;
+          esac
+
   build:
+    needs: guard
+    if: needs.guard.outputs.generic == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -88,6 +107,8 @@ jobs:
       os: ${{ matrix.os }}
 
   thegates:
+    needs: guard
+    if: needs.guard.outputs.generic == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -111,40 +132,14 @@ jobs:
       name: ${{ matrix.name }}
       os: ${{ matrix.os }}
 
-  # XMPP is built only for xat. These artifacts stay out of the standard
-  # export-template bundle consumed by GDTK, Odisea, and other projects.
-  xmpp-templates:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - target: headless
-            name: headless-xmpp
-            os: ubuntu-22.04
-          - target: android-templates
-            name: android-xmpp
-            os: ubuntu-22.04
-          - target: macos-templates
-            name: macos-xmpp
-            os: macos-14
-          - target: ios-templates
-            name: ios-xmpp
-            os: macos-14
-    uses: ./.github/workflows/build-target.yml
-    with:
-      target: ${{ matrix.target }}
-      name: ${{ matrix.name }}
-      os: ${{ matrix.os }}
-      module_xmpp: true
-
   publish:
-    needs: build
+    needs: [guard, build]
     # A platform that fails to build is simply absent from the .tpz: a partial
     # release still unblocks the ones that did build. A *cancelled* run is
     # different -- it was interrupted on purpose, usually to replace it with a
     # newer commit, and publishing whatever it had got that far overwrites the
     # release with a half-finished, out-of-date set of binaries.
-    if: ${{ !cancelled() }}
+    if: needs.guard.outputs.generic == 'true' && !cancelled()
     runs-on: ubuntu-22.04
     permissions:
       contents: write
@@ -264,8 +259,8 @@ jobs:
   # plantillas) ya esta publicado y el juego ya puede exportar. Aca solo se suman
   # sus assets. needs incluye publish para no competir por la creacion del release.
   publish-thegates:
-    needs: [publish, thegates]
-    if: ${{ !cancelled() }}
+    needs: [guard, publish, thegates]
+    if: needs.guard.outputs.generic == 'true' && !cancelled()
     runs-on: ubuntu-22.04
     permissions:
       contents: write
@@ -299,32 +294,3 @@ jobs:
             done
           done
           gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' | sort
-
-  publish-xmpp-templates:
-    needs: [publish, xmpp-templates]
-    if: ${{ !cancelled() }}
-    runs-on: ubuntu-22.04
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-          pattern: '*-xmpp'
-          merge-multiple: false
-
-      - name: Upload xat-only templates
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          TAG="${{ github.event.inputs.tag || github.ref_name }}"
-          shopt -s nullglob
-          ASSETS=(artifacts/*-xmpp/*)
-          if [ ${#ASSETS[@]} -eq 0 ]; then
-            echo "::error::no hay artifacts XMPP para xat"
-            exit 1
-          fi
-          for f in "${ASSETS[@]}"; do
-            gh release upload "$TAG" "$f" --repo "$GITHUB_REPOSITORY" --clobber
-          done

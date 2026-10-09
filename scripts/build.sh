@@ -19,6 +19,15 @@
 #   android-templates Android templates, all four ABIs (needs SDK + NDK)
 #   macos-templates   macOS universal template (needs Xcode)
 #   ios-templates     iOS template (needs Xcode)
+#   gdtk-lite         gdtk: FRT/SDL2 x86_64 editor + runtime (release/debug), no
+#                     box3d/decal/xmpp; trae los modulos de gdtk via gdtk_env.sh
+#
+# PROFILE (see scripts/profiles.sh) selects the module set; the target selects
+# platform and tools=yes/no:
+#   odisea  full engine (box3d + decal + imgui + slug), xmpp off (default)
+#   xmpp    xat: xmpp module on, chat-client diet (frt-editor/frt-x86_64-templates
+#           and the headless/android/ios/macos templates xat consumes)
+#   lite    gdtk: FRT + imgui (implot3d) + slug, no box3d/decal/xmpp
 #
 # The Godot checkout is pinned: a custom module is only as reproducible as the
 # engine it is compiled into. Override with GODOT_REF / GODOT_DIR.
@@ -37,12 +46,20 @@ GODOT_URL="${GODOT_URL:-https://github.com/godotengine/godot.git}"
 ENGINE_REF="${ENGINE_REF:-22957f59b4ede3c4aca7b4bc9c2cde7650af7a94}"
 ENGINE_URL="${ENGINE_URL:-https://github.com/icarito/godot.git}"
 GODOT_PATCHES="${GODOT_PATCHES:-no}"
-# XMPP is an opt-in custom module; regular GDTK/Odisea builds omit it.
-MODULE_XMPP="${MODULE_XMPP:-no}"
-if [ "$MODULE_XMPP" != yes ] && [ "$MODULE_XMPP" != no ]; then
-	echo "MODULE_XMPP must be yes or no (got: $MODULE_XMPP)" >&2
-	exit 2
+# Build profile: which consumer's module set this run compiles (scripts/profiles.sh).
+# Default: odisea (full engine, unchanged behavior). MODULE_XMPP=yes|no is kept as
+# a legacy alias for PROFILE=xmpp|odisea so older CI invocations keep working.
+if [ -n "${MODULE_XMPP:-}" ]; then
+	case "$MODULE_XMPP" in
+		yes) PROFILE=xmpp ;;
+		no) PROFILE=odisea ;;
+		*)
+			echo "MODULE_XMPP must be yes or no (got: $MODULE_XMPP)" >&2
+			exit 2
+			;;
+	esac
 fi
+PROFILE="${PROFILE:-odisea}"
 # FRT es un "platform" out-of-tree (efornara/frt) que se clona en platform/frt.
 # Pineado por la misma razon que el engine: un binario publicable tiene que ser
 # reproducible. Los hooks que el engine necesita para conocer la plataforma van
@@ -55,8 +72,16 @@ FRT_URL="${FRT_URL:-https://github.com/efornara/frt.git}"
 # .thegates-env/ que este target compila junto al modulo Box3D.
 here="$(cd "$(dirname "$0")/.." && pwd)"
 THEGATES_ENV_DIR="${THEGATES_ENV_DIR:-$here/.thegates-env}"
+# Fuentes de los modulos out-of-tree de gdtk para el perfil lite (gdtk_env.sh).
+GDTK_ENV_DIR="${GDTK_ENV_DIR:-$here/.gdtk-env}"
 GODOT_DIR="${GODOT_DIR:-$(dirname "$here")/godot}"
 JOBS="${JOBS:-$(nproc 2>/dev/null || echo 4)}"
+# El perfil decide que modulos entran (scripts/profiles.sh). Se aplica aca
+# porque necesita $here para localizar el overlay de gdtk.
+# shellcheck source=scripts/profiles.sh
+. "$here/scripts/profiles.sh"
+profile_apply "$PROFILE" || exit 2
+MODULE_XMPP="$PROFILE_MODULE_XMPP"
 # Caché de objetos de scons (soportada por SConstruct via SCONS_CACHE): cambiar de rama o de
 # conjunto de parches y volver recupera los objetos en vez de recompilar el motor entero.
 # Compartida entre árboles del motor (GODOT_DIR distintos). SCONS_CACHE="" la desactiva.
@@ -64,7 +89,7 @@ export SCONS_CACHE="${SCONS_CACHE-$HOME/.cache/scons-godot3}"
 export SCONS_CACHE_LIMIT="${SCONS_CACHE_LIMIT:-30000}" # MB
 
 if [ $# -eq 0 ]; then
-	sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'
+	sed -n '2,/^set -euo pipefail$/p' "$0" | sed 's/^# \{0,1\}//' | sed '$d'
 	exit 1
 fi
 
@@ -206,14 +231,15 @@ PRODUCTION="${PRODUCTION:-yes}"
 LTO="${LTO:-none}"
 
 build() { # build <scons args...>
-	echo "==> scons $*"
-	local module_args=()
-	if [ "$MODULE_XMPP" = yes ]; then
-		module_args+=(module_xmpp_enabled=yes)
-	fi
+	echo "==> scons [$PROFILE] $*"
+	# xmpp va explicito siempre: el modulo esta commiteado en el overlay y, con
+	# modules_enabled_by_default=yes, un build sin flag lo encenderia.
+	local args=(module_xmpp_enabled="$MODULE_XMPP")
+	args+=("${PROFILE_MODULE_FLAGS[@]}")
+	args+=("${PROFILE_SCONS_FLAGS[@]}")
 	(cd "$GODOT_DIR" && scons -j"$JOBS" \
-		custom_modules="${CUSTOM_MODULES:-$here}" progress=no \
-		production="$PRODUCTION" lto="$LTO" "${module_args[@]}" "$@")
+		custom_modules="${CUSTOM_MODULES:-$here${PROFILE_MODULES_EXTRA:+,$PROFILE_MODULES_EXTRA}}" progress=no \
+		production="$PRODUCTION" lto="$LTO" "${args[@]}" "$@")
 }
 
 frte_prep() { # prepara platform/frt: clone pineado + patches/frt/*.patch
@@ -237,6 +263,20 @@ frte_prep() { # prepara platform/frt: clone pineado + patches/frt/*.patch
 		apply_patch "$patch" "$frt_dir"
 	done
 }
+
+gdtk_prep() { # trae los modulos out-of-tree de gdtk (perfil lite)
+	# gdtk es un shell/compositor Wayland sobre este fork; su compositor
+	# (wlroots embebido) y su watcher de ficheros son modulos nativos que viven
+	# en SU repo. El perfil lite los compila, como thegates compila the_gates.
+	GDTK_ENV_DIR="${GDTK_ENV_DIR:-$here/.gdtk-env}"
+	"$here/scripts/gdtk_env.sh" >/dev/null
+	echo "==> gdtk    modules @ $GDTK_ENV_DIR/modules"
+}
+
+# El perfil lite compila contra los modulos de gdtk: traerlos antes de construir.
+if [ "$PROFILE" = lite ]; then
+	gdtk_prep
+fi
 
 for target in "$@"; do
 	case "$target" in
@@ -308,6 +348,17 @@ for target in "$@"; do
 			frte_prep
 			build platform=frt arch=x86_64 target=release tools=no frt_desktop_gl=yes
 			build platform=frt arch=x86_64 target=release_debug tools=no frt_desktop_gl=yes
+			;;
+		gdtk-lite)
+			# Binario (y editor) FRT x86_64 que gdtk ejecuta: compositor wlroots
+			# embebido + imgui + slug, sin box3d/decal/xmpp. Mismos flags que
+			# gdtk/deploy.sh (frt_desktop_gl, imgui_implot3d=yes, use_static_cpp=no)
+			# mas los modulos que trae gdtk_env.sh.
+			[ "$PROFILE" = lite ] || { echo "gdtk-lite requiere PROFILE=lite" >&2; exit 2; }
+			frte_prep
+			build platform=frt arch=x86_64 target=release tools=no frt_desktop_gl=yes
+			build platform=frt arch=x86_64 target=release_debug tools=no frt_desktop_gl=yes
+			build platform=frt arch=x86_64 target=release_debug tools=yes frt_desktop_gl=yes
 			;;
 		thegates-renderer)
 			# El renderer que el launcher de TheGates baja del backend para los

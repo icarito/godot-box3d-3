@@ -97,6 +97,22 @@ compile Godot:
 | `macos-3.6`, `windows-3.6` | Their backend zips, holding `Renderer-godot_v3.6.universal` and `Renderer-godot_v3.6.exe` |
 | `Godot-Box3D-export-templates-*.tpz` | Export templates for every platform Godot 3.6 targets: Linux x86_64 and ARM64, Windows x86_64, macOS universal, iOS, Android, HTML5 (threaded and not) |
 
+### One release per profile
+
+This fork is consumed by three projects with different needs, so a release only
+carries the module set its consumer uses. A profile (`scripts/profiles.sh`) decides
+which modules compile; the target decides platform and `tools=yes/no`.
+
+| Tag | Profile | For | Assets |
+|-----|---------|-----|--------|
+| `vX.Y.Z` | `odisea` | the game | full engine (box3d + decal + imgui + slug): the table above |
+| `vX.Y.Z-xmpp` | `xmpp` | xat | `*_xmpp` templates: headless, Android (`android_*_xmpp.apk`), macOS, iOS |
+| `vX.Y.Z-lite` | `lite` | gdtk | `godot.box3d.frt.gdtk.x86_64.{release,debug}` + `godot.box3d.frt.gdtk.linux.x86_64.editor` |
+
+Pushing a `v*-xmpp` / `v*-lite` tag builds only that profile's matrix; the generic
+release workflow skips it (`release.yml`, job `guard`). See
+`docs/build-profiles.md` for the module lists and how to add a profile.
+
 Consuming them:
 
 ```bash
@@ -243,18 +259,25 @@ scripts/build.sh macos-templates           # needs Xcode
 scripts/build.sh ios-templates             # needs Xcode
 ```
 
-The optional `modules/xmpp` module is disabled in ordinary fork builds, so the
-shared editor, headless binary, and standard export-template bundle do not link
-libstrophe or SQLite. Set `MODULE_XMPP=yes` only for the dedicated xat runtime
-templates, for example:
+The optional `modules/xmpp` module is off in every profile except `xmpp`, so the
+shared editor, headless binary and standard export-template bundle do not link
+libstrophe or SQLite. Build the xat runtime with the `xmpp` profile:
 
 ```bash
-MODULE_XMPP=yes scripts/build.sh android-templates
-MODULE_XMPP=yes scripts/build.sh macos-templates ios-templates
+PROFILE=xmpp scripts/build.sh android-templates
+PROFILE=xmpp scripts/build.sh macos-templates ios-templates
 ```
 
-The release workflow publishes these as separate `*_xmpp` assets; it does not
-put them in the standard `.tpz` bundle.
+`PROFILE=lite` (gdtk) builds FRT + imgui + slug without box3d/decal/xmpp, and
+pulls gdtk's own modules (wayland, inotify) through `scripts/gdtk_env.sh`:
+
+```bash
+PROFILE=lite scripts/build.sh gdtk-lite
+```
+
+`MODULE_XMPP=yes|no` still works as a legacy alias for `PROFILE=xmpp|odisea`. The
+per-profile release workflows publish the `*_xmpp` assets (xat) and the
+`godot.box3d.frt.gdtk.*` binaries (gdtk); the standard `.tpz` never carries xmpp.
 
 Run it with no arguments for the list.
 

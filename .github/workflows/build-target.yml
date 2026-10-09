@@ -16,10 +16,12 @@ on:
       os:
         required: true
         type: string
-      module_xmpp:
+      # Perfil de modulos (scripts/profiles.sh): odisea (default), xmpp o lite.
+      # Sustituye al viejo input booleano module_xmpp.
+      profile:
         required: false
-        type: boolean
-        default: false
+        type: string
+        default: odisea
 
 env:
   # Keep in step with GODOT_REF in scripts/build.sh.
@@ -141,7 +143,7 @@ jobs:
           # cache budget absorbs this comfortably.
           SCONS_CACHE_LIMIT: 8192
           GODOT_DIR: ${{ github.workspace }}/../${{ env.GODOT_DIR_REL }}
-          MODULE_XMPP: ${{ inputs.module_xmpp && 'yes' || 'no' }}
+          PROFILE: ${{ inputs.profile }}
         run: scripts/build.sh ${{ inputs.target }}
 
       # Templates are renamed to the slots Godot looks for; the editor and
@@ -232,14 +234,21 @@ jobs:
               cp "$BIN/iphone.zip" out/iphone.zip
               ;;
           esac
-          if [ "${{ inputs.module_xmpp }}" = true ]; then
-            for f in out/*; do
-              case "$f" in
-                *.apk|*.zip) mv "$f" "${f%.*}_xmpp.${f##*.}" ;;
-                *) mv "$f" "${f}_xmpp" ;;
-              esac
-            done
-          fi
+          # Per-profile asset names. The suffix is what the consumer's CI looks
+          # up: xat downloads *_xmpp, gdtk the godot.box3d.frt.gdtk.* names.
+          case "${{ inputs.profile }}" in
+            xmpp)
+              for f in out/*; do
+                case "$f" in
+                  *.apk|*.zip) mv "$f" "${f%.*}_xmpp.${f##*.}" ;;
+                  *) mv "$f" "${f}_xmpp" ;;
+                esac
+              done
+              ;;
+            lite)
+              for f in out/*; do mv "$f" "$(printf '%s' "$f" | sed 's/\.frt\./.frt.gdtk./')"; done
+              ;;
+          esac
           # Belt and braces: production=yes already omits them, but a stray
           # symbol table costs hundreds of megabytes on every CI download.
           case "${{ inputs.target }}" in

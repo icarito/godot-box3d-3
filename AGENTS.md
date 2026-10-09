@@ -9,9 +9,18 @@ espera que el agente:
 
 - Haga commits locales.
 - Haga `git push` a `origin`, incluida la rama de trabajo.
-- Cree y pushee tags en `origin` para disparar el release del CI: un tag `v*`
-  con guion (por ejemplo `v0.4.6-nightly10`) publica un pre-release. El CI
-  compila toda la matriz y arma los assets; el agente no sube nada a mano.
+- Cree y pushee tags en `origin` para disparar el release del CI; el agente no
+  sube assets a mano. Hay un release por perfil (ver `docs/build-profiles.md`):
+  - `vX.Y.Z` (o con guion, p. ej. `v0.4.6-nightly10`): motor completo para
+    Odisea + TheGates.
+  - `vX.Y.Z-xmpp`: templates para xat (módulo xmpp).
+  - `vX.Y.Z-lite`: binario FRT para gdtk (imagen Arch para wlroots).
+
+## Builds
+
+Los builds se organizan por perfiles (`scripts/profiles.sh`), uno por
+consumidor, para no servir el mismo binario a todos. Antes de tocar
+`scripts/build.sh` o los workflows, leer `docs/build-profiles.md`.
 
 ## Repos de terceros / upstream: solo lectura
 

@@ -48,7 +48,7 @@ nothing. But:
    | Tree | Used by | Notes |
    |---|---|---|
    | `godot` | this fork's branches, Odisea's local editor builds (`tools/godot_bin.sh` with `ODISEA_ENGINE=fork`) | `scripts/build.sh` default |
-   | `godot-dev` | gdtk (`modules/imgui`, `modules/wayland`) | FRT build with gdtk's custom modules, `extra_suffix=gdtk` |
+   | `godot-dev` | gdtk (`PROFILE=lite`) | `PROFILE=lite scripts/build.sh gdtk-lite` builds FRT + imgui + slug and pulls gdtk's `modules/wayland` + `modules/inotify` via `scripts/gdtk_env.sh`; locally gdtk's `deploy.sh` uses `extra_suffix=gdtk` |
 
    A new tree starts with a rebuild of what its first configure regenerates; afterwards
    it is incremental. Copying a tree (objects included) is faster than a first build, but

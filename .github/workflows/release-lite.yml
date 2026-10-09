@@ -1,0 +1,118 @@
+name: Release gdtk (lite)
+
+# Release por perfil para gdtk: el binario FRT x86_64 sobre el que corre su shell
+# (compositor wlroots embebido + imgui + slug), sin box3d/decal/xmpp. Convencion
+# de tags: vX.Y.Z-lite. El release generico no corre para estos tags (release.yml
+# los salta en su job guard).
+#
+# El modulo wayland de gdtk exige wlroots-0.20 + libei + libsystemd, que no estan
+# en Ubuntu 22.04: por eso se compila dentro de un contenedor Arch, que es el
+# entorno donde gdtk corre. Si el runner no tiene wlroots-0.20, el module
+# can_build() devuelve False y el binario sale SIN compositor; el paso de
+# verificacion falla a proposito en ese caso.
+on:
+  push:
+    tags: ["v*-lite"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "gdtk release tag (for example v0.6.0-lite). Debe existir."
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  gdtk-lite:
+    runs-on: ubuntu-22.04
+    container:
+      image: archlinux:base-devel
+    steps:
+      - name: Install build dependencies (Arch)
+        run: |
+          set -euo pipefail
+          pacman -Syu --noconfirm --needed \
+            git python scons pkgconf zip unzip github-cli \
+            sdl2 mesa libglvnd \
+            wayland libxkbcommon pixman systemd-libs libei
+          # wlroots 0.20: el paquete versionado si existe, si no el rolling.
+          pacman -S --noconfirm --needed wlroots0.20 || pacman -S --noconfirm --needed wlroots
+          pkg-config --exists wlroots-0.20 || {
+            echo "::error::wlroots-0.20 no esta en el contenedor; el modulo wayland de gdtk no compilaria"
+            exit 1
+          }
+
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Cache SCons objects
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.scons_cache
+          key: gdtk-lite-${{ hashFiles('box3d/**', 'patches/**', 'modules/xmpp/**', 'scripts/build.sh', 'scripts/gdtk_env.sh') }}
+          restore-keys: gdtk-lite-
+
+      - name: Build gdtk lite (editor + runtime)
+        env:
+          SCONS_CACHE: ${{ github.workspace }}/.scons_cache
+          SCONS_CACHE_LIMIT: 8192
+          GODOT_DIR: ${{ github.workspace }}/../godot-engine
+          PROFILE: lite
+        run: scripts/build.sh gdtk-lite
+
+      - name: Collect artifacts
+        env:
+          BIN: ${{ github.workspace }}/../godot-engine/bin
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          cp "$BIN/godot.frt.opt.x86_64" out/godot.box3d.frt.gdtk.x86_64.release
+          cp "$BIN/godot.frt.opt.debug.x86_64" out/godot.box3d.frt.gdtk.x86_64.debug
+          cp "$BIN/godot.frt.opt.tools.x86_64" out/godot.box3d.frt.gdtk.linux.x86_64.editor
+          # El module wayland se cae en silencio si falta wlroots en el host; el
+          # binario sin compositor (o sin imgui) no le sirve a gdtk.
+          for f in out/*; do
+            grep -q WaylandCompositor "$f" || { echo "::error::$f no trae WaylandCompositor"; exit 1; }
+            grep -q ImGuiCanvas "$f" || { echo "::error::$f no trae ImGuiCanvas"; exit 1; }
+          done
+          strip out/* || true
+          # Portabilidad: el crt1 del contenedor puede marcar el binario con un
+          # nivel ISA que el loader de CPUs viejas rechaza (gdtk/deploy.sh).
+          for f in out/*; do
+            if objcopy --remove-section=.note.gnu.property "$f" "$f.tmp" 2>/dev/null; then
+              mv -f "$f.tmp" "$f"
+            else
+              rm -f "$f.tmp"
+            fi
+          done
+          chmod +x out/*
+          ls -lh out
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: gdtk-lite
+          path: out/*
+          if-no-files-found: error
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          [[ "$TAG" == v*-lite ]] || { echo "::error::Expected a v*-lite tag, got $TAG"; exit 1; }
+          test -s out/godot.box3d.frt.gdtk.x86_64.release
+          test -s out/godot.box3d.frt.gdtk.x86_64.debug
+          test -s out/godot.box3d.frt.gdtk.linux.x86_64.editor
+          if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" --title "$TAG" \
+              --notes "gdtk lite runtime (profile: lite; gdtk modules pinned in scripts/gdtk_env.sh)." --prerelease
+          fi
+          for f in out/*; do
+            gh release upload "$TAG" "$f" --repo "$GITHUB_REPOSITORY" --clobber
+          done
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name'

@@ -1,13 +1,20 @@
 name: Release XMPP templates
 
-# Fast path for xat: build only the opt-in XMPP artifacts. Dispatching this
-# workflow creates the tag with GITHUB_TOKEN, so it does not start the generic
-# release workflow for GDTK/Odisea.
+# Release por perfil para xat: solo los artefactos que llevan el modulo xmpp.
+# Convencion de tags: vX.Y.Z-xmpp. El release generico (Odisea + TheGates) NO
+# corre para estos tags (release.yml los salta en su job guard).
+#
+# xat consume, del release pineado en su .github/box3d_release:
+#   godot.box3d.linux.x86_64.headless_xmpp
+#   android_release_xmpp.apk / android_debug_xmpp.apk / android_source_xmpp.zip
+#   osx_xmpp.zip / iphone_xmpp.zip
 on:
+  push:
+    tags: ["v*-xmpp"]
   workflow_dispatch:
     inputs:
       tag:
-        description: "XMPP release tag (for example v0.5.5-xmpp)"
+        description: "XMPP release tag (for example v0.5.5-xmpp). Debe existir."
         required: true
         type: string
 
@@ -34,7 +41,7 @@ jobs:
       target: ${{ matrix.target }}
       name: ${{ matrix.name }}
       os: ${{ matrix.os }}
-      module_xmpp: true
+      profile: xmpp
 
   publish:
     needs: xmpp-templates
@@ -51,10 +58,10 @@ jobs:
       - name: Publish XMPP artifacts
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ inputs.tag }}
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
         run: |
           set -euo pipefail
-          [[ "$TAG" == v*-xmpp ]] || { echo "Expected a v*-xmpp tag" >&2; exit 1; }
+          [[ "$TAG" == v*-xmpp ]] || { echo "::error::Expected a v*-xmpp tag, got $TAG"; exit 1; }
           test -s artifacts/headless-xmpp/godot.box3d.linux.x86_64.headless_xmpp
           test -s artifacts/android-xmpp/android_release_xmpp.apk
           test -s artifacts/android-xmpp/android_debug_xmpp.apk
@@ -62,8 +69,10 @@ jobs:
           test -s artifacts/macos-xmpp/osx_xmpp.zip
           if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release create "$TAG" --repo "$GITHUB_REPOSITORY" \
-              --target "$GITHUB_SHA" --title "$TAG" --notes "Opt-in XMPP templates for xat." --prerelease
+              --target "$GITHUB_SHA" --title "$TAG" \
+              --notes "Opt-in XMPP templates for xat (profile: xmpp)." --prerelease
           fi
           for f in artifacts/*-xmpp/*; do
             gh release upload "$TAG" "$f" --repo "$GITHUB_REPOSITORY" --clobber
           done
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name'

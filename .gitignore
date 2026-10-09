@@ -8,6 +8,8 @@
 /.frt-env/
 # Fuentes del runtime TheGates de thegates_env.sh (modulo the_gates + thirdparty)
 /.thegates-env/
+# Fuentes de los modulos de gdtk de gdtk_env.sh (wayland + inotify)
+/.gdtk-env/
 
 # Preview generado del demo de glow map (el nightly lo adjunta al release)
 /demos/glow_map/media/
