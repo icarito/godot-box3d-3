@@ -347,10 +347,10 @@ index 0000000000..fe7c375bf3
 +#endif // XAT_MEDIA_IOS_H
 diff --git a/platform/iphone/xat_media_ios.mm b/platform/iphone/xat_media_ios.mm
 new file mode 100644
-index 0000000000..b189436fc2
+index 0000000000..2440c0dcb3
 --- /dev/null
 +++ b/platform/iphone/xat_media_ios.mm
-@@ -0,0 +1,215 @@
+@@ -0,0 +1,213 @@
 +/**************************************************************************/
 +/*  xat_media_ios.mm                                                      */
 +/*                                                                        */
@@ -387,8 +387,6 @@ index 0000000000..b189436fc2
 +	long long ms = (long long)([[NSDate date] timeIntervalSince1970] * 1000.0);
 +	return [NSString stringWithFormat:@"%lld", ms];
 +}
-+
-+@class XatMediaIOS;
 +
 +@interface XatMediaIOSDelegate : NSObject <UIImagePickerControllerDelegate, UINavigationControllerDelegate, UIDocumentPickerDelegate>
 +@property(nonatomic, assign) XatMediaIOS *owner;
