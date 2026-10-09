@@ -235,8 +235,14 @@ build() { # build <scons args...>
 	# xmpp va explicito siempre: el modulo esta commiteado en el overlay y, con
 	# modules_enabled_by_default=yes, un build sin flag lo encenderia.
 	local args=(module_xmpp_enabled="$MODULE_XMPP")
-	args+=("${PROFILE_MODULE_FLAGS[@]}")
-	args+=("${PROFILE_SCONS_FLAGS[@]}")
+	# bash 3.2 (el /bin/bash de macOS) trata "${arr[@]}" de un array vacio como
+	# unbound variable bajo set -u; expandir solo si tiene elementos.
+	if [ "${#PROFILE_MODULE_FLAGS[@]}" -gt 0 ]; then
+		args+=("${PROFILE_MODULE_FLAGS[@]}")
+	fi
+	if [ "${#PROFILE_SCONS_FLAGS[@]}" -gt 0 ]; then
+		args+=("${PROFILE_SCONS_FLAGS[@]}")
+	fi
 	(cd "$GODOT_DIR" && scons -j"$JOBS" \
 		custom_modules="${CUSTOM_MODULES:-$here${PROFILE_MODULES_EXTRA:+,$PROFILE_MODULES_EXTRA}}" progress=no \
 		production="$PRODUCTION" lto="$LTO" "${args[@]}" "$@")

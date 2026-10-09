@@ -24,7 +24,9 @@ env_dir="${GDTK_ENV_DIR:-$here/.gdtk-env}"
 module_dir="$env_dir/modules"
 
 # Pin: moverlo cambia el binario y el protocolo que habla con los clientes gdtk.
-GDTK_REF="${GDTK_REF:-039980053fcfd63b466f88e0c36b26783860b24c}"
+# Tiene que ser un commit que exista en el remote (main de icarito/gdtk); un
+# HEAD solo local da "upload-pack: not our ref".
+GDTK_REF="${GDTK_REF:-6a6f19fe17ca2130e23cd4f5178b79a92be47de1}"
 GDTK_URL="${GDTK_URL:-https://github.com/icarito/gdtk.git}"
 
 if [ -f "$module_dir/wayland/SCsub" ] && [ -f "$module_dir/inotify/SCsub" ]; then
