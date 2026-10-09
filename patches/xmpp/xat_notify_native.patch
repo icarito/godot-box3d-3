@@ -114,10 +114,10 @@ index 0000000000..448e84af97
 +}
 diff --git a/platform/android/java/lib/src/org/godotengine/godot/XatNotify.java b/platform/android/java/lib/src/org/godotengine/godot/XatNotify.java
 new file mode 100644
-index 0000000000..ca58a5ade7
+index 0000000000..549e949f4c
 --- /dev/null
 +++ b/platform/android/java/lib/src/org/godotengine/godot/XatNotify.java
-@@ -0,0 +1,345 @@
+@@ -0,0 +1,344 @@
 +/**************************************************************************/
 +/*  XatNotify.java                                                        */
 +/*                                                                        */
@@ -343,7 +343,6 @@ index 0000000000..ca58a5ade7
 +				.setPriority(NotificationCompat.PRIORITY_HIGH)
 +				.setCategory(NotificationCompat.CATEGORY_MESSAGE)
 +				.setContentIntent(contentIntent);
-+		builder.setTag(safeTag);
 +
 +		try {
 +			NotificationManagerCompat.from(context).notify(safeTag, id, builder.build());
