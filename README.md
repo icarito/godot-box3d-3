@@ -113,6 +113,28 @@ Pushing a `v*-xmpp` / `v*-lite` tag builds only that profile's matrix; the gener
 release workflow skips it (`release.yml`, job `guard`). See
 `docs/build-profiles.md` for the module lists and how to add a profile.
 
+The conservative diet (whole unused modules off, `production=yes`, strip) shows in
+the released assets. Comparing the `xmpp` profile against the previous no-diet
+build (`v0.5.5-xmpp`, `module_xmpp=yes` with the full module set):
+
+| Asset | no diet (`v0.5.5-xmpp`) | `xmpp` (`v0.5.6-xmpp`) | Δ |
+|-------|------------------------:|-----------------------:|---|
+| `headless_xmpp` | 81.1 MB | 67.7 MB | −16.5% |
+| `android_release_xmpp.apk` | 57.3 MB | 46.6 MB | −18.6% |
+| `android_debug_xmpp.apk` | 65.5 MB | 54.0 MB | −17.6% |
+| `osx_xmpp.zip` | 57.7 MB | 45.6 MB | −21.0% |
+| `iphone_xmpp.zip` | 139.1 MB | 109.8 MB | −21.1% |
+| `android_source_xmpp.zip` | 112.8 MB | 91.6 MB | −18.8% |
+
+`xmpp` turns off `bullet csg gridmap enet upnp webrtc websocket webxr mobile_vr
+gdnative visual_script theora webm vorbis opus ogg gltf jsonrpc camera opensimplex
+raycast box3d decal imgui` and keeps mbedTLS (XMPP TLS) plus stb_vorbis/minimp3
+(attachment audio). `lite` (gdtk; `godot.box3d.frt.gdtk.*` — editor 64.4 MB,
+runtime 37.8/37.3 MB) also turns off stb_vorbis/minimp3 and keeps imgui +
+implot3d + slug. Turning a profile on requires no engine change: it is the same
+`modules/xmpp` commit, only `module_xmpp_enabled` plus the per-module
+`module_<m>_enabled` flags differ.
+
 Consuming them:
 
 ```bash

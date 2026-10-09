@@ -54,6 +54,11 @@ Se apagan módulos enteros que el consumidor no usa y se mantiene
 `scripts/build.sh`). Cuando haya mediciones, un perfil puede sumar esos flags en
 `PROFILE_SCONS_FLAGS` sin tocar el resto.
 
+Medido con `v0.5.6` (xat, `xmpp`) contra `v0.5.5-xmpp` (sin dieta): headless 67.7
+vs 81.1 MB (−16.5%), android_release 46.6 vs 57.3 MB, osx 45.6 vs 57.7 MB, iphone
+109.8 vs 139.1 MB (−21%). gdtk (`lite`): editor 64.4 MB, runtime 37.8/37.3 MB.
+Tabla completa en el README.
+
 ## Releases y tags
 
 Un release por perfil. Empujar un tag construye solo su matriz:
