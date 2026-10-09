@@ -1,0 +1,20 @@
+diff --git a/platform/android/java/lib/AndroidManifest.xml b/platform/android/java/lib/AndroidManifest.xml
+index 8240843876..5cba950059 100644
+--- a/platform/android/java/lib/AndroidManifest.xml
++++ b/platform/android/java/lib/AndroidManifest.xml
+@@ -3,6 +3,15 @@
+     android:versionCode="1"
+     android:versionName="1.0">
+ 
++    <!-- Android 11+ (package visibility): sin esto resolveActivity() de
++         ACTION_IMAGE_CAPTURE devuelve null y XatMedia.hasCamera()/takePhoto()
++         no ven la app de cámara. Lo usa el plugin nativo del fork (xat). -->
++    <queries>
++        <intent>
++            <action android:name="android.media.action.IMAGE_CAPTURE" />
++        </intent>
++    </queries>
++
+     <application>
+ 
+         <!-- Records the version of the Godot library -->
