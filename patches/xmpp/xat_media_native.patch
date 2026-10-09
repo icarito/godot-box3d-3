@@ -350,7 +350,7 @@ new file mode 100644
 index 0000000000..2440c0dcb3
 --- /dev/null
 +++ b/platform/iphone/xat_media_ios.mm
-@@ -0,0 +1,213 @@
+@@ -0,0 +1,214 @@
 +/**************************************************************************/
 +/*  xat_media_ios.mm                                                      */
 +/*                                                                        */
@@ -366,6 +366,7 @@ index 0000000000..2440c0dcb3
 +#include "core/method_bind.h"
 +
 +#import "app_delegate.h"
++#import "view_controller.h"
 +
 +#import <MobileCoreServices/MobileCoreServices.h>
 +#import <UIKit/UIKit.h>
