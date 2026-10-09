@@ -35,6 +35,20 @@ index 5cba950059..5ac59c1141 100644
          <activity
              android:name=".utils.ProcessPhoenix"
              android:theme="@android:style/Theme.Translucent.NoTitleBar"
+diff --git a/platform/android/java/lib/build.gradle b/platform/android/java/lib/build.gradle
+index f71ecec19b..bfe4f4e721 100644
+--- a/platform/android/java/lib/build.gradle
++++ b/platform/android/java/lib/build.gradle
+@@ -11,6 +11,9 @@ apply from: "../scripts/publish-module.gradle"
+ 
+ dependencies {
+     implementation "androidx.fragment:fragment:$versions.fragmentVersion"
++    // xat: FCM para el token de dispositivo (XEP-0357). Requerido por XatNotify
++    // (platform/android/java/lib/src/org/godotengine/godot/XatNotify.java).
++    implementation "com.google.firebase:firebase-messaging:24.1.0"
+ }
+ 
+ def pathToRootDir = "../../../../"
 diff --git a/platform/android/java/lib/src/org/godotengine/godot/XatMessagingService.java.example b/platform/android/java/lib/src/org/godotengine/godot/XatMessagingService.java.example
 new file mode 100644
 index 0000000000..448e84af97
@@ -114,10 +128,10 @@ index 0000000000..448e84af97
 +}
 diff --git a/platform/android/java/lib/src/org/godotengine/godot/XatNotify.java b/platform/android/java/lib/src/org/godotengine/godot/XatNotify.java
 new file mode 100644
-index 0000000000..549e949f4c
+index 0000000000..ef3be3e420
 --- /dev/null
 +++ b/platform/android/java/lib/src/org/godotengine/godot/XatNotify.java
-@@ -0,0 +1,344 @@
+@@ -0,0 +1,397 @@
 +/**************************************************************************/
 +/*  XatNotify.java                                                        */
 +/*                                                                        */
@@ -126,12 +140,10 @@ index 0000000000..549e949f4c
 +/*  notificaciones ni de mensajería, así que viven en la capa Java del    */
 +/*  motor y se registran como singleton Godot ("XatNotify").             */
 +/*                                                                        */
-+/*  FCM es OPCIONAL: la plantilla Android de Godot no incluye Firebase.   */
-+/*  getDeviceToken() usa reflexión (Class.forName) y devuelve "" si la    */
-+/*  dependencia no está presente, sin romper el build. Para habilitar el  */
-+/*  push, la app debe agregar la dependencia y configurar google-services */
-+/*  (ver XatMessagingService.java.example, del lado Java, y la cabecera   */
-+/*  de ese archivo con el snippet de Gradle/manifest).                    */
++/*  FCM: la plantilla incluye firebase-messaging (lib/build.gradle). La app   */
++/*  configura Firebase con los valores de su google-services.json via        */
++/*  configure(apiKey, appId, projectId, senderId); así no se requiere el      */
++/*  plugin Gradle `google-services` ni hornear la config en la plantilla.     */
 +/**************************************************************************/
 +
 +package org.godotengine.godot;
@@ -156,6 +168,12 @@ index 0000000000..549e949f4c
 +import androidx.core.app.NotificationCompat;
 +import androidx.core.app.NotificationManagerCompat;
 +import androidx.core.content.ContextCompat;
++
++import com.google.android.gms.tasks.Task;
++import com.google.android.gms.tasks.Tasks;
++import com.google.firebase.FirebaseApp;
++import com.google.firebase.FirebaseOptions;
++import com.google.firebase.messaging.FirebaseMessaging;
 +
 +import org.godotengine.godot.plugin.GodotPlugin;
 +import org.godotengine.godot.plugin.UsedByGodot;
@@ -199,6 +217,15 @@ index 0000000000..549e949f4c
 +	// para sobrevivir reinicios y obtenerlo sin bloquear el hilo principal.
 +	private static volatile String sToken = null;
 +	private static volatile Context sAppContext = null;
++
++	// Opciones de Firebase provistas por la app (de google-services.json). Se
++	// inicializa Firebase manualmente para no requerir el plugin Gradle
++	// `google-services` ni hornear la config de xat en la plantilla pública.
++	private static volatile boolean sFirebaseReady = false;
++	private static String sApiKey = "";
++	private static String sAppId = "";
++	private static String sProjectId = "";
++	private static String sSenderId = "";
 +
 +	// jid -> identificadores (tag) de los avisos locales vivos de esa
 +	// conversación, para que clear(jid) pueda retirarlos.
@@ -246,9 +273,29 @@ index 0000000000..549e949f4c
 +	}
 +
 +	/**
-+	 * Token FCM del dispositivo para XEP-0357. Nunca rompe si Firebase no está
-+	 * en el classpath: en ese caso devuelve "". La primera vez puede devolver ""
-+	 * (la consulta a FCM es asíncrona); la app re-registra al reconectar.
++	 * Configura Firebase con los valores de {@code google-services.json} de la
++	 * app (project_info + client). La app debe llamarlo antes de
++	 * {@link #getDeviceToken()} (main.gd lo hace al conectar).
++	 */
++	@UsedByGodot
++	public void configure(String apiKey, String appId, String projectId, String senderId) {
++		sApiKey = apiKey != null ? apiKey : "";
++		sAppId = appId != null ? appId : "";
++		sProjectId = projectId != null ? projectId : "";
++		sSenderId = senderId != null ? senderId : "";
++		ensureFirebaseApp();
++	}
++
++	/** Alias snake_case (convención del resto de la API nativa de Godot). */
++	@UsedByGodot
++	public void configure_firebase(String apiKey, String appId, String projectId, String senderId) {
++		configure(apiKey, appId, projectId, senderId);
++	}
++
++	/**
++	 * Token FCM del dispositivo para XEP-0357. Devuelve "" si Firebase no está
++	 * configurado o el token aún no está listo (la consulta es asíncrona); la
++	 * app re-registra al reconectar.
 +	 */
 +	@UsedByGodot
 +	public String getDeviceToken() {
@@ -256,9 +303,31 @@ index 0000000000..549e949f4c
 +			loadPersistedToken();
 +		}
 +		if (sToken == null) {
++			ensureFirebaseApp();
 +			fetchFcmTokenAsync();
 +		}
 +		return sToken == null ? "" : sToken;
++	}
++
++	/** Inicializa FirebaseApp una sola vez, con las opciones de la app. */
++	private static void ensureFirebaseApp() {
++		if (sFirebaseReady || sAppContext == null || sAppId.isEmpty()) {
++			return;
++		}
++		try {
++			if (FirebaseApp.getApps(sAppContext).isEmpty()) {
++				FirebaseOptions options = new FirebaseOptions.Builder()
++						.setApiKey(sApiKey)
++						.setApplicationId(sAppId)
++						.setProjectId(sProjectId)
++						.setGcmSenderId(sSenderId)
++						.build();
++				FirebaseApp.initializeApp(sAppContext, options);
++			}
++			sFirebaseReady = true;
++		} catch (Throwable t) {
++			Log.w(TAG, "No se pudo inicializar Firebase: " + t.getMessage());
++		}
 +	}
 +
 +	/**
@@ -436,26 +505,24 @@ index 0000000000..549e949f4c
 +	}
 +
 +	/**
-+	 * Obtiene el token FCM por reflexión en un hilo de trabajo: si Firebase no
-+	 * está en el classpath, Class.forName lanza y se devuelve "" sin romper el
-+	 * build. El bloqueo de Tasks.await ocurre fuera del hilo principal.
++	 * Obtiene el token FCM en un hilo de trabajo (FCM exige no bloquear el
++	 * hilo principal). Requiere que FirebaseApp esté inicializado.
 +	 */
 +	private static void fetchFcmTokenAsync() {
++		if (!sFirebaseReady) {
++			return;
++		}
 +		new Thread(new Runnable() {
 +			@Override
 +			public void run() {
 +				try {
-+					Class<?> fmClass = Class.forName("com.google.firebase.messaging.FirebaseMessaging");
-+					Object fm = fmClass.getMethod("getInstance").invoke(null);
-+					Object task = fmClass.getMethod("getToken").invoke(fm);
-+					Class<?> taskClass = Class.forName("com.google.android.gms.tasks.Task");
-+					Class<?> tasksClass = Class.forName("com.google.android.gms.tasks.Tasks");
-+					Object token = tasksClass.getMethod("await", taskClass).invoke(null, task);
-+					if (token instanceof String && !((String) token).isEmpty()) {
-+						setFcmToken((String) token);
++					Task<String> task = FirebaseMessaging.getInstance().getToken();
++					String token = Tasks.await(task);
++					if (token != null && !token.isEmpty()) {
++						setFcmToken(token);
 +					}
 +				} catch (Throwable t) {
-+					// Firebase ausente o no inicializado: push deshabilitado.
++					// FCM no disponible (sin Google Play services, sin red…).
 +					Log.i(TAG, "FCM no disponible: " + t.getClass().getSimpleName());
 +				}
 +			}
