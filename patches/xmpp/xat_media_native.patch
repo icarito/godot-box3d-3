@@ -1,9 +1,9 @@
 diff --git a/platform/android/java/lib/src/org/godotengine/godot/XatMedia.java b/platform/android/java/lib/src/org/godotengine/godot/XatMedia.java
 new file mode 100644
-index 0000000000..3845123dd3
+index 0000000..2b7db9f
 --- /dev/null
 +++ b/platform/android/java/lib/src/org/godotengine/godot/XatMedia.java
-@@ -0,0 +1,272 @@
+@@ -0,0 +1,374 @@
 +/**************************************************************************/
 +/*  XatMedia.java                                                         */
 +/*                                                                        */
@@ -19,7 +19,9 @@ index 0000000000..3845123dd3
 +import android.content.ContentResolver;
 +import android.content.Intent;
 +import android.net.Uri;
++import android.os.Build;
 +import android.provider.MediaStore;
++import android.provider.Settings;
 +import android.util.Log;
 +
 +import androidx.annotation.NonNull;
@@ -58,6 +60,8 @@ index 0000000000..3845123dd3
 +
 +	private boolean pending = false;
 +	private File cameraFile;
++	// APK a instalar si el usuario todavía no habilitó "instalar apps desconocidas".
++	private String pendingApkPath = "";
 +
 +	public XatMedia(Godot godot) {
 +		super(godot);
@@ -158,6 +162,104 @@ index 0000000000..3845123dd3
 +			Log.w(TAG, "No se pudo abrir el selector de archivos", e);
 +			pending = false;
 +			emitSignal("media_error", "sin-selector");
++		}
++	}
++
++	// --- Actualizaciones (instalador de APK) ---
++
++	@UsedByGodot
++	public boolean can_install_packages() {
++		Activity activity = getActivity();
++		return activity == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.O
++				|| activity.getPackageManager().canRequestPackageInstalls();
++	}
++
++	/**
++	 * Abre el instalador del sistema para un APK ya descargado (ruta absoluta).
++	 * Si falta el permiso de "instalar apps desconocidas", abre los ajustes y
++	 * reintenta en {@link #onMainResume()}.
++	 */
++	@UsedByGodot
++	public boolean install_apk(String absolutePath) {
++		if (absolutePath == null || absolutePath.isEmpty()) {
++			return false;
++		}
++		pendingApkPath = absolutePath;
++		final Activity activity = getActivity();
++		if (activity == null) {
++			return false;
++		}
++		if (!can_install_packages()) {
++			try {
++				Intent settings = new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
++						Uri.parse("package:" + activity.getPackageName()));
++				activity.startActivity(settings);
++				return true;
++			} catch (RuntimeException e) {
++				Log.w(TAG, "No se pudo abrir los ajustes de instalación", e);
++				return false;
++			}
++		}
++		return launchApkInstaller();
++	}
++
++	private boolean launchApkInstaller() {
++		final Activity activity = getActivity();
++		if (activity == null || pendingApkPath.isEmpty()) {
++			return false;
++		}
++		File src = new File(pendingApkPath);
++		if (!src.isFile()) {
++			Log.w(TAG, "APK inexistente: " + pendingApkPath);
++			return false;
++		}
++		try {
++			// El FileProvider sólo expone external-files; copiamos ahí y servimos.
++			File dir = new File(activity.getExternalFilesDir(null), "updates");
++			if (!dir.exists() && !dir.mkdirs()) {
++				return false;
++			}
++			File dst = new File(dir, "xat-update.apk");
++			copyFile(src, dst);
++			Uri uri = FileProvider.getUriForFile(activity,
++					activity.getPackageName() + ".fileprovider", dst);
++			Intent intent = new Intent(Intent.ACTION_VIEW);
++			intent.setDataAndType(uri, "application/vnd.android.package-archive");
++			intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
++			activity.startActivity(intent);
++			pendingApkPath = "";
++			return true;
++		} catch (Exception e) {
++			Log.w(TAG, "No se pudo instalar el APK", e);
++			return false;
++		}
++	}
++
++	private void copyFile(File src, File dst) throws Exception {
++		InputStream in = new java.io.FileInputStream(src);
++		OutputStream os = new FileOutputStream(dst);
++		try {
++			byte[] buffer = new byte[65536];
++			int read;
++			while ((read = in.read(buffer)) > 0) {
++				os.write(buffer, 0, read);
++			}
++		} finally {
++			try {
++				in.close();
++			} catch (Exception ignored) {
++			}
++			try {
++				os.close();
++			} catch (Exception ignored) {
++			}
++		}
++	}
++
++	@Override
++	public void onMainResume() {
++		if (!pendingApkPath.isEmpty() && can_install_packages()) {
++			launchApkInstaller();
 +		}
 +	}
 +
