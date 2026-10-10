@@ -1,0 +1,50 @@
+diff --git a/core/object.h b/core/object.h
+index 39eb17a3ee..9e1271b42c 100644
+--- a/core/object.h
++++ b/core/object.h
+@@ -673,8 +673,8 @@ public:
+ 
+ 	void get_property_list(List<PropertyInfo> *p_list, bool p_reversed = false) const;
+ 
+-	bool has_method(const StringName &p_method) const;
+-	void get_method_list(List<MethodInfo> *p_list) const;
++	virtual bool has_method(const StringName &p_method) const;
++	virtual void get_method_list(List<MethodInfo> *p_list) const;
+ 	Variant callv(const StringName &p_method, const Array &p_args);
+ 	virtual Variant call(const StringName &p_method, const Variant **p_args, int p_argcount, Variant::CallError &r_error);
+ 	virtual void call_multilevel(const StringName &p_method, const Variant **p_args, int p_argcount);
+diff --git a/platform/android/api/jni_singleton.h b/platform/android/api/jni_singleton.h
+index 6cdd074a16..4eca6648f4 100644
+--- a/platform/android/api/jni_singleton.h
++++ b/platform/android/api/jni_singleton.h
+@@ -195,6 +195,30 @@ public:
+ 		method_map[p_name] = md;
+ 	}
+ 
++	// Los JNISingleton guardan sus métodos en method_map (no en ClassDB), así que
++	// sin estos overrides has_method()/get_method_list() no los ven y GDScript no
++	// puede detectarlos (sólo llamarlos por call()).
++	virtual bool has_method(const StringName &p_method) const {
++		if (method_map.has(p_method)) {
++			return true;
++		}
++		return Object::has_method(p_method);
++	}
++
++	virtual void get_method_list(List<MethodInfo> *p_list) const {
++		Object::get_method_list(p_list);
++		for (const Map<StringName, MethodData>::Element *E = method_map.front(); E; E = E->next()) {
++			MethodInfo mi;
++			mi.name = E->key();
++			Vector<Variant::Type> argtypes = E->get().argtypes;
++			for (int i = 0; i < argtypes.size(); i++) {
++				mi.arguments.push_back(PropertyInfo(argtypes[i], "arg" + itos(i + 1)));
++			}
++			mi.return_val = PropertyInfo(E->get().ret_type, "");
++			p_list->push_back(mi);
++		}
++	}
++
+ 	void add_signal(const StringName &p_name, const Vector<Variant::Type> &p_args) {
+ 		if (p_args.size() == 0)
+ 			ADD_SIGNAL(MethodInfo(p_name));
