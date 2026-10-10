@@ -13,16 +13,12 @@ index 5cba950059..5ac59c1141 100644
      <!-- Android 11+ (package visibility): sin esto resolveActivity() de
           ACTION_IMAGE_CAPTURE devuelve null y XatMedia.hasCamera()/takePhoto()
           no ven la app de cámara. Lo usa el plugin nativo del fork (xat). -->
-@@ -21,6 +25,21 @@
+@@ -21,6 +25,16 @@
  
          <service android:name=".GodotDownloaderService" />
  
-+        <!-- Push FCM (xat). Descomentar SOLO tras agregar la dependencia
-+             com.google.firebase:firebase-messaging y renombrar
-+             XatMessagingService.java.example a XatMessagingService.java.
-+             Sin Firebase el class no existe y el service crashearía al
-+             instanciarse, por eso va comentado.
-+
++        <!-- Push FCM (xat): entrega el token (onNewToken) a XatNotify. La
++             dependencia firebase-messaging vive en build.gradle. -->
 +        <service
 +            android:name=".XatMessagingService"
 +            android:exported="false">
@@ -30,7 +26,6 @@ index 5cba950059..5ac59c1141 100644
 +                <action android:name="com.google.firebase.MESSAGING_EVENT" />
 +            </intent-filter>
 +        </service>
-+        -->
 +
          <activity
              android:name=".utils.ProcessPhoenix"
@@ -49,49 +44,19 @@ index f71ecec19b..bfe4f4e721 100644
  }
  
  def pathToRootDir = "../../../../"
-diff --git a/platform/android/java/lib/src/org/godotengine/godot/XatMessagingService.java.example b/platform/android/java/lib/src/org/godotengine/godot/XatMessagingService.java.example
+diff --git a/platform/android/java/lib/src/org/godotengine/godot/XatMessagingService.java b/platform/android/java/lib/src/org/godotengine/godot/XatMessagingService.java
 new file mode 100644
 index 0000000000..448e84af97
 --- /dev/null
-+++ b/platform/android/java/lib/src/org/godotengine/godot/XatMessagingService.java.example
-@@ -0,0 +1,71 @@
++++ b/platform/android/java/lib/src/org/godotengine/godot/XatMessagingService.java
+@@ -0,0 +1,41 @@
 +/**************************************************************************/
-+/*  XatMessagingService.java.example                                     */
++/*  XatMessagingService.java                                             */
 +/*                                                                        */
-+/*  Servicio FCM que entrega el token (onNewToken) a XatNotify y postea    */
-+/*  la notificación local cuando llega un mensaje de datos en primer       */
-+/*  plano.                                                                */
-+/*                                                                        */
-+/*  Este archivo NO se compila: termina en .example para que Gradle lo     */
-+/*  ignore. La plantilla Android de Godot no incluye Firebase y el import  */
-+/*  de com.google.firebase.messaging obligaría a la dependencia;            */
-+/*  dejarlo como .java rompería el build del template.                    */
-+/*                                                                        */
-+/*  Para habilitar el push FCM la app debe:                                */
-+/*                                                                        */
-+/*  1) app/build.gradle — dependencia y plugin google-services:            */
-+/*                                                                        */
-+/*       buildscript {                                                     */
-+/*           dependencies {                                                */
-+/*               classpath "com.google.gms:google-services:4.4.2"           */
-+/*           }                                                             */
-+/*       }                                                                 */
-+/*       apply plugin: "com.google.gms.google-services"                     */
-+/*       dependencies {                                                    */
-+/*           implementation "com.google.firebase:firebase-messaging:24.0.0" */
-+/*       }                                                                 */
-+/*                                                                        */
-+/*  2) colocar google-services.json en el módulo app/ (o inicializar         */
-+/*     FirebaseOptions en código si se prefiere no usar el plugin).         */
-+/*                                                                        */
-+/*  3) renombrar este archivo a XatMessagingService.java (quitando el       */
-+/*     sufijo .example).                                                    */
-+/*                                                                        */
-+/*  4) descomentar el <service> de XatMessagingService en                 */
-+/*     platform/android/java/lib/AndroidManifest.xml (ya está como comentario).*/
-+/*                                                                        */
-+/*  Sin esos pasos, XatNotify.getDeviceToken() devuelve "" y no hay push,   */
-+/*  pero el build del template sigue funcionando.                          */
++/*  Servicio FCM que entrega el token (onNewToken) a XatNotify y postea   */
++/*  la notificación local cuando llega un mensaje en primer plano.        */
++/*  La plantilla Android incluye firebase-messaging (build.gradle) y la    */
++/*  app inicializa Firebase por código (XatNotify.configure).             */
 +/**************************************************************************/
 +
 +package org.godotengine.godot;
