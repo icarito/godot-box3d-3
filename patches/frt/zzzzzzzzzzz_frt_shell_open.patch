@@ -1,0 +1,18 @@
+--- a/frt_godot.cc
++++ b/frt_godot.cc
+@@ -344,6 +344,15 @@
+ 		OS::set_clipboard(p_text);
+ 		os_.set_clipboard_text(p_text.utf8().get_data());
+ 	}
++	// Abre URLs y archivos con xdg-open y el entorno de este proceso, como
++	// OS_X11. Sin esto rige OS::shell_open base (ERR_UNAVAILABLE). No usar
++	// SDL_OpenURL: con sdl2-compat/SDL3 delega en el portal XDG, cuyo
++	// entorno puede no tener el DISPLAY/WAYLAND_DISPLAY del compositor.
++	Error shell_open(String p_uri) override {
++		List<String> args;
++		args.push_back(p_uri);
++		return execute("xdg-open", args, false);
++	}
+ 	String get_clipboard() const override {
+ 		if (!os_.has_clipboard_text())
+ 			return OS::get_clipboard();
