@@ -100,6 +100,20 @@ env_sqlite.Append(CPPDEFINES=[
 env_sqlite.add_source_files(thirdparty_obj, sqlite_sources)
 
 # ---------------------------------------------------------------------------
+# Monocypher (X25519 + EdDSA/Ed25519) para OMEMO (XEP-0384). El Ed25519 de
+# RFC 8032 (SHA-512) vive en el archivo opcional `monocypher-ed25519`; el
+# `crypto_eddsa_*` del core usa BLAKE2b y NO interopera con Signal.
+# ---------------------------------------------------------------------------
+mono_dir = "thirdparty/monocypher/"
+env_xmpp.Prepend(CPPPATH=[Dir("thirdparty/monocypher")])
+env_mono = env_xmpp.Clone()
+env_mono.disable_warnings()
+env_mono.add_source_files(thirdparty_obj, [
+    mono_dir + "monocypher.c",
+    mono_dir + "monocypher-ed25519.c",
+])
+
+# ---------------------------------------------------------------------------
 # Backend TLS de libstrophe sobre el mbedTLS del motor. Debe usar exactamente
 # el mismo config header que modules/mbedtls para que los structs coincidan.
 # (El include del motor sí es externo al módulo, de ahí el prefijo "#".)
@@ -112,8 +126,11 @@ tls_obj = []
 env_tls.add_source_files(tls_obj, "tls_mbedtls.c")
 
 # ---------------------------------------------------------------------------
-# Código del módulo.
+# Código del módulo. El OMEMO usa mbedTLS (AES-CBC/HMAC/HKDF) con el mismo
+# config header que modules/mbedtls.
 # ---------------------------------------------------------------------------
+env_xmpp.Prepend(CPPPATH=["#thirdparty/mbedtls/include"])
+env_xmpp.Append(CPPDEFINES=[("MBEDTLS_CONFIG_FILE", config_path)])
 module_obj = []
 env_xmpp.add_source_files(module_obj, "*.cpp")
 
