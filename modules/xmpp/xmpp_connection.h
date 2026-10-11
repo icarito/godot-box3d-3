@@ -49,6 +49,16 @@ class XmppConnection : public Node {
 	// Sólo se escribe/lee en el hilo de libstrophe.
 	bool worker_disconnected = false;
 
+	// XEP-0077: en modo registro no se autentica; se abre el stream crudo,
+	// se hace STARTTLS a mano, se envía el IQ de registro y se cierra con el
+	// resultado. `register_stage`: 0 espera features (manda starttls), 1 espera
+	// proceed, 2 espera features post-TLS (manda el IQ), 3 espera la respuesta.
+	bool register_mode = false;
+	bool register_done = false; // hilo de trabajo
+	int register_stage = 0; // hilo de trabajo
+	String register_user;
+	String register_domain;
+
 	// Parámetros de conexión (se fijan antes de arrancar el hilo).
 	String jid;
 	String password;
@@ -72,12 +82,15 @@ class XmppConnection : public Node {
 			xmpp_stream_error_t *p_stream_error,
 			void *p_userdata);
 	static int _stanza_cb(xmpp_conn_t *p_conn, xmpp_stanza_t *p_stanza, void *p_userdata);
+	static int _register_cb(xmpp_conn_t *p_conn, xmpp_stanza_t *p_stanza, void *p_userdata);
+	static void _register_send(xmpp_conn_t *p_conn, const String &p_user, const String &p_pass, const String &p_domain);
 	static void _log_cb(void *p_userdata, xmpp_log_level_t p_level, const char *p_area, const char *p_msg);
 
 	// Marshalling al hilo principal.
 	void _emit_stanza(const String &p_xml);
 	void _emit_connected(const String &p_bound_jid);
 	void _emit_disconnected(int p_error);
+	void _emit_register_result(bool p_ok, const String &p_message);
 	void _emit_log(int p_level, const String &p_msg);
 	void _on_worker_finished(int p_generation);
 
@@ -91,6 +104,9 @@ public:
 	// `is_connected` ya existen en Object (señales) y no se pueden redefinir.
 	// Máx. 5 argumentos: límite de MethodBind en este motor.
 	int open(const String &p_jid, const String &p_pass, const String &p_host = "", int p_port = 5222, const String &p_cafile = "");
+	// XEP-0077: crea la cuenta en el servidor (pre-auth) y emite
+	// `register_result(ok, message)`.
+	int register_account(const String &p_jid, const String &p_pass, const String &p_host = "", int p_port = 5222, const String &p_cafile = "");
 	void close();
 	int send(const String &p_xml);
 	bool is_open() const;
