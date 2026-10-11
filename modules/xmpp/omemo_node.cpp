@@ -575,15 +575,15 @@ String XatOmemo::self_test() {
 
 	// Vector de interop del payload OMEMO 2 (generado con openclaw-xmpp:
 	// HKDF-SHA-256(zero salt, "OMEMO Payload") + AES-256-CBC + HMAC truncado).
-	uint8_t key48[48], payload[44], plain_want[4];
+	uint8_t key48[48], payload[16], plain_want[4];
 	if (!_hex_to_bytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f6032e091967d4a46c46e5706855512ca", key48, 48) ||
-			!_hex_to_bytes("0a106032e091967d4a46c46e5706855512ca1218080010001a0022102c450ccc8ab79c1862cc619b8b898342", payload, 44) ||
+			!_hex_to_bytes("2c450ccc8ab79c1862cc619b8b898342", payload, 16) ||
 			!_hex_to_bytes("686f6c61", plain_want, 4)) {
 		return "self_test: hex del payload inválido";
 	}
 	uint8_t *plain = nullptr;
 	size_t plain_len = 0;
-	if (!OmemoCrypto::payload_decrypt(&plain, &plain_len, payload, 44, key48, 48)) {
+	if (!OmemoCrypto::payload_decrypt(&plain, &plain_len, payload, 16, key48, 48)) {
 		return "self_test: payload_decrypt falló";
 	}
 	if (plain_len != 4 || memcmp(plain, plain_want, 4) != 0) {

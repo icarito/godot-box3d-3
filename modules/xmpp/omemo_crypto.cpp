@@ -357,9 +357,11 @@ bool payload_encrypt_with_key(const uint8_t key32[32], uint8_t *key48, uint8_t *
 
 	memcpy(key48, key32, 32);
 	memcpy(key48 + 32, mac, 16);
-	pb_encode_authenticated(payload, payload_len, ct, ct_len, mac, 0, 0, nullptr, 0);
-	free(ct);
-	return *payload != nullptr;
+	// XEP-0384 carries only the AES-CBC ciphertext in <payload>. The truncated
+	// HMAC travels with the key material inside each ratchet-encrypted <key>.
+	*payload = ct;
+	*payload_len = ct_len;
+	return true;
 }
 
 bool payload_encrypt(uint8_t *key48, uint8_t **payload, size_t *payload_len,
@@ -374,21 +376,7 @@ bool payload_encrypt(uint8_t *key48, uint8_t **payload, size_t *payload_len,
 bool payload_decrypt(uint8_t **plaintext, size_t *plaintext_len,
 		const uint8_t *payload, size_t payload_len,
 		const uint8_t *key, size_t key_len) {
-	if (key_len != 32 && key_len != 48) {
-		return false;
-	}
-	const uint8_t *mac = nullptr;
-	size_t mac_len = 0;
-	const uint8_t *ct = nullptr;
-	size_t ct_len = 0;
-	uint32_t n = 0;
-	uint32_t pn = 0;
-	const uint8_t *dh = nullptr;
-	size_t dh_len = 0;
-	if (!pb_decode_authenticated(payload, payload_len, &mac, &mac_len, &ct, &ct_len, &n, &pn, &dh, &dh_len)) {
-		return false;
-	}
-	if (mac_len != 16 || ct_len == 0) {
+	if (key_len != 48 || payload_len == 0) {
 		return false;
 	}
 
@@ -397,20 +385,17 @@ bool payload_decrypt(uint8_t **plaintext, size_t *plaintext_len,
 			(const uint8_t *)OMEMO_PAYLOAD_INFO, sizeof(OMEMO_PAYLOAD_INFO) - 1);
 
 	uint8_t expected[32];
-	hmac_sha256(expected, okm + 32, 32, ct, ct_len);
-	if (!ct_equal(mac, expected, 16)) {
-		return false;
-	}
-	if (key_len == 48 && !ct_equal(key + 32, mac, 16)) {
+	hmac_sha256(expected, okm + 32, 32, payload, payload_len);
+	if (!ct_equal(key + 32, expected, 16)) {
 		return false;
 	}
 
-	uint8_t *out = (uint8_t *)malloc(ct_len);
+	uint8_t *out = (uint8_t *)malloc(payload_len);
 	if (out == nullptr) {
 		return false;
 	}
 	size_t out_len = 0;
-	if (!aes256cbc_decrypt(out, &out_len, okm, okm + 64, ct, ct_len)) {
+	if (!aes256cbc_decrypt(out, &out_len, okm, okm + 64, payload, payload_len)) {
 		free(out);
 		return false;
 	}
