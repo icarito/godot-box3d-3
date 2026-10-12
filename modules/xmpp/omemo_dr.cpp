@@ -554,8 +554,17 @@ bool start_passive(State *s, const uint8_t p_shared_secret[32], const uint8_t p_
 	s->sending_len = 0;
 	s->prev_sending_len = 0;
 
-	// Clave de descifrado (n == 0 en el mensaje inicial).
+	// El activo reenvía el kex en cada mensaje hasta recibir respuesta, así
+	// que el primero que llega puede ser n > 0 si se perdieron los anteriores.
+	// Las claves saltadas quedan guardadas por si llegan tarde.
+	if (n > MAX_SKIP) {
+		return false;
+	}
 	uint8_t mk[32];
+	for (uint32_t k = 0; k < n; k++) {
+		receiving_next(s, mk);
+		store_skipped(s, s->other_ratchet_pub, s->receiving_len - 1, mk);
+	}
 	receiving_next(s, mk);
 	uint32_t dn = 0, dpn = 0;
 	uint8_t ddh[32];
