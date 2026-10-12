@@ -122,6 +122,12 @@ int XmppConnection::open(const String &p_jid, const String &p_pass, const String
 		xmpp_free_sm_state(sm_state);
 		sm_state = nullptr;
 	}
+	if (new_bare != last_bare) {
+		// Lo pendiente era de otra cuenta.
+		outgoing_mutex.lock();
+		outgoing.clear();
+		outgoing_mutex.unlock();
+	}
 	last_bare = new_bare;
 
 	jid = p_jid;
@@ -141,6 +147,7 @@ int XmppConnection::open(const String &p_jid, const String &p_pass, const String
 
 	stop_requested.clear();
 	worker_disconnected = false;
+	session_ready = false;
 	connected_flag.clear();
 	generation += 1;
 
@@ -199,6 +206,7 @@ int XmppConnection::register_account(const String &p_jid, const String &p_pass, 
 
 	stop_requested.clear();
 	worker_disconnected = false;
+	session_ready = false;
 	connected_flag.clear();
 	generation += 1;
 
@@ -306,7 +314,11 @@ void XmppConnection::_thread_main() {
 
 	if (rc == XMPP_EOK) {
 		while (!stop_requested.is_set() && !worker_disconnected) {
-			_drain_outgoing();
+			// Lo que se encole durante la negociación (o la reconexión) espera
+			// en `outgoing` en vez de perderse; XEP-0198 cubre lo ya enviado.
+			if (session_ready) {
+				_drain_outgoing();
+			}
 			xmpp_run_once(ctx, 50);
 		}
 		if (!worker_disconnected && xmpp_conn_is_connected(conn)) {
@@ -353,6 +365,7 @@ void XmppConnection::_conn_event_cb(xmpp_conn_t *p_conn, xmpp_conn_event_t p_eve
 			}
 			// Todos los stanzas crudos al hilo principal.
 			xmpp_handler_add(p_conn, _stanza_cb, nullptr, nullptr, nullptr, p_userdata);
+			self->session_ready = true;
 			const char *bound = xmpp_conn_get_bound_jid(p_conn);
 			self->call_deferred("_emit_connected", String::utf8(bound != nullptr ? bound : ""));
 		} break;
@@ -376,6 +389,7 @@ void XmppConnection::_conn_event_cb(xmpp_conn_t *p_conn, xmpp_conn_event_t p_eve
 		case XMPP_CONN_DISCONNECT:
 		case XMPP_CONN_FAIL: {
 			self->worker_disconnected = true;
+			self->session_ready = false;
 			self->call_deferred("_emit_disconnected", p_error);
 		} break;
 		default:
