@@ -48,6 +48,9 @@ class XmppConnection : public Node {
 	SafeFlag connected_flag;
 	// Sólo se escribe/lee en el hilo de libstrophe.
 	bool worker_disconnected = false;
+	// Stream negociado (CONNECT de libstrophe). Antes de eso libstrophe
+	// descarta en silencio los envíos del usuario: la cola espera.
+	bool session_ready = false;
 
 	// XEP-0077: en modo registro no se autentica; se abre el stream crudo,
 	// se hace STARTTLS a mano, se envía el IQ de registro y se cierra con el
