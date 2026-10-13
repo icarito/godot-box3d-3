@@ -43,7 +43,7 @@ GODOT_URL="${GODOT_URL:-https://github.com/godotengine/godot.git}"
 # mueve `engine_branch.sh export`; patches/*.patch es el export de esa rama, para
 # llevar los cambios a otro fork o upstream. GODOT_PATCHES=yes compila como antes:
 # GODOT_REF upstream con patches/*.patch aplicados encima.
-ENGINE_REF="${ENGINE_REF:-b0b0550ad4f95323a630e28ae5fdcb2fa9862d45}"
+ENGINE_REF="${ENGINE_REF:-1a80452cccbef1831414cf2ce8cfcbc2414b9839}"
 ENGINE_URL="${ENGINE_URL:-https://github.com/icarito/godot.git}"
 GODOT_PATCHES="${GODOT_PATCHES:-no}"
 # Build profile: which consumer's module set this run compiles (scripts/profiles.sh).
