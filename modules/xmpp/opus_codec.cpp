@@ -33,8 +33,11 @@ PoolByteArray OpusCodec::encode(PoolByteArray p_pcm, int p_rate, int p_channels,
 	}
 	opus_encoder_ctl(enc, OPUS_SET_BITRATE(p_bitrate > 0 ? p_bitrate : 24000));
 	opus_encoder_ctl(enc, OPUS_SET_SIGNAL(OPUS_SIGNAL_VOICE));
-	int preskip = 0;
-	opus_encoder_ctl(enc, OPUS_GET_LOOKAHEAD(&preskip));
+	int lookahead = 0;
+	opus_encoder_ctl(enc, OPUS_GET_LOOKAHEAD(&lookahead));
+	// Ogg Opus cuenta pre-skip y granulepos en muestras a 48 kHz, no al sample
+	// rate de entrada (opusfile rechaza el archivo si no coinciden).
+	int preskip = (int)((int64_t)lookahead * 48000 / p_rate);
 
 	PoolByteArray::Read rd = p_pcm.read();
 	const opus_int16 *pcm = (const opus_int16 *)rd.ptr();
@@ -101,6 +104,7 @@ PoolByteArray OpusCodec::encode(PoolByteArray p_pcm, int p_rate, int p_channels,
 	}
 	std::vector<opus_int16> pad;
 	int64_t granule = preskip;
+	int g48 = (int)((int64_t)frame * 48000 / p_rate);
 	unsigned char pkt[8000];
 	int frames_since_flush = 0;
 	int pos = 0;
@@ -123,7 +127,7 @@ PoolByteArray OpusCodec::encode(PoolByteArray p_pcm, int p_rate, int p_channels,
 		if (len < 0) {
 			break;
 		}
-		granule += frame;
+		granule += g48;
 		memset(&op, 0, sizeof(op));
 		op.packet = pkt;
 		op.bytes = len;
@@ -170,7 +174,10 @@ Dictionary OpusCodec::decode(PoolByteArray p_ogg) {
 		channels = 1;
 	}
 	const OpusHead *oh = op_head(of, -1);
-	int rate = oh != nullptr ? (int)oh->input_sample_rate : 48000;
+	// opusfile decodifica siempre a 48 kHz (independiente del sample rate de
+	// entrada declarado en OpusHead), así que el PCM resultante es a 48 kHz.
+	int rate = 48000;
+	(void)oh;
 
 	const int block = 5760; // máx. muestras por canal por lectura
 	std::vector<opus_int16> pcm;
