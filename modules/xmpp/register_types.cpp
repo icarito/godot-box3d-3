@@ -7,6 +7,7 @@
 #include "register_types.h"
 
 #include "omemo_node.h"
+#include "opus_codec.h"
 #include "sqlite_binding.h"
 #include "xmpp_connection.h"
 
@@ -22,6 +23,7 @@ void register_xmpp_types() {
 	ClassDB::register_class<SQLiteBinding>();
 	ClassDB::register_class<SQLiteQuery>();
 	ClassDB::register_class<XatOmemo>();
+	ClassDB::register_class<OpusCodec>();
 }
 
 void unregister_xmpp_types() {
