@@ -1,0 +1,21 @@
+diff --git a/frt_godot.cc b/frt_godot.cc
+--- a/frt_godot.cc
++++ b/frt_godot.cc
+@@ -160,10 +160,16 @@
+ 	const char *get_video_driver_name(int driver) const override {
+ 		if (driver == VIDEO_DRIVER_GLES2)
+ 			return "GLES2";
+ 		else
+ 			return "GLES3";
+ 	}
++	// Desktop Linux: el cliente xat compara OS.get_name() contra "Linux"
++	// (como Godot 4); OS_Unix devolvia "Unix", dejando inertes en Linux el
++	// updater, la camara, el portapapeles y el file picker.
++	String get_name() const override {
++		return "Linux";
++	}
+ 	bool _check_internal_feature_support(const String &feature) override {
+-		if (feature == "X11" || feature == "FRT")
++		if (feature == "linux" || feature == "X11" || feature == "FRT")
+ 			return true;
+ 		if (video_driver_ == VIDEO_DRIVER_GLES3 && feature == "etc2")
