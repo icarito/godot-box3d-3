@@ -33,10 +33,10 @@ jobs:
             os: ubuntu-22.04
           - target: macos-templates
             name: macos-xmpp
-            os: macos-14
+            os: macos-15
           - target: ios-templates
             name: ios-xmpp
-            os: macos-14
+            os: macos-15
           - target: linux-templates
             name: linux-xmpp
             os: ubuntu-22.04
