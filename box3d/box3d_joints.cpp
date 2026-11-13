@@ -67,6 +67,19 @@ void Box3DJoint::rebuild() {
 			def.base.localFrameA = b3_transform(frame_a);
 			def.base.localFrameB = b3_transform(frame_b);
 			id = b3CreateSphericalJoint(world, &def);
+			// Godot's PinJoint params (bias/damping) map onto Box3D's joint
+			// softness tuning. Only when explicitly set: a rope chain asks for
+			// soft constraints (stability), while other users keep the rigid
+			// spherical default.
+			if (params.has(PhysicsServer::PIN_JOINT_BIAS) || params.has(PhysicsServer::PIN_JOINT_DAMPING)) {
+				float hertz = params.has(PhysicsServer::PIN_JOINT_BIAS)
+						? Math::lerp(0.5f, 40.0f, CLAMP(params[PhysicsServer::PIN_JOINT_BIAS], 0.01f, 0.99f))
+						: 20.0f;
+				float damping_ratio = params.has(PhysicsServer::PIN_JOINT_DAMPING)
+						? CLAMP(params[PhysicsServer::PIN_JOINT_DAMPING], 0.0f, 4.0f)
+						: 1.0f;
+				b3Joint_SetConstraintTuning(id, hertz, damping_ratio);
+			}
 		} break;
 		case PhysicsServer::JOINT_HINGE: {
 			b3RevoluteJointDef def = b3DefaultRevoluteJointDef();
