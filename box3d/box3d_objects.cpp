@@ -1064,6 +1064,13 @@ Box3DSpace::Box3DSpace() {
 	if (ProjectSettings::get_singleton()->has_setting("physics/3d/box3d_workers")) {
 		box3d_workers = (int)ProjectSettings::get_singleton()->get_setting("physics/3d/box3d_workers");
 	}
+	// Determinism opt-in: `physics/3d/box3d_deterministic` forces the serial
+	// solver (workerCount = 1), which is bit-reproducible and required by the
+	// replay contract. Overrides any requested worker count.
+	if (ProjectSettings::get_singleton()->has_setting("physics/3d/box3d_deterministic") &&
+			ProjectSettings::get_singleton()->get_setting("physics/3d/box3d_deterministic")) {
+		box3d_workers = 1;
+	}
 	def.workerCount = CLAMP(box3d_workers, 1, B3_MAX_WORKERS);
 	// Optional pre-sizing. Box3D grows these itself, but on a loaded level the
 	// growth lands mid-step as reallocations; a project that knows its counts
@@ -1279,7 +1286,9 @@ Transform Box3DDirectBodyState::get_transform() const {
 
 Vector3 Box3DDirectBodyState::get_velocity_at_local_position(const Vector3 &p_position) const {
 	ERR_FAIL_COND_V(!body || !body->in_world(), Vector3());
-	return g_vec(b3Body_GetLocalPointVelocity(body->id, b3_vec(p_position)));
+	// Godot's contract: p_position is an offset from the body origin in GLOBAL orientation
+	// (KinematicBody::move_and_slide passes gt.origin - body_origin), not a body-local point.
+	return g_vec(b3Body_GetWorldPointVelocity(body->id, b3_pos(body->get_transform().origin + p_position)));
 }
 
 void Box3DDirectBodyState::add_central_force(const Vector3 &p_force) {
