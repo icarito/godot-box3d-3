@@ -20,7 +20,7 @@ jobs:
           - target: thegates-renderer
             os: ubuntu-22.04
           - target: thegates-renderer-macos
-            os: macos-14
+            os: macos-15
           - target: thegates-renderer-windows
             os: ubuntu-22.04
     runs-on: ${{ matrix.os }}
